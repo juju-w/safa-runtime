@@ -1,6 +1,7 @@
 import Foundation
 import SAFACrypto
 import SAFADomain
+import SAFAPolicy
 import SAFAProtocol
 import SAFASSH
 import SAFATransport
@@ -11,6 +12,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
     private let resourceService: ResourceService
     private let bindingStore: ChildCredentialBindingStore
     private let transport: SSHTransport
+    private let diagnosticPolicy: DiagnosticCommandPolicy
     private let audit: AuditService
     private let askPassExecutable: URL
     private let workingDirectory: URL
@@ -21,6 +23,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
         passwordStore: any PasswordSecretStoring,
         bindingStore: ChildCredentialBindingStore,
         transport: SSHTransport = SSHTransport(),
+        diagnosticPolicy: DiagnosticCommandPolicy = DiagnosticCommandPolicy(),
         audit: AuditService = AuditService(),
         askPassExecutable: URL,
         workingDirectory: URL
@@ -30,6 +33,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
         resourceService = ResourceService(vault: vault, passwordStore: passwordStore)
         self.bindingStore = bindingStore
         self.transport = transport
+        self.diagnosticPolicy = diagnosticPolicy
         self.audit = audit
         self.askPassExecutable = askPassExecutable
         self.workingDirectory = workingDirectory
@@ -207,7 +211,10 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
         caller: CallerIdentity,
         messageID: UUID
     ) async throws -> BrokerReply {
-        guard privilege == .user, Self.isMVPReadOnly(command), !intent.isEmpty else {
+        guard privilege == .user,
+            diagnosticPolicy.allowsAutomaticExecution(command),
+            !intent.isEmpty
+        else {
             return failure(
                 messageID: messageID,
                 code: "approval_not_in_mvp",
@@ -315,25 +322,6 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
                 ]),
             ]
         )
-    }
-
-    private static func isMVPReadOnly(_ command: CommandSpec) -> Bool {
-        guard command.mode == .exec, let arguments = command.arguments, let first = arguments.first
-        else { return false }
-        switch first {
-        case "true", "date", "hostname", "id", "uptime", "uname", "whoami":
-            return true
-        case "df", "free", "ps":
-            return true
-        case "systemctl":
-            return arguments.count >= 2
-                && ["is-active", "is-enabled", "show", "status"].contains(arguments[1])
-        case "docker":
-            return arguments.count >= 2
-                && ["inspect", "ps", "stats", "version"].contains(arguments[1])
-        default:
-            return false
-        }
     }
 
     private static func redact(_ secret: Data, from data: Data) -> Data {

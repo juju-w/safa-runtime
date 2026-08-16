@@ -22,7 +22,7 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
         alias = resource.alias
         transport = resource.transport
         state = resource.state
-        var values = ["exec", "shell"]
+        var values = ["exec"]
         if resource.sudoRef != nil { values.append("sudo") }
         capabilities = values
         if resource.state == .disabled || resource.state == .deleted {

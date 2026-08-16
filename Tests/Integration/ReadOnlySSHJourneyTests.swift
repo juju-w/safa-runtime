@@ -80,7 +80,7 @@ struct ReadOnlySSHJourneyTests {
     }
 }
 
-private enum JourneyResourceFactory {
+enum JourneyResourceFactory {
     static func active(alias: String) -> Resource {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         return Resource(

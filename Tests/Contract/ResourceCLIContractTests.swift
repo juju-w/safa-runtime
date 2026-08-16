@@ -14,7 +14,7 @@ struct ResourceCLIContractTests {
         let text = try #require(String(data: bytes, encoding: .utf8))
 
         #expect(projection.alias.rawValue == "nas.home")
-        #expect(projection.capabilities == ["exec", "shell"])
+        #expect(projection.capabilities == ["exec"])
         #expect(!text.contains("203.0.113.10"))
         #expect(!text.contains("diagnostic-user"))
         #expect(!text.contains(resource.id.uuidString))
