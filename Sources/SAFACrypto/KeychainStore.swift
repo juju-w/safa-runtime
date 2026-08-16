@@ -80,6 +80,24 @@ public actor DataProtectionKeychainStore: VaultKeyStore {
         )
     }
 
+    public func readSecret(id: UUID) async throws -> Data? {
+        try load(locator: OpaqueKeychainLocator(id: id, purpose: .credential))
+    }
+
+    public func storeSecret(_ secret: Data, id: UUID) async throws {
+        try store(secret, locator: OpaqueKeychainLocator(id: id, purpose: .credential))
+    }
+
+    public func deleteSecret(id: UUID) async throws {
+        let query = Self.baseQuery(
+            for: OpaqueKeychainLocator(id: id, purpose: .credential)
+        )
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw map(status)
+        }
+    }
+
     private func load(locator: OpaqueKeychainLocator) throws -> Data? {
         var query = Self.baseQuery(for: locator)
         query[kSecReturnData as String] = true

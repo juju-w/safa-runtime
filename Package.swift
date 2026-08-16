@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.1
 
 import PackageDescription
 
@@ -17,9 +17,12 @@ let package = Package(
         .library(name: "SAFAPolicy", targets: ["SAFAPolicy"]),
         .library(name: "SAFATransport", targets: ["SAFATransport"]),
         .library(name: "SAFASSH", targets: ["SAFASSH"]),
-        .executable(name: "safa", targets: ["SAFACLI"]),
-        .executable(name: "safa-broker", targets: ["SAFABroker"]),
-        .executable(name: "safa-askpass", targets: ["SAFAAskPass"]),
+        .library(name: "SAFABroker", targets: ["SAFABroker"]),
+        .library(name: "SAFACLI", targets: ["SAFACLI"]),
+        .library(name: "SAFAAskPass", targets: ["SAFAAskPass"]),
+        .executable(name: "safa", targets: ["SAFACLIExecutable"]),
+        .executable(name: "safa-broker", targets: ["SAFABrokerExecutable"]),
+        .executable(name: "safa-askpass", targets: ["SAFAAskPassExecutable"]),
     ],
     dependencies: [
         .package(
@@ -51,10 +54,10 @@ let package = Package(
         ),
         .target(
             name: "SAFASSH",
-            dependencies: ["SAFADomain", "SAFATransport"],
+            dependencies: ["SAFACrypto", "SAFADomain", "SAFATransport"],
             swiftSettings: strictConcurrency
         ),
-        .executableTarget(
+        .target(
             name: "SAFABroker",
             dependencies: [
                 "SAFACrypto",
@@ -67,6 +70,11 @@ let package = Package(
             swiftSettings: strictConcurrency
         ),
         .executableTarget(
+            name: "SAFABrokerExecutable",
+            dependencies: ["SAFABroker"],
+            swiftSettings: strictConcurrency
+        ),
+        .target(
             name: "SAFACLI",
             dependencies: [
                 "SAFAProtocol",
@@ -75,13 +83,23 @@ let package = Package(
             swiftSettings: strictConcurrency
         ),
         .executableTarget(
+            name: "SAFACLIExecutable",
+            dependencies: ["SAFACLI"],
+            swiftSettings: strictConcurrency
+        ),
+        .target(
             name: "SAFAAskPass",
             dependencies: ["SAFAProtocol"],
             swiftSettings: strictConcurrency
         ),
+        .executableTarget(
+            name: "SAFAAskPassExecutable",
+            dependencies: ["SAFAAskPass"],
+            swiftSettings: strictConcurrency
+        ),
         .target(
             name: "SAFATestFixtures",
-            dependencies: ["SAFACrypto", "SAFADomain"],
+            dependencies: ["SAFACrypto", "SAFADomain", "SAFATransport"],
             path: "Tests/Fixtures",
             swiftSettings: strictConcurrency
         ),
@@ -99,13 +117,32 @@ let package = Package(
         ),
         .testTarget(
             name: "SAFAIntegrationTests",
-            dependencies: ["SAFACrypto", "SAFADomain", "SAFATestFixtures"],
+            dependencies: [
+                "SAFAAskPass",
+                "SAFABroker",
+                "SAFACLI",
+                "SAFACrypto",
+                "SAFADomain",
+                "SAFAProtocol",
+                "SAFASSH",
+                "SAFATestFixtures",
+                "SAFATransport",
+            ],
             path: "Tests/Integration",
             swiftSettings: strictConcurrency
         ),
         .testTarget(
             name: "SAFASecurityTests",
-            dependencies: ["SAFACrypto", "SAFADomain", "SAFAProtocol", "SAFATestFixtures"],
+            dependencies: [
+                "SAFAAskPass",
+                "SAFABroker",
+                "SAFACrypto",
+                "SAFADomain",
+                "SAFAProtocol",
+                "SAFASSH",
+                "SAFATestFixtures",
+                "SAFATransport",
+            ],
             path: "Tests/Security",
             swiftSettings: strictConcurrency
         ),

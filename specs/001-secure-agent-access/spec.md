@@ -1,6 +1,6 @@
 # Feature Specification: Secure Agent Access
 
-**Feature Branch**: `001-secure-agent-access`
+**Feature Branch**: `feat/001-secure-agent-access`
 
 **Created**: 2026-08-16
 

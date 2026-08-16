@@ -12,6 +12,11 @@ public enum VaultError: Error, Equatable, Sendable {
     case persistenceFailed
 }
 
+public protocol VaultDocumentStoring: Sendable {
+    func readDocument() async throws -> VaultDocument
+    func writeDocument(_ document: VaultDocument) async throws
+}
+
 public struct VaultEnvelope: Codable, Equatable, Sendable {
     public let formatVersion: UInt
     public let installationID: UUID
@@ -215,5 +220,15 @@ public actor EncryptedVault {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+}
+
+extension EncryptedVault: VaultDocumentStoring {
+    public func readDocument() async throws -> VaultDocument {
+        try await load()
+    }
+
+    public func writeDocument(_ document: VaultDocument) async throws {
+        _ = try await update(document: document)
     }
 }

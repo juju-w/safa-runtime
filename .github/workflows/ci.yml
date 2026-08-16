@@ -3,7 +3,11 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, "[0-9][0-9][0-9]-*"]
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -17,8 +21,14 @@ jobs:
       - name: Resolve dependencies
         run: swift package resolve
       - name: Lint Swift sources
-        run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
+        run: xcrun swift-format lint --recursive --strict Sources Tests Apps/SAFA/App Apps/SAFA/Targets Package.swift
       - name: Build
         run: swift build
       - name: Test
         run: swift test --parallel
+      - name: Release build
+        run: swift build -c release
+      - name: Assemble native targets without signing secrets
+        run: >-
+          xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme SAFA
+          -configuration Debug CODE_SIGNING_ALLOWED=NO build

@@ -18,7 +18,7 @@ tests first and confirm they fail before the matching implementation.
 **Purpose**: Establish the native project, test layout, and reproducible build surface.
 
 - [X] T001 Create SwiftPM products and dependency graph from `plan.md` in `Package.swift`
-- [ ] T002 Create the signed app, broker launch-agent, CLI, and askpass targets in `Apps/SAFA/SAFA.xcodeproj/project.pbxproj`
+- [X] T002 Create the signed app, broker launch-agent, CLI, and askpass targets in `Apps/SAFA/SAFA.xcodeproj/project.pbxproj`
 - [X] T003 [P] Add Debug and Release signing/build settings in `Apps/SAFA/Config/BuildSettings.xcconfig`
 - [X] T004 [P] Add component Info.plist and entitlement templates in `Apps/SAFA/Config/`
 - [X] T005 [P] Create unit, contract, integration, security, UI, and fixture directories under `Tests/`
@@ -45,13 +45,13 @@ tests first and confirm they fail before the matching implementation.
 - [X] T017 [P] Add failing Keychain access-class and opaque-locator tests in `Tests/Integration/KeychainIntegrationTests.swift`
 - [X] T018 Implement broker-only data-protection Keychain abstraction in `Sources/SAFACrypto/KeychainStore.swift`
 - [X] T019 Implement AES-GCM vault envelope, atomic persistence, schema revisions, and rollback marker in `Sources/SAFACrypto/EncryptedVault.swift`
-- [ ] T020 [P] Add failing XPC peer identity and unauthorized-client tests in `Tests/Integration/XPCPeerValidationTests.swift`
+- [X] T020 [P] Add failing XPC peer identity and unauthorized-client tests in `Tests/Integration/XPCPeerValidationTests.swift`
 - [X] T021 Define separate Agent-client and trusted-app XPC protocols in `Sources/SAFAProtocol/BrokerXPCProtocol.swift`
-- [ ] T022 Implement peer signing, effective-user, and audit-session validation in `Sources/SAFABroker/PeerValidator.swift`
-- [ ] T023 Implement the per-user broker listener and bounded request dispatcher in `Sources/SAFABroker/BrokerService.swift`
-- [ ] T024 [P] Implement sanitized OSLog events with private-by-default fields in `Sources/SAFABroker/SecurityLog.swift`
-- [ ] T025 [P] Add an in-memory fake vault, fake approval provider, and fake transport in `Tests/Fixtures/Fakes/`
-- [ ] T026 Wire the broker launch-agent payload and registration service in `Apps/SAFA/BrokerLaunchAgent/` and `Apps/SAFA/App/BrokerRegistration.swift`
+- [X] T022 Implement peer signing, effective-user, and audit-session validation in `Sources/SAFABroker/PeerValidator.swift`
+- [X] T023 Implement the per-user broker listener and bounded request dispatcher in `Sources/SAFABroker/BrokerService.swift`
+- [X] T024 [P] Implement sanitized OSLog events with private-by-default fields in `Sources/SAFABroker/SecurityLog.swift`
+- [X] T025 [P] Add an in-memory fake vault, fake approval provider, and fake transport in `Tests/Fixtures/Fakes/`
+- [X] T026 Wire the broker launch-agent payload and registration service in `Apps/SAFA/BrokerLaunchAgent/` and `Apps/SAFA/App/BrokerRegistration.swift`
 
 **Checkpoint**: Protocol, encrypted state, peer validation, and deterministic test doubles work
 without a real server or credential.
@@ -68,29 +68,29 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 
 ### Tests for User Story 1
 
-- [ ] T027 [P] [US1] Add failing safe resource-list CLI contract tests in `Tests/Contract/ResourceCLIContractTests.swift`
-- [ ] T028 [P] [US1] Add failing private onboarding and unknown-resource tests in `Tests/Integration/ResourceOnboardingTests.swift`
-- [ ] T029 [P] [US1] Add failing strict host identity and changed-key tests in `Tests/Security/SSHHostIdentityTests.swift`
-- [ ] T030 [P] [US1] Add failing Secure Enclave key lifecycle tests with capability checks in `Tests/Integration/SecureEnclaveKeyTests.swift`
-- [ ] T031 [P] [US1] Add failing password askpass binding and leakage tests in `Tests/Security/AskPassTests.swift`
-- [ ] T032 [P] [US1] Add failing read-only synthetic SSH journey in `Tests/Integration/ReadOnlySSHJourneyTests.swift`
+- [X] T027 [P] [US1] Add failing safe resource-list CLI contract tests in `Tests/Contract/ResourceCLIContractTests.swift`
+- [X] T028 [P] [US1] Add failing private onboarding and unknown-resource tests in `Tests/Integration/ResourceOnboardingTests.swift`
+- [X] T029 [P] [US1] Add failing strict host identity and changed-key tests in `Tests/Security/SSHHostIdentityTests.swift`
+- [X] T030 [P] [US1] Add failing Secure Enclave key lifecycle tests with capability checks in `Tests/Integration/SecureEnclaveKeyTests.swift`
+- [X] T031 [P] [US1] Add failing password askpass binding and leakage tests in `Tests/Security/AskPassTests.swift`
+- [X] T032 [P] [US1] Add failing read-only synthetic SSH journey in `Tests/Integration/ReadOnlySSHJourneyTests.swift`
 
 ### Implementation for User Story 1
 
-- [ ] T033 [P] [US1] Implement resource alias validation, safe projections, and registry queries in `Sources/SAFADomain/ResourceRegistry.swift`
-- [ ] T034 [US1] Implement private add/edit/disable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
-- [ ] T035 [P] [US1] Build trusted resource onboarding and credential entry views in `Apps/SAFA/App/Onboarding/`
-- [ ] T036 [P] [US1] Implement device-bound P-256 key creation and public-key enrollment export in `Sources/SAFACrypto/SecureEnclaveSSHKey.swift`
-- [ ] T037 [P] [US1] Implement Keychain password credential creation and lookup in `Sources/SAFACrypto/PasswordCredential.swift`
-- [ ] T038 [US1] Implement isolated SSH configuration and strict known-host management in `Sources/SAFASSH/SSHConfiguration.swift`
-- [ ] T039 [US1] Implement broker-controlled per-execution SSH signing adapter in `Sources/SAFASSH/ConstrainedSSHAgent.swift`
-- [ ] T040 [US1] Implement signed one-shot password response helper in `Sources/SAFAAskPass/main.swift`
-- [ ] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
-- [ ] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
-- [ ] T043 [P] [US1] Implement `doctor`, `setup`, and `resource` CLI commands in `Sources/SAFACLI/Commands/`
-- [ ] T044 [US1] Implement argument-based `exec` submission and result rendering in `Sources/SAFACLI/Commands/ExecCommand.swift`
-- [ ] T045 [US1] Add request/decision/execution audit emission for the MVP path in `Sources/SAFABroker/AuditService.swift`
-- [ ] T046 [US1] Complete the synthetic end-to-end MVP and leakage assertions in `Tests/Integration/ReadOnlySSHJourneyTests.swift`
+- [X] T033 [P] [US1] Implement resource alias validation, safe projections, and registry queries in `Sources/SAFADomain/ResourceRegistry.swift`
+- [X] T034 [US1] Implement private add/edit/disable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
+- [X] T035 [P] [US1] Build trusted resource onboarding and credential entry views in `Apps/SAFA/App/Onboarding/`
+- [X] T036 [P] [US1] Implement device-bound P-256 key creation and public-key enrollment export in `Sources/SAFACrypto/SecureEnclaveSSHKey.swift`
+- [X] T037 [P] [US1] Implement Keychain password credential creation and lookup in `Sources/SAFACrypto/PasswordCredential.swift`
+- [X] T038 [US1] Implement isolated SSH configuration and strict known-host management in `Sources/SAFASSH/SSHConfiguration.swift`
+- [X] T039 [US1] Implement broker-controlled per-execution SSH signing adapter in `Sources/SAFASSH/ConstrainedSSHAgent.swift`
+- [X] T040 [US1] Implement signed one-shot password response helper in `Sources/SAFAAskPass/AskPassRuntime.swift` and `Sources/SAFAAskPassExecutable/main.swift`
+- [X] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
+- [X] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
+- [X] T043 [P] [US1] Implement `doctor`, `setup`, and `resource` CLI commands in `Sources/SAFACLI/SAFACommand.swift`
+- [X] T044 [US1] Implement argument-based `exec` submission and result rendering in `Sources/SAFACLI/SAFACommand.swift`
+- [X] T045 [US1] Add request/decision/execution audit emission for the MVP path in `Sources/SAFABroker/AuditService.swift`
+- [X] T046 [US1] Complete the synthetic end-to-end MVP and leakage assertions in `Tests/Integration/ReadOnlySSHJourneyTests.swift`
 
 **Checkpoint**: User Story 1 is independently demonstrable and is the first releasable diagnostic
 MVP, even before arbitrary elevated command approval is added.
