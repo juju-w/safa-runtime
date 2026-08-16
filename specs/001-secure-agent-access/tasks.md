@@ -17,14 +17,14 @@ tests first and confirm they fail before the matching implementation.
 
 **Purpose**: Establish the native project, test layout, and reproducible build surface.
 
-- [ ] T001 Create SwiftPM products and dependency graph from `plan.md` in `Package.swift`
+- [X] T001 Create SwiftPM products and dependency graph from `plan.md` in `Package.swift`
 - [ ] T002 Create the signed app, broker launch-agent, CLI, and askpass targets in `Apps/SAFA/SAFA.xcodeproj/project.pbxproj`
-- [ ] T003 [P] Add Debug and Release signing/build settings in `Apps/SAFA/Config/BuildSettings.xcconfig`
-- [ ] T004 [P] Add component Info.plist and entitlement templates in `Apps/SAFA/Config/`
-- [ ] T005 [P] Create unit, contract, integration, security, UI, and fixture directories under `Tests/`
-- [ ] T006 [P] Add Swift format/lint and strict-concurrency configuration in `.swift-format` and `Package.swift`
-- [ ] T007 [P] Add macOS build and test workflow without signing secrets in `.github/workflows/ci.yml`
-- [ ] T008 Document third-party license obligations for Swift Argument Parser in `THIRD_PARTY_NOTICES.md`
+- [X] T003 [P] Add Debug and Release signing/build settings in `Apps/SAFA/Config/BuildSettings.xcconfig`
+- [X] T004 [P] Add component Info.plist and entitlement templates in `Apps/SAFA/Config/`
+- [X] T005 [P] Create unit, contract, integration, security, UI, and fixture directories under `Tests/`
+- [X] T006 [P] Add Swift format/lint and strict-concurrency configuration in `.swift-format` and `Package.swift`
+- [X] T007 [P] Add macOS build and test workflow without signing secrets in `.github/workflows/ci.yml`
+- [X] T008 Document third-party license obligations for Swift Argument Parser in `THIRD_PARTY_NOTICES.md`
 
 ---
 
@@ -34,19 +34,19 @@ tests first and confirm they fail before the matching implementation.
 
 **⚠️ CRITICAL**: No user story implementation starts until this phase passes its tests.
 
-- [ ] T009 [P] Add failing Codable snapshot tests for CLI envelope and errors in `Tests/Contract/CLIEnvelopeContractTests.swift`
-- [ ] T010 [P] Add failing domain validation and state-transition tests in `Tests/Unit/DomainStateTests.swift`
-- [ ] T011 [P] Add failing canonical request fingerprint tests in `Tests/Security/RequestFingerprintTests.swift`
-- [ ] T012 Implement versioned CLI/XPC envelope, status, error, and next-action types in `Sources/SAFAProtocol/`
-- [ ] T013 Implement Resource, CredentialReference, HostIdentity, Request, Assessment, Grant, Policy, Result, and Audit entities in `Sources/SAFADomain/`
-- [ ] T014 Implement bounded decoding, validation, canonical encoding, and request fingerprints in `Sources/SAFAProtocol/CanonicalCodec.swift`
-- [ ] T015 [P] Define stable SAFA process exit mappings in `Sources/SAFAProtocol/ExitCode.swift`
-- [ ] T016 [P] Add failing encrypted-envelope tamper/copy/rollback tests in `Tests/Security/VaultEnvelopeTests.swift`
-- [ ] T017 [P] Add failing Keychain access-class and opaque-locator tests in `Tests/Integration/KeychainIntegrationTests.swift`
-- [ ] T018 Implement broker-only data-protection Keychain abstraction in `Sources/SAFACrypto/KeychainStore.swift`
-- [ ] T019 Implement AES-GCM vault envelope, atomic persistence, schema revisions, and rollback marker in `Sources/SAFACrypto/EncryptedVault.swift`
+- [X] T009 [P] Add failing Codable snapshot tests for CLI envelope and errors in `Tests/Contract/CLIEnvelopeContractTests.swift`
+- [X] T010 [P] Add failing domain validation and state-transition tests in `Tests/Unit/DomainStateTests.swift`
+- [X] T011 [P] Add failing canonical request fingerprint tests in `Tests/Security/RequestFingerprintTests.swift`
+- [X] T012 Implement versioned CLI/XPC envelope, status, error, and next-action types in `Sources/SAFAProtocol/`
+- [X] T013 Implement Resource, CredentialReference, HostIdentity, Request, Assessment, Grant, Policy, Result, and Audit entities in `Sources/SAFADomain/`
+- [X] T014 Implement bounded decoding, validation, canonical encoding, and request fingerprints in `Sources/SAFAProtocol/CanonicalCodec.swift`
+- [X] T015 [P] Define stable SAFA process exit mappings in `Sources/SAFAProtocol/ExitCode.swift`
+- [X] T016 [P] Add failing encrypted-envelope tamper/copy/rollback tests in `Tests/Security/VaultEnvelopeTests.swift`
+- [X] T017 [P] Add failing Keychain access-class and opaque-locator tests in `Tests/Integration/KeychainIntegrationTests.swift`
+- [X] T018 Implement broker-only data-protection Keychain abstraction in `Sources/SAFACrypto/KeychainStore.swift`
+- [X] T019 Implement AES-GCM vault envelope, atomic persistence, schema revisions, and rollback marker in `Sources/SAFACrypto/EncryptedVault.swift`
 - [ ] T020 [P] Add failing XPC peer identity and unauthorized-client tests in `Tests/Integration/XPCPeerValidationTests.swift`
-- [ ] T021 Define separate Agent-client and trusted-app XPC protocols in `Sources/SAFAProtocol/BrokerXPCProtocol.swift`
+- [X] T021 Define separate Agent-client and trusted-app XPC protocols in `Sources/SAFAProtocol/BrokerXPCProtocol.swift`
 - [ ] T022 Implement peer signing, effective-user, and audit-session validation in `Sources/SAFABroker/PeerValidator.swift`
 - [ ] T023 Implement the per-user broker listener and bounded request dispatcher in `Sources/SAFABroker/BrokerService.swift`
 - [ ] T024 [P] Implement sanitized OSLog events with private-by-default fields in `Sources/SAFABroker/SecurityLog.swift`

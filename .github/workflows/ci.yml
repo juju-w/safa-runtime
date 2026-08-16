@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "[0-9][0-9][0-9]-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve dependencies
+        run: swift package resolve
+      - name: Lint Swift sources
+        run: xcrun swift-format lint --recursive --strict Sources Tests Package.swift
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test --parallel

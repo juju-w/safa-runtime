@@ -256,3 +256,29 @@ while the native runtime provides the actual security boundary.
 
 **Rationale**: Most security behavior can be deterministic and fast, while tests that require
 macOS signing or user interaction are separated and explicitly gated in CI/release validation.
+
+## 11. Migration baseline from the local `ssh-hosts` Skill
+
+**Decision**: Preserve the existing Skill's useful interaction model while replacing its Python
+credential boundary. The legacy implementation remains a reference during development, not a
+runtime dependency and not a source of real host fixtures.
+
+Behaviors to preserve:
+
+- logical aliases instead of asking an Agent to repeatedly handle host coordinates;
+- refusal of unknown aliases and non-interactive SSH defaults such as `BatchMode`;
+- local hidden credential entry rather than chat or command-line password entry;
+- sudo password delivery on remote stdin followed by `/dev/null` for the privileged child's stdin;
+- explicit separation between connection checks, ordinary commands, and sudo commands.
+
+Behaviors to replace:
+
+- hard-coded real host inventory in Skill source;
+- a Python process that can directly read Keychain values;
+- environment-variable secret injection into child commands;
+- unsigned same-process policy, credential access, transport, and output handling;
+- free-form text output without a versioned, bounded, redacted contract;
+- execution without immutable request fingerprints, trusted approval, expiry, revocation, or audit.
+
+The migration rule is behavioral compatibility, not code compatibility: no production alias,
+endpoint, username, Keychain account, or credential is copied into this repository or its tests.
