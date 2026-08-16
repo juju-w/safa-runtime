@@ -45,9 +45,11 @@ public struct PrivateResourceDraft: Equatable, Sendable {
 public enum ResourceServiceError: Error, Equatable, Sendable {
     case duplicate(alias: String)
     case duplicateMetadataKey(String)
+    case invalidMetadata(String)
     case notFound(alias: String)
     case invalidHostIdentity
     case invalidRelationship
+    case referencedByResource(alias: String)
 }
 
 public actor ResourceService {
@@ -71,7 +73,7 @@ public actor ResourceService {
             throw ResourceServiceError.invalidHostIdentity
         }
         var document = try await vault.readDocument()
-        try Self.ensureUniqueMetadata(draft.metadata)
+        try Self.ensureValidMetadata(draft.metadata)
         try Self.ensureAliasesAvailable(
             canonical: draft.alias,
             alternates: draft.alternateAliases,
@@ -171,10 +173,18 @@ public actor ResourceService {
         }
     }
 
-    private static func ensureUniqueMetadata(_ metadata: [ResourceMetadataEntry]) throws {
+    private static func ensureValidMetadata(_ metadata: [ResourceMetadataEntry]) throws {
         var keys: Set<ResourceMetadataKey> = []
         for entry in metadata where !keys.insert(entry.key).inserted {
             throw ResourceServiceError.duplicateMetadataKey(entry.key.rawValue)
+        }
+        do {
+            try ResourceMetadataPolicy.validateForPersistence(metadata)
+        } catch let error as ResourceMetadataPolicyError {
+            switch error {
+            case .credentialLikeKey(let key), .invalidPublicSummaryValue(let key):
+                throw ResourceServiceError.invalidMetadata(key)
+            }
         }
     }
 
@@ -219,7 +229,7 @@ public actor ResourceService {
         }
 
         var resource = document.resources[index]
-        try Self.ensureUniqueMetadata(draft.metadata)
+        try Self.ensureValidMetadata(draft.metadata)
         try Self.ensureAliasesAvailable(
             canonical: draft.alias,
             alternates: draft.alternateAliases,
@@ -308,6 +318,14 @@ public actor ResourceService {
         var resource = document.resources[index]
         guard resource.state.canTransition(to: .deleted) else {
             throw DomainValidationError.invalidTransition
+        }
+        do {
+            try ResourceDeletionPolicy.validateRemoval(
+                resourceID: resource.id,
+                from: document.resources
+            )
+        } catch ResourceDeletionPolicyError.referencedBy(let alias) {
+            throw ResourceServiceError.referencedByResource(alias: alias)
         }
         resource.state = .deleted
         resource.revision += 1

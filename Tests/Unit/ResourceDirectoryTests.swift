@@ -142,6 +142,25 @@ struct ResourceDirectoryTests {
             })
     }
 
+    @Test("allowlisted metadata with an invalid type or value remains private")
+    func invalidPublicMetadataFailsClosed() throws {
+        let resource = TestDirectoryResourceFactory.make(
+            alias: "hm-105",
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "host.docker.available",
+                    value: .text("https://private.example.invalid/token")
+                ),
+                try ResourceMetadataEntry(
+                    key: "host.os.family",
+                    value: .text("synthetic-secret-token")
+                ),
+            ]
+        )
+
+        #expect(SafeResourceProjection(resource: resource).summaryMetadata.isEmpty)
+    }
+
     @Test("pre-directory resource records decode with safe host defaults")
     func legacyResourceCompatibility() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)

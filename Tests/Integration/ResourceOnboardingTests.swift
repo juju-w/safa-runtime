@@ -85,6 +85,53 @@ struct ResourceOnboardingTests {
         #expect(await vault.readDocument().credentialReferences.count == 1)
     }
 
+    @Test("onboarding rejects invalid public and credential-like metadata before storing a secret")
+    func onboardingMetadataPolicy() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let service = ResourceService(vault: vault, passwordStore: credentials)
+        let invalidDraft = try PrivateResourceDraft.synthetic(
+            alias: "nas.home",
+            metadata: [
+                ResourceMetadataEntry(
+                    key: "host.docker.available",
+                    value: .text("https://private.example.invalid/token")
+                )
+            ]
+        )
+
+        await #expect(
+            throws: ResourceServiceError.invalidMetadata("host.docker.available")
+        ) {
+            try await service.addPasswordResource(
+                invalidDraft,
+                password: Data("must-not-be-stored".utf8)
+            )
+        }
+        #expect(await vault.readDocument().resources.isEmpty)
+        #expect(await vault.readDocument().credentialReferences.isEmpty)
+
+        let credentialDraft = try PrivateResourceDraft.synthetic(
+            alias: "cache.internal",
+            metadata: [
+                ResourceMetadataEntry(
+                    key: "service.api-token",
+                    value: .text("synthetic-secret")
+                )
+            ]
+        )
+        await #expect(
+            throws: ResourceServiceError.invalidMetadata("service.api-token")
+        ) {
+            try await service.addPasswordResource(
+                credentialDraft,
+                password: Data("must-also-not-be-stored".utf8)
+            )
+        }
+        #expect(await vault.readDocument().resources.isEmpty)
+        #expect(await vault.readDocument().credentialReferences.isEmpty)
+    }
+
     @Test("editing an unknown alias does not expose an endpoint or credential")
     func unknownEdit() async {
         let service = ResourceService(
@@ -120,13 +167,46 @@ struct ResourceOnboardingTests {
         #expect(removed.state == .deleted)
         #expect(await credentials.readSecret(id: edited.authRef!) == nil)
     }
+
+    @Test("remove rejects a resource referenced by another live resource")
+    func removeReferencedResource() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let service = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let host = try await service.addPasswordResource(
+            PrivateResourceDraft.synthetic(alias: "nas.home"),
+            password: Data("host-password".utf8)
+        )
+        _ = try await service.addPasswordResource(
+            PrivateResourceDraft.synthetic(
+                alias: "report.service",
+                relationships: [
+                    ResourceRelationship(kind: .hostedOn, targetResourceID: host.id)
+                ]
+            ),
+            password: Data("service-password".utf8)
+        )
+
+        await #expect(
+            throws: ResourceServiceError.referencedByResource(alias: "report.service")
+        ) {
+            try await service.remove(alias: host.alias)
+        }
+
+        let document = await vault.readDocument()
+        #expect(document.resources.allSatisfy { $0.state == .active })
+        #expect(try ResourceRegistry(resources: document.resources).list().count == 2)
+    }
 }
 
 extension PrivateResourceDraft {
     static func synthetic(
         alias: String,
         alternateAliases: [String] = [],
-        metadata: [ResourceMetadataEntry] = []
+        metadata: [ResourceMetadataEntry] = [],
+        relationships: [ResourceRelationship] = []
     ) throws -> Self {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         return Self(
@@ -135,6 +215,7 @@ extension PrivateResourceDraft {
             alternateAliases: try alternateAliases.map(ResourceAlias.init),
             accessMethods: [.ssh],
             metadata: metadata,
+            relationships: relationships,
             displayName: "Synthetic NAS",
             endpoint: ResourceEndpoint(host: "203.0.113.10", port: 2222),
             username: "diagnostic-user",

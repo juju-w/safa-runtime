@@ -256,26 +256,3 @@ public struct ResourceProfile: Codable, Equatable, Sendable {
         self.credentialBindings = credentialBindings
     }
 }
-
-public enum ResourceSummaryDisclosure {
-    /// Only keys reviewed in source code may cross the non-interactive public
-    /// projection. Imported or future keys fail closed as private.
-    public static let allowedMetadataKeys: Set<ResourceMetadataKey> = Set(
-        [
-            "host.os.family",
-            "host.docker.available",
-            "database.engine",
-            "object-storage.provider",
-            "cache.engine",
-            "service.protocol",
-        ].compactMap(ResourceMetadataKey.init(rawValue:))
-    )
-
-    public static func publicEntries(from entries: [ResourceMetadataEntry])
-        -> [ResourceMetadataEntry]
-    {
-        entries
-            .filter { allowedMetadataKeys.contains($0.key) }
-            .sorted { $0.key.rawValue < $1.key.rawValue }
-    }
-}

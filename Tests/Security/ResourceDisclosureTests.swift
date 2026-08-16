@@ -69,6 +69,8 @@ struct ResourceDisclosureTests {
             String(data: CanonicalCodec.encode(reply), encoding: .utf8)
         )
         #expect(!text.contains("synthetic-fingerprint"))
+        #expect(!text.contains("synthetic-api-secret"))
+        #expect(!text.contains("synthetic-docker-secret"))
         #expect(!text.contains("credential_id"))
         #expect(!text.contains("storage_locator"))
     }
@@ -113,7 +115,14 @@ struct ResourceDisclosureTests {
                     key: "host.memory.total-bytes",
                     value: .byteCount(274_877_906_944)
                 ),
-                try! ResourceMetadataEntry(key: "host.docker.available", value: .boolean(true)),
+                try! ResourceMetadataEntry(
+                    key: "host.docker.available",
+                    value: .text("synthetic-docker-secret")
+                ),
+                try! ResourceMetadataEntry(
+                    key: "service.api-token",
+                    value: .text("synthetic-api-secret")
+                ),
             ],
             endpoint: ResourceEndpoint(scheme: "ssh", host: "203.0.113.105", port: 8105),
             username: "operator",

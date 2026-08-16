@@ -53,7 +53,9 @@ Enclave objects.
 
 Each entry has a validated namespaced key, one tagged value, and an optional observation timestamp.
 Supported values are `text`, `integer`, `boolean`, `byte_count`, and `text_list`. Arbitrary JSON and
-embedded secrets are rejected by design.
+credential-like keys are rejected before persistence. Public summary fields additionally require an
+exact source-reviewed value type and value; a public key alone never grants disclosure. Existing or
+corrupted records that violate either rule are filtered from Agent-visible projections.
 
 Initial host profile keys:
 
@@ -72,7 +74,15 @@ Initial host profile keys:
 
 Initial profile-summary keys also include `database.engine`, `object-storage.provider`,
 `cache.engine`, and `service.protocol`. The allowlist lives in trusted source code. An imported
-configuration cannot mark an arbitrary field public.
+configuration cannot mark an arbitrary field public. Text summary values are closed, reviewed
+identifiers; adding a new public value requires a code and test change.
+
+## Relationship lifecycle
+
+A live relationship must target a distinct live resource. Removing a resource with an incoming
+relationship is rejected with the referencing alias so a trusted setup flow can first remove or
+retarget that dependency. Removal never leaves a live resource pointing at a deleted target and
+never silently rewrites another resource's topology.
 
 ## Query contract
 

@@ -183,7 +183,9 @@ public actor ResourceDirectoryService: ResourceDirectoryHandling {
             },
             username: resource.username,
             securityDomain: resource.securityDomain,
-            metadata: resource.resolvedMetadata.sorted {
+            metadata: ResourceMetadataPolicy.authorizedEntries(
+                from: resource.resolvedMetadata
+            ).sorted {
                 $0.key.rawValue < $1.key.rawValue
             }.map(metadata),
             relationships: relationships.sorted { lhs, rhs in
