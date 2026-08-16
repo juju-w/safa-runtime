@@ -46,7 +46,7 @@ tests first and confirm they fail before the matching implementation.
 - [X] T018 Implement broker-only data-protection Keychain abstraction in `Sources/SAFACrypto/KeychainStore.swift`
 - [X] T019 Implement AES-GCM vault envelope, atomic persistence, schema revisions, and rollback marker in `Sources/SAFACrypto/EncryptedVault.swift`
 - [X] T020 [P] Add failing XPC peer identity and unauthorized-client tests in `Tests/Integration/XPCPeerValidationTests.swift`
-- [X] T021 Define separate Agent-client and trusted-app XPC protocols in `Sources/SAFAProtocol/BrokerXPCProtocol.swift`
+- [X] T021 Define separate Agent-client and trusted-local XPC protocols in `Sources/SAFAProtocol/BrokerXPCProtocol.swift`
 - [X] T022 Implement peer signing, effective-user, and audit-session validation in `Sources/SAFABroker/PeerValidator.swift`
 - [X] T023 Implement the per-user broker listener and bounded request dispatcher in `Sources/SAFABroker/BrokerService.swift`
 - [X] T024 [P] Implement sanitized OSLog events with private-by-default fields in `Sources/SAFABroker/SecurityLog.swift`

@@ -144,7 +144,7 @@ Sources/
 │   └── Authorization/
 ├── SAFAProtocol/
 │   ├── Agent/
-│   ├── TrustedApp/
+│   ├── TrustedLocal/
 │   ├── AskPass/
 │   └── CLI/
 ├── SAFABroker/

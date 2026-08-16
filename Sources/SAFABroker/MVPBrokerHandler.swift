@@ -6,7 +6,7 @@ import SAFAProtocol
 import SAFASSH
 import SAFATransport
 
-public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandling {
+public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHandling {
     private let vault: any VaultDocumentStoring
     private let passwordStore: any PasswordSecretStoring
     private let resourceService: ResourceService
@@ -102,7 +102,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
     }
 
     public func handle(
-        _ operation: TrustedAppOperation,
+        _ operation: TrustedLocalOperation,
         caller: CallerIdentity,
         messageID: UUID
     ) async -> BrokerReply {

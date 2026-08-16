@@ -10,7 +10,7 @@
     <dict>
         <key>dev.safa.broker.agent</key>
         <true/>
-        <key>dev.safa.broker.trusted-app</key>
+        <key>dev.safa.broker.trusted-local</key>
         <true/>
         <key>dev.safa.broker.askpass</key>
         <true/>

@@ -18,15 +18,15 @@ public protocol AgentOperationHandling: Sendable {
     ) async -> BrokerReply
 }
 
-public protocol TrustedAppOperationHandling: Sendable {
+public protocol TrustedLocalOperationHandling: Sendable {
     func handle(
-        _ operation: TrustedAppOperation,
+        _ operation: TrustedLocalOperation,
         caller: CallerIdentity,
         messageID: UUID
     ) async -> BrokerReply
 }
 
-public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedAppOperationHandling {
+public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedLocalOperationHandling {
     public init() {}
 
     public func handle(
@@ -47,7 +47,7 @@ public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedAppOperati
     }
 
     public func handle(
-        _ operation: TrustedAppOperation,
+        _ operation: TrustedLocalOperation,
         caller: CallerIdentity,
         messageID: UUID
     ) -> BrokerReply {
@@ -72,13 +72,13 @@ public actor BrokerRequestDispatcher {
     public static let maximumClockSkew: TimeInterval = 300
 
     private let agentHandler: any AgentOperationHandling
-    private let trustedHandler: any TrustedAppOperationHandling
+    private let trustedHandler: any TrustedLocalOperationHandling
     private let resourceDirectoryHandler: any ResourceDirectoryHandling
     private let log: SecurityLog
 
     public init(
         agentHandler: any AgentOperationHandling,
-        trustedHandler: any TrustedAppOperationHandling,
+        trustedHandler: any TrustedLocalOperationHandling,
         resourceDirectoryHandler: any ResourceDirectoryHandling,
         log: SecurityLog = SecurityLog()
     ) {
@@ -113,14 +113,14 @@ public actor BrokerRequestDispatcher {
         }
     }
 
-    public func dispatchTrustedApp(
+    public func dispatchTrustedLocal(
         _ request: Data,
         caller: CallerIdentity,
         now: Date = Date()
     ) async -> Data {
         do {
             let message = try CanonicalCodec.decode(
-                TrustedAppMessage.self,
+                TrustedLocalMessage.self,
                 from: request,
                 maxBytes: Self.maximumMessageBytes
             )
@@ -133,7 +133,7 @@ public actor BrokerRequestDispatcher {
                 )
             )
         } catch {
-            log.invalidMessage(role: .trustedApp, code: "invalid_message")
+            log.invalidMessage(role: .trustedLocal, code: "invalid_message")
             return failureReply(messageID: UUID(), error: error)
         }
     }
@@ -243,7 +243,9 @@ private final class AgentXPCExport: NSObject, SAFAAgentBrokerXPC, @unchecked Sen
     }
 }
 
-private final class TrustedAppXPCExport: NSObject, SAFATrustedAppBrokerXPC, @unchecked Sendable {
+private final class TrustedLocalXPCExport:
+    NSObject, SAFATrustedLocalBrokerXPC, @unchecked Sendable
+{
     let dispatcher: BrokerRequestDispatcher
     let caller: CallerIdentity
 
@@ -252,10 +254,10 @@ private final class TrustedAppXPCExport: NSObject, SAFATrustedAppBrokerXPC, @unc
         self.caller = caller
     }
 
-    func sendTrustedAppMessage(_ request: Data, reply: @escaping (Data) -> Void) {
+    func sendTrustedLocalMessage(_ request: Data, reply: @escaping (Data) -> Void) {
         let replyBox = ReplyBox(reply)
         Task {
-            replyBox.value(await dispatcher.dispatchTrustedApp(request, caller: caller))
+            replyBox.value(await dispatcher.dispatchTrustedLocal(request, caller: caller))
         }
     }
 }
@@ -359,9 +361,14 @@ public final class BrokerListenerDelegate: NSObject, NSXPCListenerDelegate, @unc
         case .agent:
             connection.exportedInterface = NSXPCInterface(with: (any SAFAAgentBrokerXPC).self)
             connection.exportedObject = AgentXPCExport(dispatcher: dispatcher, caller: caller)
-        case .trustedApp:
-            connection.exportedInterface = NSXPCInterface(with: (any SAFATrustedAppBrokerXPC).self)
-            connection.exportedObject = TrustedAppXPCExport(dispatcher: dispatcher, caller: caller)
+        case .trustedLocal:
+            connection.exportedInterface = NSXPCInterface(
+                with: (any SAFATrustedLocalBrokerXPC).self
+            )
+            connection.exportedObject = TrustedLocalXPCExport(
+                dispatcher: dispatcher,
+                caller: caller
+            )
         case .askPass:
             connection.exportedInterface = NSXPCInterface(with: (any SAFAAskPassBrokerXPC).self)
             connection.exportedObject = AskPassXPCExport(
@@ -388,7 +395,7 @@ public final class BrokerService: @unchecked Sendable {
         bindingStore: ChildCredentialBindingStore
     ) throws {
         agentListener = NSXPCListener(machServiceName: BrokerServiceNames.agent)
-        trustedListener = NSXPCListener(machServiceName: BrokerServiceNames.trustedApp)
+        trustedListener = NSXPCListener(machServiceName: BrokerServiceNames.trustedLocal)
         askPassListener = NSXPCListener(machServiceName: BrokerServiceNames.askPass)
         agentDelegate = BrokerListenerDelegate(
             role: .agent,
@@ -397,7 +404,7 @@ public final class BrokerService: @unchecked Sendable {
             bindingStore: bindingStore
         )
         trustedDelegate = BrokerListenerDelegate(
-            role: .trustedApp,
+            role: .trustedLocal,
             validator: validator,
             dispatcher: dispatcher,
             bindingStore: bindingStore
@@ -415,7 +422,7 @@ public final class BrokerService: @unchecked Sendable {
             try validator.codeSigningRequirement(for: .agent)
         )
         trustedListener.setConnectionCodeSigningRequirement(
-            try validator.codeSigningRequirement(for: .trustedApp)
+            try validator.codeSigningRequirement(for: .trustedLocal)
         )
         askPassListener.setConnectionCodeSigningRequirement(
             try validator.codeSigningRequirement(for: .askPass)
@@ -448,7 +455,7 @@ public enum BrokerRuntime {
             auditSessionID: currentAuditSessionID(),
             teamIdentifier: teamIdentifier,
             agentSigningIdentifiers: ["dev.safa.cli"],
-            trustedAppSigningIdentifier: "dev.safa.app"
+            trustedLocalSigningIdentifier: "dev.safa.trusted-local"
         )
         let bindingStore = ChildCredentialBindingStore()
         let keychain = DataProtectionKeychainStore()

@@ -52,8 +52,8 @@ importRecovery(RecoveryPackage, AuthenticationContextProof) -> RecoveryResult
 
 The broker will accept future approval only from a separately identified trusted local peer. That
 peer may choose among broker-proposed scopes but cannot replace the command, target, risk findings,
-or privilege ceiling in an existing request. The source-level `TrustedApp` name is an internal v1
-protocol identifier, not evidence that a GUI is part of the current product.
+or privilege ceiling in an existing request. The trusted-local role is a reserved protocol boundary,
+not evidence that a GUI is part of the current product.
 
 ## Message properties
 
