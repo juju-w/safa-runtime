@@ -130,6 +130,12 @@ forward-test are complete.
 
 ## Design and specification
 
+The owl guardian is SAFA's visual shorthand for a local, watchful security boundary. Source-ready
+brand assets are available as a [transparent mascot](docs/assets/safa-mascot.webp), a
+[square icon master](docs/assets/safa-icon-master.png) and a
+[GitHub avatar candidate](docs/assets/safa-github-avatar.png). The same icon is wired into the native
+macOS asset catalog and Skill metadata; publishing those packages remains intentionally disabled.
+
 - [Project constitution](.specify/memory/constitution.md)
 - [Feature specification](specs/001-secure-agent-access/spec.md)
 - [Implementation plan](specs/001-secure-agent-access/plan.md)

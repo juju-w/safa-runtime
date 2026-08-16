@@ -41,6 +41,14 @@ release. A release-policy change requires matching policy tests.
 
 ## Version and release model
 
+### Pre-release publication hold
+
+- Merging reviewed feature work into `main` is allowed, but do not create or move a version tag,
+  publish a GitHub Release, upload a signed/notarized distribution, or publish a Skill package until
+  the repository owner explicitly lifts this hold.
+- CI on pull requests and `main` must remain validation-only while the hold is active. It may compile
+  and test the app and Skill sources, but it must not upload or publish distributable artifacts.
+
 - `VERSION` is the canonical source version once automatic publishing is enabled.
 - A release workflow may run only after CI succeeds for the exact `main` commit being released.
 - The workflow must derive the next version deterministically from commits since the most recent
