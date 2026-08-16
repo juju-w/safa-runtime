@@ -6,17 +6,18 @@
 
 ## Summary
 
-Build SAFA as a macOS-only Agent Skill backed by a signed native companion runtime. The runtime
+Build SAFA as a macOS-only Agent Skill backed by a signed native CLI and companion runtime. The runtime
 keeps the encrypted resource registry and credentials outside the Agent process, evaluates scoped
 execution policy, obtains trusted local approval for elevated operations, invokes the system SSH
 client, and returns a compact versioned JSON envelope. Arbitrary command and shell execution remain
 available; authority is constrained by target, caller, command fingerprint or scope, privilege, and
 expiry rather than by removing operational capability.
 
-The MVP supports one local macOS user and SSH-accessible servers/NAS devices. It includes private
-resource onboarding, read-only diagnostics, arbitrary `exec`/`shell`, sudo credential injection,
-Touch ID or system-auth approval, encrypted inventory, per-resource credentials, audit/revocation,
-and Skill-first packaging. Team vaults and non-SSH transports are deferred.
+The MVP supports one local macOS user and SSH-accessible servers/NAS devices. Delivery first covers
+SSH-config import, tunnel preflight, public-key execution, strict host identity, read-only
+diagnostics, Keychain-backed sudo migration, encrypted inventory, and compact CLI contracts.
+Arbitrary mutation, general authorization/audit, team vaults, non-SSH transports, and custom GUI are
+deferred until parity and security gates are complete.
 
 ## Technical Context
 
@@ -29,14 +30,14 @@ ServiceManagement, OSLog, Swift Argument Parser, and `/usr/bin/ssh`
 encryption key and credential values in the non-synchronizing macOS data-protection Keychain;
 device-generated P-256 keys in Secure Enclave where supported; hash-chained JSONL audit files
 
-**Testing**: Swift Testing for unit/property tests, XCTest for app/XPC/UI and signed integration
+**Testing**: Swift Testing for unit/property tests, XCTest for XPC and signed integration
 tests, shell contract tests for packaged Skill/CLI, and synthetic SSH fixtures only
 
 **Target Platform**: macOS 14.4 or newer; universal arm64/x86_64 release; Secure Enclave preferred
 on Apple silicon or supported T2/Touch ID Macs with an explicit Keychain fallback where unavailable
 
-**Project Type**: Native macOS menu-bar app + per-user broker/launch agent + companion CLI + Agent
-Skill package
+**Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper + Agent
+Skill package; the existing app target is a deferred prototype and build-compatibility surface
 
 **Performance Goals**: `resource list` and policy decisions under 100 ms p95 after unlock; broker
 cold activation under 2 s; under 100 MB steady-state broker memory; stream command output without

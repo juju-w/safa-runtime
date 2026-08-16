@@ -12,6 +12,10 @@ passwords, private keys, or tokens. Keep arbitrary command execution useful, add
 review and user approval, encrypt the local resource inventory, and remain secure when the source is
 open or a managed server is compromised."
 
+**Delivery sequencing update**: The current phase is CLI-first. Match `ssh-hosts` behavior and prove
+the broker/Keychain/XPC/SSH security boundary before adding product GUI. The existing app target is
+a deferred prototype; system Touch ID and Keychain dialogs remain permitted security controls.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Check a Registered Resource Without Sharing Secrets (Priority: P1)

@@ -50,6 +50,11 @@ part of the system.
 3. `SAFA.app`, which owns onboarding, approval presentation, revocation, and audit UI;
 4. a one-shot signed askpass helper used only as a child of an approved broker execution.
 
+**Delivery update**: Component 3 is deferred during the CLI-first parity phase. Do not add new
+SwiftUI, menu-bar, dashboard, or custom approval work. Preserve its distinct identity as a future
+trusted interaction host while system Keychain and LocalAuthentication prompts enforce the native
+human-presence checks that are currently implementable without product GUI.
+
 Use named XPC/Mach services rather than TCP. Require the expected signing identifier, team identity,
 entitlement, effective user, and audit session on both CLI-to-broker and app-to-broker connections.
 Register the broker as a per-user launch agent embedded in the app.

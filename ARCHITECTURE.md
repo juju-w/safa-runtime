@@ -23,6 +23,13 @@ useful, but it is deliberately later than:
 4. broker-owned execution with human-friendly system approval;
 5. safe operational workflows such as scoped sudo and atomic user creation.
 
+Delivery is CLI-first. The existing `SAFA.app` target is retained as a deferred prototype and build
+compatibility surface, but the parity phase adds no new window, menu-bar feature, dashboard, custom
+approval UI, or SwiftUI workflow. System-provided Touch ID, Keychain, LocalAuthentication, and
+Authorization Services prompts are security controls rather than product GUI. If a safe operation
+cannot yet be completed through those controls, SAFA returns `user_action_required` instead of
+accepting a secret or approval through the Agent-facing CLI.
+
 Release and Skill-package publication remain frozen until the repository owner explicitly enables
 them.
 
@@ -32,8 +39,9 @@ them.
    cannot approve requests, and never launches credential-bearing processes.
 2. **The broker owns authority.** It resolves encrypted resource metadata, enforces policy, obtains
    credentials, launches transports, and returns bounded results.
-3. **The app owns private interaction.** Resource onboarding, secret entry, host-key confirmation,
-   and high-privilege approval happen in the signed macOS app.
+3. **macOS owns human presence.** During the CLI-first phase, privileged credential use and human
+   confirmation rely on system-provided Keychain and LocalAuthentication interaction. The existing
+   app is deferred; its authority never moves into the Agent-facing CLI.
 4. **Use macOS primitives directly.** Prefer Data Protection Keychain, Secure Enclave,
    LocalAuthentication, signed XPC peers, and `SMAppService` over a custom password store or daemon
    installer.
@@ -54,7 +62,9 @@ them.
 flowchart LR
     Agent["Agent or terminal user"] -->|argv / JSON only| CLI["Signed safa CLI\nno secret entitlement"]
     CLI -->|Agent XPC\nsigned peer check| Broker["Per-user SAFA broker\nauthority boundary"]
-    App["Signed SAFA.app\nprivate setup and approval"] -->|Trusted-app XPC\nseparate peer identity| Broker
+    Human["Local human"] -->|Touch ID / system prompt| Native["macOS Security UI\nno custom product GUI"]
+    Native -->|user presence result| Broker
+    App["Deferred SAFA.app prototype"] -.->|future trusted XPC only| Broker
     Broker --> Policy["Deterministic policy\nand use cases"]
     Broker --> Vault["Encrypted resource vault"]
     Broker --> Keychain["Data Protection Keychain"]
@@ -71,8 +81,10 @@ flowchart LR
   credential reference, approval decision, or trusted identity.
 - XPC listeners require the expected signing identifier, Developer Team, effective user, and audit
   session. The broker derives peer identity from the connection, not message fields.
-- The app may submit private setup values and user decisions, but cannot rewrite an existing command
-  or broker-computed policy result.
+- The Agent-facing CLI cannot submit a secret or approval. A system-authenticated local workflow may
+  confirm a broker-computed request but cannot rewrite its target, command, or policy result.
+- The deferred app target is not part of current feature delivery. If it is reactivated later, it
+  retains a separate signing identity and trusted XPC contract.
 - The broker writes a per-request SSH config and pinned `known_hosts`, disables ambient forwarding,
   and does not inherit the user's mutable SSH configuration during execution.
 - Remote output is untrusted data. It is bounded before returning to the Agent and must never be
@@ -92,10 +104,10 @@ vended library product.
 | `SAFAPolicy` | Pure command classification and grant matching | UI, clocks without injection, credential access |
 | `SAFATransport` | Bounded subprocess lifecycle and cancellation | SSH policy or credentials |
 | `SAFASSH` | OpenSSH config, host identity, SSH-agent/AskPass and sudo transport adapters | Keychain lookup, approvals, resource persistence |
-| `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, SwiftUI presentation |
+| `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, product presentation |
 | `SAFACLI` | ArgumentParser commands, typed request mapping, JSON/human presentation | Secrets, policy, direct SSH, approval |
 | `SAFAAskPass` | One-shot child-bound credential response | Resource lookup or general Keychain queries |
-| `SAFA.app` | Onboarding, status, approval, recovery | Remote command execution or Agent-facing approval commands |
+| `SAFA.app` | Deferred prototype and future trusted local interaction host | New parity-phase GUI, remote execution, Agent-facing approval commands |
 
 The intended dependency shape is:
 
@@ -180,32 +192,37 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 - `--` remains the boundary before a remote argument vector. Shell programs are explicit and never
   inferred by concatenating arguments.
 
-## 7. Human-friendly native flows
+## 7. Human-friendly CLI-first flows
 
 ### Import an existing SSH host
 
-1. The app lists aliases discovered through a read-only `ssh -G <alias>` adapter; it never imports a
-   private key or password value.
-2. It shows the resolved user, route type, jump host, and whether the local tunnel endpoint is
-   listening.
-3. The broker probes host keys and the app displays readable SHA-256 fingerprints. The user verifies
-   one through a trusted channel; raw base64 key entry is an advanced fallback, not the primary UI.
+1. A local human selects an existing alias; the broker resolves it through a read-only
+   `ssh -G <alias>` adapter without importing a private key or password value.
+2. The CLI shows a sanitized route summary: route type, jump requirement, and tunnel health. Private
+   endpoints remain inside the broker boundary.
+3. The broker probes host keys and returns readable SHA-256 fingerprints. The human verifies one
+   through a trusted channel and confirms it through system user presence; raw base64 entry is not a
+   normal flow.
 4. The user chooses an authentication mode:
    - existing macOS OpenSSH agent/`UseKeychain` identity for parity;
    - a new device-bound Secure Enclave key for managed hosts;
    - explicit legacy password onboarding when no key route exists.
-5. The app runs a non-destructive `hostname; id -un` verification and reports a clear result.
+5. The broker runs a non-destructive `hostname; id -un` verification and the CLI reports a bounded,
+   non-secret result.
 
 The execution-time route is snapshotted and host-pinned in the encrypted vault. SAFA does not blindly
 trust later edits to `~/.ssh/config`.
 
 ### Add sudo capability
 
-1. The app asks for the sudo password in a secure field; it never travels through CLI argv or chat.
-2. The broker stores it as a separate Keychain item with `ThisDeviceOnly` protection. High-privilege
-   access uses system user-presence controls.
-3. A read-only `sudo -v` verification confirms the credential without exposing it.
-4. Sudo remains a separate capability from SSH login and can be removed independently.
+1. The Agent-facing CLI never requests or accepts a sudo password.
+2. The CLI-first parity slice may import an existing per-host sudo credential from the current local
+   Keychain only inside a broker-owned, system-authenticated migration flow.
+3. New sudo-password enrollment remains unavailable until a safe local secret-entry path exists; it
+   must not be improvised through argv, environment variables, chat, or Agent-controlled stdin.
+4. The broker stores sudo as a separate `ThisDeviceOnly` Keychain item and verifies it with a
+   read-only `sudo -v` operation.
+5. Sudo remains independently removable and high-privilege use requires system user presence.
 
 ### Agent execution
 
@@ -246,7 +263,8 @@ down, the response directs the user to start it instead of asking for an IP or p
   Secure Enclave SSH until the constrained SSH-agent socket protocol is implemented and tested
   end-to-end.
 - **XPC:** both sides set peer code-signing requirements; the listener also validates user and audit
-  session. Agent, app, broker, and AskPass signing identifiers are role-specific.
+  session. Agent, broker, AskPass, and any future trusted local-interaction process use role-specific
+  signing identifiers.
 - **Service lifecycle:** register the per-user broker through `SMAppService`; show registration state
   and a direct System Settings remediation path.
 - **Files:** application-support directories are `0700`; vault/config/known-host files are `0600`;
@@ -261,7 +279,8 @@ No new authorization or audit feature starts until the architecture remediation 
 3. correct advertised capabilities and README claims;
 4. remove secret-dumping command forms from the automatic diagnostic policy;
 5. add SSH-config import, tunnel preflight, and public-key execution contract tests;
-6. validate the signed app/broker/CLI/AskPass assembly without publishing artifacts.
+6. validate the signed broker/CLI/AskPass boundaries and keep the deferred app target buildable
+   without adding GUI work or publishing artifacts.
 
 After every slice: format, build, test, unsigned Xcode assembly, Draft PR, CI, squash merge. No tag,
 GitHub Release, notarized artifact, or Skill package is created while the publication hold is active.
@@ -275,4 +294,3 @@ GitHub Release, notarized artifact, or Skill package is created while the public
 - [Protecting keys with the Secure Enclave](https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave)
 - [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice)
 - [XPC peer requirements](https://developer.apple.com/documentation/xpc/xpcpeerrequirement)
-

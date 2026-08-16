@@ -1,0 +1,4 @@
+interface:
+  display_name: "macOS CLI Development"
+  short_description: "Build secure native macOS command-line applications"
+  default_prompt: "Use $build-macos-cli to design or implement this secure macOS CLI workflow."
