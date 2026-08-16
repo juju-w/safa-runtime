@@ -28,9 +28,4 @@ final class BrokerRegistration: ObservableObject {
             throw RegistrationError.requiresApproval
         }
     }
-
-    func unregister() async throws {
-        try await service.unregister()
-        refresh()
-    }
 }
