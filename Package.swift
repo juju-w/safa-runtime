@@ -105,7 +105,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SAFADomainTests",
-            dependencies: ["SAFADomain"],
+            dependencies: ["SAFADomain", "SAFAPolicy"],
             path: "Tests/Unit",
             swiftSettings: strictConcurrency
         ),

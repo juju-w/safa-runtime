@@ -39,7 +39,7 @@ and macOS Keychain. The Agent receives only the safe alias and invokes the signe
 ```bash
 safa exec report.prod --json \
   --intent "Check why the report service is alerting" -- \
-  systemctl status report-api
+  systemctl is-active report-api
 ```
 
 The Agent can inspect the bounded, redacted result, but cannot retrieve the plaintext password or the
@@ -78,11 +78,12 @@ time-limited grants and immediate revocation are specified for the next authoriz
 
 Implemented now:
 
-- private add/edit/disable/remove resource onboarding in the trusted app;
+- private password-backed add/edit resource onboarding in the trusted app;
 - safe resource discovery by logical alias;
 - encrypted inventory and Keychain password storage;
 - strict pinned-host SSH configuration;
-- bounded read-only commands such as `systemctl status`, `docker inspect`, `df`, `ps` and `uptime`;
+- argument-constrained diagnostics such as `systemctl is-active`, fixed-field process/container
+  metrics, `df`, `free` and `uptime`; secret-dumping variants are rejected;
 - child-bound one-shot AskPass, output redaction and sanitized audit emission;
 - fail-closed unsigned runtime, peer, host-identity, timeout and unsupported-command behavior;
 - 33 synthetic contract, integration and security tests that contact no real server.
