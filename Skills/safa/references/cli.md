@@ -22,8 +22,9 @@ safa audit list --json [--after CURSOR] [--limit COUNT]
 safa audit verify --json
 ```
 
-Sensitive resource setup occurs in the trusted app. There are no endpoint, password, key, token,
-sudo-password, host-key, recovery-secret, secret-show, or approval flags.
+Sensitive resource setup occurs in a local, system-authenticated workflow. There are no endpoint,
+password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval flags in
+the Agent-facing CLI.
 
 ## Statuses and exits
 

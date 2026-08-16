@@ -17,8 +17,8 @@ cd <skill-directory> && ./scripts/safa doctor --json
 ```
 
 Resolve `<skill-directory>` to the directory containing this `SKILL.md`. Parse only the JSON envelope.
-If the runtime reports `user_action_required`, direct the user to the trusted SAFA app; do not collect
-the missing value in chat.
+If the runtime reports `user_action_required`, direct the user to the returned local,
+system-authenticated setup action; do not collect the missing value in chat.
 
 ## Select a resource
 
@@ -30,7 +30,8 @@ safa resource list --json
 
 Use only an alias returned by SAFA. Do not ask the user for an IP address, port, username, jump route,
 password, private key, sudo password, or token. If the desired alias is absent, run
-`safa resource add ALIAS --json` so the trusted app can collect private details.
+`safa resource add ALIAS --json` and follow only the returned local, system-authenticated setup
+action. Do not collect private details in the Agent-facing CLI.
 
 ## Execute work
 
@@ -58,8 +59,9 @@ approval.
 
 - `completed`: inspect `data.execution.remote_exit_code`, stdout, stderr, and truncation metadata.
 - `accepted`: follow the safe request-status command returned in `next_action`.
-- `approval_required`: explain the immutable target, command, risk, and effect; the user approves in
-  the trusted app. Follow only a returned `next_action` marked `safe_for_agent: true`.
+- `approval_required`: explain the immutable target, command, risk, and effect; the user completes a
+  system-authenticated local approval flow. Follow only a returned `next_action` marked
+  `safe_for_agent: true`.
 - `user_action_required`: direct the user to the trusted local setup/repair flow.
 - `denied`, `cancelled`, `expired`, or `failed`: report the stable error and remediation without
   bypassing SAFA, falling back to raw SSH, or requesting a credential.

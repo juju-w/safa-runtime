@@ -32,9 +32,9 @@ Without a local access boundary, the conversation often becomes:
 That puts infrastructure inventory and reusable credentials into chat history, process context, logs
 or model-visible tools.
 
-With SAFA, the user first registers `report.prod` privately in the signed macOS app. The endpoint,
-username, pinned host identity and password are stored by the local broker using an encrypted vault
-and macOS Keychain. The Agent receives only the safe alias and invokes the signed CLI:
+With SAFA, the user first imports `report.prod` through a local, system-authenticated setup flow.
+The endpoint, username, pinned host identity and password remain behind the broker's encrypted vault
+and macOS Keychain boundary. The Agent receives only the safe alias and invokes the signed CLI:
 
 ```bash
 safa exec report.prod --json \
@@ -74,11 +74,16 @@ The current MVP isolates each resource credential and permits only a small diagn
 Fine-grained command scopes, database-role-aware workflows, Touch ID approval, sudo injection,
 time-limited grants and immediate revocation are specified for the next authorization phase.
 
+Development is currently CLI-first. The existing SwiftUI app is a deferred prototype: no new
+windows, menu-bar features, dashboards, or custom approval UI will be added until `ssh-hosts` parity
+and the native security gates are complete. macOS system Touch ID and Keychain prompts remain part
+of the security boundary.
+
 ## Current diagnostic MVP
 
 Implemented now:
 
-- private password-backed add/edit resource onboarding in the trusted app;
+- private password-backed add/edit resource onboarding in the existing deferred app prototype;
 - safe resource discovery by logical alias;
 - encrypted inventory and Keychain password storage;
 - strict pinned-host SSH configuration;
@@ -86,7 +91,7 @@ Implemented now:
   metrics, `df`, `free` and `uptime`; secret-dumping variants are rejected;
 - child-bound one-shot AskPass, output redaction and sanitized audit emission;
 - fail-closed unsigned runtime, peer, host-identity, timeout and unsupported-command behavior;
-- 33 synthetic contract, integration and security tests that contact no real server.
+- 37 synthetic contract, integration and security tests that contact no real server.
 
 Not yet shipped:
 
@@ -139,6 +144,8 @@ macOS asset catalog and Skill metadata; publishing those packages remains intent
 
 - [Normative architecture and SSH parity plan](ARCHITECTURE.md)
 - [Initial code architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)
+- [Project Swift development Skill](.agents/skills/develop-swift/SKILL.md)
+- [Project macOS CLI development Skill](.agents/skills/build-macos-cli/SKILL.md)
 - [Project constitution](.specify/memory/constitution.md)
 - [Feature specification](specs/001-secure-agent-access/spec.md)
 - [Implementation plan](specs/001-secure-agent-access/plan.md)

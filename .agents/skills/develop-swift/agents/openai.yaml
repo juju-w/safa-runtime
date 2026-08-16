@@ -1,0 +1,4 @@
+interface:
+  display_name: "Swift Development"
+  short_description: "Develop maintainable Swift 6 code with strict concurrency"
+  default_prompt: "Use $develop-swift to implement or review this Swift change safely."
