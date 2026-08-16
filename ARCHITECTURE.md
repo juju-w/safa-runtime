@@ -31,6 +31,16 @@ differ: XPC/Keychain/SMAppService on macOS, Unix sockets with peer credentials a
 Linux, and Named Pipes with DPAPI/Credential Manager on Windows. Internal IPC is never exposed as an
 Agent-facing compatibility surface.
 
+Each platform produces one installable Runtime package. The package keeps multiple trust roles:
+the Agent-facing CLI parses and presents but has no vault authority; the Broker/daemon owns policy,
+credentials, and transport; a narrowly scoped helper may deliver a child-bound credential. Package
+unity simplifies installation, while process separation prevents a modified frontend from inheriting
+Broker authority.
+
+Source availability is part of the threat model. Security depends on native publisher identity,
+Broker-side policy, OS-protected keys, user authorization, and least-privilege resource accounts—not
+on implementation secrecy or binary obfuscation.
+
 The Swift package remains at the repository root while the macOS implementation is stabilizing.
 Moving it into a deeper directory would be a large mechanical change with no security benefit.
 Rust code lives under `Platforms/Rust/`. This layout can be revisited only as an isolated,

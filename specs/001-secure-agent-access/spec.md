@@ -1,5 +1,8 @@
 # Feature Specification: Secure Agent Access
 
+> Repository split: the canonical Agent Skill, public contracts, resolver, and distribution model
+> now live in `juju-w/safa`. This document remains the macOS Runtime implementation history.
+
 **Feature Branch**: `feat/001-secure-agent-access`
 
 **Created**: 2026-08-16

@@ -1,5 +1,8 @@
 # Research: Secure Agent Access
 
+> Repository split: product-level Skill and distribution decisions are canonical in `juju-w/safa`;
+> this file remains supporting history for the native macOS Runtime.
+
 ## 1. Native implementation language
 
 **Decision**: Use Swift 6.3 language mode for all trusted runtime components. Use shell only for

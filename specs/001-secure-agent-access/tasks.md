@@ -1,5 +1,8 @@
 # Tasks: Secure Agent Access
 
+> Repository split: paths under `Skills/safa` have moved to `juju-w/safa/skills/safa`. Historical
+> task text below is retained for traceability and must not recreate a Skill in this Runtime repo.
+
 **Input**: Design documents from `specs/001-secure-agent-access/`
 
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`

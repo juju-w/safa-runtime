@@ -20,8 +20,4 @@ xcuserdata/
 *.vault.*
 audit*.jsonl
 
-# Release artifacts are generated from signed CI inputs.
-Skills/safa/assets/SAFA.app/
-Skills/safa/assets/SAFA.app.zip
-Skills/safa/assets/manifest.json
 /Platforms/Rust/target/

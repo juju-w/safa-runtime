@@ -1,5 +1,8 @@
 # Resource Directory v1
 
+> Non-canonical implementation snapshot. The maintained public contract lives at
+> `juju-w/safa/contracts/resource-directory-v1.md`; runtime changes must follow that version.
+
 The resource directory is SAFA's encrypted, transport-independent inventory. A resource is selected
 by logical alias; an adapter later decides which operations are implemented for its type and access
 method. Registering a type does not grant access and does not claim its adapter exists.

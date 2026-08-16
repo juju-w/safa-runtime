@@ -1,5 +1,8 @@
 # Implementation Plan: Secure Agent Access
 
+> Repository split: Skill/resolver/manifest ownership moved to `juju-w/safa`. Runtime source,
+> platform security, packaging inputs, and native validation remain in this repository.
+
 **Branch**: `001-secure-agent-access` | **Date**: 2026-08-16 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature specification from `specs/001-secure-agent-access/spec.md`

@@ -1,5 +1,8 @@
 # CLI Contract v1
 
+> Non-canonical implementation snapshot. The maintained public contract lives at
+> `juju-w/safa/contracts/cli-v1.md`; runtime changes must follow that version.
+
 ## Invocation rules
 
 - Binary name: `safa`.
