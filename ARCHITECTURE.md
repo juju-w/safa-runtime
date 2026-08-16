@@ -18,7 +18,7 @@ runtime implementations and their platform-specific security adapters.
 flowchart TB
     Product["safa product repository\nSkill · contracts · manifests"]
     Product --> Mac["Swift macOS runtime\ncurrent implementation"]
-    Product --> Rust["Rust runtime core\nscaffold"]
+    Product --> Rust["Rust CLI + runtime core\nnon-shipping contract shell"]
     Rust -. planned .-> Linux["Linux platform adapter"]
     Rust -. planned .-> Windows["Windows platform adapter"]
     Mac --> Contract["Shared conformance fixtures"]
@@ -45,6 +45,23 @@ The Swift package remains at the repository root while the macOS implementation 
 Moving it into a deeper directory would be a large mechanical change with no security benefit.
 Rust code lives under `Platforms/Rust/`. This layout can be revisited only as an isolated,
 behavior-preserving change after both build systems have stable CI.
+
+### 0.1 Rust CLI migration boundary
+
+The target product entry point is a small Rust `safa` CLI shared by supported platforms. It owns
+only argument parsing, version negotiation, stable JSON envelopes, exit-code mapping, and a narrow
+Broker-client interface. Platform-native code continues to own trusted IPC and every protected
+operation.
+
+The first Rust executable is a **non-shipping contract shell**. It implements local `version` and
+fail-closed `doctor`; it cannot list resources, authorize a request, read a credential, or execute a
+remote command. The working Swift CLI remains the installed macOS frontend until the Rust frontend
+passes command parity, signing, XPC peer-identity, and shared conformance gates.
+
+The intended macOS migration is an in-process native Broker-client adapter behind the Rust client
+interface, so the signed Rust executable remains the XPC peer. SAFA must not spawn the old Swift CLI
+as a credential or policy proxy, and it must not introduce a second Agent-visible protocol. The
+Swift Broker, Keychain, LocalAuthentication, and AskPass boundaries remain authoritative.
 
 ## 1. macOS runtime goal and current priority
 

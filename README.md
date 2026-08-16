@@ -10,8 +10,9 @@ remote transport, and bounded output.
 
 > [!IMPORTANT]
 > The Swift/macOS diagnostic Runtime is an implementation preview. No signed/notarized public
-> Runtime package, tag, GitHub Release, or Skill package has been published. The Rust workspace is a
-> fail-closed scaffold, not Linux or Windows support.
+> Runtime package, tag, GitHub Release, or Skill package has been published. The Rust workspace
+> contains a non-shipping, fail-closed CLI contract shell; it is not Linux or Windows support and
+> does not replace the working Swift/macOS CLI.
 
 ## One Runtime package, isolated internal authority
 
@@ -62,7 +63,7 @@ Package.swift, Sources/, Apps/, Tests/
     Swift/macOS Runtime implementation and security tests
 
 Platforms/Rust/
-    Platform-neutral Rust security boundary and future Linux/Windows adapters
+    Non-shipping Rust CLI contract shell, platform-neutral core, and future adapters
 
 specs/001-secure-agent-access/
     Runtime implementation history, threat decisions, and macOS development journey
@@ -100,8 +101,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-There is deliberately no Rust CLI or daemon yet. Those appear only after shared contract fixtures
-and concrete Linux credential, peer-identity, authorization, and service-lifecycle designs exist.
+The Rust `safa` executable currently implements only local `version`, fail-closed `doctor`, stable
+JSON envelopes, and invocation errors. It consumes a pinned copy of the canonical product fixture.
+It has no Broker client, credential access, authorization, daemon, or remote transport and is not
+assembled into `SAFA.app`. Protected commands remain on the Swift/macOS Runtime until a native
+Broker client and the full platform gates are complete.
 
 ## Architecture and contribution rules
 

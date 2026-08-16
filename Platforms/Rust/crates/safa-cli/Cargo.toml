@@ -1,0 +1,23 @@
+[package]
+name = "safa-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "safa"
+path = "src/main.rs"
+
+[dependencies]
+safa-runtime-core = { path = "../safa-runtime-core" }
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+safa-platform-linux = { path = "../safa-platform-linux" }
+
+[lints]
+workspace = true

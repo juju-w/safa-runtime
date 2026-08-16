@@ -4,6 +4,34 @@ import Testing
 
 @Suite("CLI v1 envelope contract")
 struct CLIEnvelopeContractTests {
+    @Test("Swift and Rust share the canonical version fixture")
+    func sharedVersionFixture() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureData = try Data(
+            contentsOf:
+                repositoryRoot
+                .appendingPathComponent("conformance")
+                .appendingPathComponent("cli-v1")
+                .appendingPathComponent("version.completed.json")
+        )
+        let fixture = try CanonicalCodec.decode(CLIEnvelope.self, from: fixtureData)
+        let expected = CLIEnvelope(
+            command: "version",
+            status: .completed,
+            timestamp: Date(timeIntervalSince1970: 1_786_872_600),
+            data: [
+                "runtime_version": .string("0.0.0"),
+                "cli_schema": .string("dev.safa.cli/v1"),
+                "platform": .string("linux"),
+            ]
+        )
+
+        #expect(fixture == expected)
+    }
+
     @Test("envelope uses stable snake-case keys and UTC timestamps")
     func envelopeEncoding() throws {
         let envelope = CLIEnvelope(
