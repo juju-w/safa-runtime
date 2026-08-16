@@ -1,0 +1,38 @@
+name: Rust runtime scaffold
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/rust.yml"
+      - "Platforms/Rust/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rust.yml"
+      - "Platforms/Rust/**"
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: Platforms/Rust
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace

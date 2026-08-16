@@ -2,18 +2,34 @@
   <img src="docs/assets/safa-readme-hero.webp" alt="SAFA owl guardian routing an AI agent diagnostic to a registered macOS-managed resource without exposing credentials" width="100%">
 </p>
 
-# SAFA
+# SAFA Runtime
 
-**Secure Access for Agents on macOS.** Let an AI agent discover registered resources by logical name
-and run bounded operations while reusable credentials remain inside the local macOS security
-boundary. SSH hosts are the first working adapter; the encrypted directory is designed to add
-database, object-storage, cache, and service profiles without creating a second secret workflow.
+Native security runtimes for [SAFA](https://github.com/juju-w/safa). This repository implements the
+trusted local boundary that owns credentials, user authorization, connection policy, and bounded
+execution. The current working implementation is Swift on macOS; a deliberately non-shipping Rust
+workspace establishes the Linux/Windows implementation boundary without claiming those platforms
+are supported.
 
-[![CI](https://github.com/juju-w/safa-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-mac/actions/workflows/ci.yml)
-[![GitHub stars](https://img.shields.io/github/stars/juju-w/safa-mac?style=flat)](https://github.com/juju-w/safa-mac/stargazers)
+[![CI](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/juju-w/safa-runtime?style=flat)](https://github.com/juju-w/safa-runtime/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![macOS 14.4+](https://img.shields.io/badge/macOS-14.4%2B-black)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+
+## Repository boundary
+
+```mermaid
+flowchart LR
+    Contract["juju-w/safa\nSkill + public contracts"] --> Swift["Swift macOS runtime\nimplemented preview"]
+    Contract --> RustCore["Rust runtime core\nscaffold only"]
+    RustCore -. planned .-> Linux["Linux adapter\nUnix socket + OS keyring"]
+    RustCore -. planned .-> Windows["Windows adapter\nNamed Pipe + DPAPI"]
+```
+
+The Swift package remains at the repository root to avoid a high-risk mechanical relocation while
+the macOS MVP is stabilizing. Rust work lives under `Platforms/Rust/`. Both implementations must
+consume the canonical public contract from `juju-w/safa`; neither may create a platform-specific
+Agent command surface.
 
 > [!IMPORTANT]
 > SAFA is currently an early diagnostic MVP, not a production release. The bounded read-only path is
@@ -136,30 +152,24 @@ xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
 See the [diagnostic MVP quickstart](specs/001-secure-agent-access/quickstart.md) for the synthetic
 journey and signed development setup.
 
-## Distribution roadmap
+## Runtime roadmap
 
-SAFA follows the open Agent Skills format, with a macOS-native companion runtime providing the
-security boundary. Distribution work starts only after signed artifact verification and the Skill
-forward-test are complete.
+Skill and manifest distribution is owned by [`juju-w/safa`](https://github.com/juju-w/safa). This
+repository produces native runtime assets only after platform security and conformance gates pass.
 
-1. **[skills.sh](https://www.skills.sh/)** — first public discovery target, with an exact-version and
-   digest-pinned macOS runtime rather than an unverified download.
-2. **[OpenAI Plugin Directory](https://help.openai.com/en/articles/20001256-plugins-in-codex)** —
-   package the Skill and its companion-runtime setup as a reviewable plugin.
-3. **[Claude Code Plugin Marketplace](https://code.claude.com/docs/en/plugin-marketplaces)** — add a
-   validated marketplace manifest and versioned plugin release.
-4. **[GitHub Copilot Agent Skills](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills)**
-   — support personal/global Skill locations without weakening SAFA's local trust boundary.
-5. **[SkillHub](https://skillhub.cn/)** — evaluate a China-friendly mirror after release provenance,
-   signature and update behavior can be preserved.
+1. Stabilize and sign the Swift macOS runtime.
+2. Import shared conformance fixtures from the product contract repository.
+3. Implement the Linux credential, peer-identity, user-authorization, and service-lifecycle adapters
+   in Rust before adding a distributable Rust CLI or daemon.
+4. Add Windows only after the same boundary is expressed through Credential Manager/DPAPI and Named
+   Pipe access control.
+5. Submit exact asset metadata and checksums to the product repository by reviewed manifest PR.
 
 ## Design and specification
 
-The owl guardian is SAFA's visual shorthand for a local, watchful security boundary. Source-ready
-brand assets are available as a [transparent mascot](docs/assets/safa-mascot.webp), a
-[square icon master](docs/assets/safa-icon-master.png) and a
-[GitHub avatar candidate](docs/assets/safa-github-avatar.png). Skill metadata uses the mascot;
-publishing that package remains intentionally disabled.
+The owl guardian is SAFA's visual shorthand for a local, watchful security boundary. Canonical Skill
+and brand packaging now live in `juju-w/safa`; the assets retained here support native runtime
+documentation and application packaging.
 
 - [Normative architecture and SSH parity plan](ARCHITECTURE.md)
 - [Initial code architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)

@@ -24,3 +24,4 @@ audit*.jsonl
 Skills/safa/assets/SAFA.app/
 Skills/safa/assets/SAFA.app.zip
 Skills/safa/assets/manifest.json
+/Platforms/Rust/target/

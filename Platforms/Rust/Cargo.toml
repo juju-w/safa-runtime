@@ -1,0 +1,20 @@
+[workspace]
+members = [
+  "crates/safa-platform-linux",
+  "crates/safa-runtime-core",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/juju-w/safa-runtime"
+rust-version = "1.85"
+version = "0.0.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"

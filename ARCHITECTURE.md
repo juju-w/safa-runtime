@@ -1,17 +1,45 @@
-# SAFA Architecture
+# SAFA Runtime Architecture
 
 Status: **Accepted for pre-release development**  
 Last reviewed: **2026-08-16**
 
-This document is the implementation guide for SAFA. It defines the trust boundaries, module
-responsibilities, source organization, CLI conventions, and delivery order. Feature specifications
-describe behavior; this document decides where that behavior belongs and which component is trusted
-to perform it.
+This document is the implementation guide for SAFA's native runtimes. It defines the trust
+boundaries, module responsibilities, source organization, CLI conventions, and delivery order.
+Feature specifications describe behavior; this document decides where runtime behavior belongs and
+which component is trusted to perform it.
 
-## 1. Product goal and current priority
+## 0. Product/runtime boundary
 
-SAFA is a macOS-native security boundary that lets an Agent discover and operate registered
-resources without receiving reusable credentials. Its core is a generic encrypted resource
+The canonical Agent Skill, public CLI/JSON/resource contracts, release manifests, and product-level
+architecture live in [`juju-w/safa`](https://github.com/juju-w/safa). This repository owns native
+runtime implementations and their platform-specific security adapters.
+
+```mermaid
+flowchart TB
+    Product["safa product repository\nSkill · contracts · manifests"]
+    Product --> Mac["Swift macOS runtime\ncurrent implementation"]
+    Product --> Rust["Rust runtime core\nscaffold"]
+    Rust -. planned .-> Linux["Linux platform adapter"]
+    Rust -. planned .-> Windows["Windows platform adapter"]
+    Mac --> Contract["Shared conformance fixtures"]
+    Linux -.-> Contract
+    Windows -.-> Contract
+```
+
+All runtimes must implement the same external contract. Their private implementation is expected to
+differ: XPC/Keychain/SMAppService on macOS, Unix sockets with peer credentials and an OS keyring on
+Linux, and Named Pipes with DPAPI/Credential Manager on Windows. Internal IPC is never exposed as an
+Agent-facing compatibility surface.
+
+The Swift package remains at the repository root while the macOS implementation is stabilizing.
+Moving it into a deeper directory would be a large mechanical change with no security benefit.
+Rust code lives under `Platforms/Rust/`. This layout can be revisited only as an isolated,
+behavior-preserving change after both build systems have stable CI.
+
+## 1. macOS runtime goal and current priority
+
+The current SAFA macOS runtime is a native security boundary that lets an Agent discover and operate
+registered resources without receiving reusable credentials. Its core is a generic encrypted resource
 directory; SSH hosts are the first executable profile, not the limit of the model. Database,
 object-storage, cache, and service adapters can reuse the same alias, metadata, relationship,
 credential-reference, authorization, and policy boundaries.
@@ -34,7 +62,7 @@ product UI. If a safe operation cannot yet be completed through those controls, 
 Release and Skill-package publication remain frozen until the repository owner explicitly enables
 them.
 
-## 2. Architecture principles
+## 2. macOS architecture principles
 
 1. **The CLI is a parser and presenter, not a security boundary.** It has no Keychain entitlement,
    cannot approve requests, and never launches credential-bearing processes.

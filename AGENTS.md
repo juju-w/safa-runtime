@@ -1,8 +1,9 @@
-# SAFA Repository Instructions
+# SAFA Runtime Repository Instructions
 
-These instructions apply to the entire repository. SAFA is a security-sensitive macOS product:
-prefer small, reviewable changes; fail closed; never weaken a trust boundary to make development or
-CI easier.
+These instructions apply to the native runtime repository. SAFA is security-sensitive: prefer small,
+reviewable changes; fail closed; never weaken a trust boundary to make development or CI easier.
+The working runtime is Swift/macOS. Rust is the future Linux/Windows runtime core and must remain
+truthful about its incomplete support.
 
 ## Mandatory project skills
 
@@ -14,6 +15,25 @@ CI easier.
   approval UI, or new SwiftUI surface unless the repository owner explicitly changes scope.
   System-provided Touch ID, Keychain, LocalAuthentication, and Authorization Services prompts remain
   allowed security primitives.
+
+## Cross-platform ownership
+
+- `juju-w/safa` owns the Agent Skill, public CLI/JSON/resource contracts, runtime manifests, and
+  product documentation. Do not independently redefine those external contracts here.
+- `Skills/safa` is a temporary migration snapshot needed while the product-repository pull request
+  is under review. Do not edit or publish it here; remove it in a focused cleanup only after the
+  canonical copy is merged in `juju-w/safa`.
+- The root Swift package and `Apps/SAFA` own the current macOS runtime.
+- `Platforms/Rust` owns the future Rust runtime core and platform adapters. Do not copy macOS XPC,
+  Keychain, or authorization assumptions into the platform-neutral Rust core.
+- A Rust scaffold is not a supported Linux or Windows runtime. Do not publish a binary, add a
+  platform manifest, or advertise support before conformance and security gates exist.
+- Keep platform credential stores and IPC behind narrow adapters. Never add a plaintext credential
+  fallback for portability.
+
+For Rust changes, run `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+and `cargo test --workspace` from `Platforms/Rust`. Prefer the standard library until a dependency
+has a concrete security or maintenance benefit.
 
 ## Development workflow
 
@@ -58,7 +78,7 @@ release. A release-policy change requires matching policy tests.
   publish a GitHub Release, upload a signed/notarized distribution, or publish a Skill package until
   the repository owner explicitly lifts this hold.
 - CI on pull requests and `main` must remain validation-only while the hold is active. It may compile
-  and test the app and Skill sources, but it must not upload or publish distributable artifacts.
+  and test runtime sources, but it must not upload or publish distributable artifacts.
 
 - `VERSION` is the canonical source version once automatic publishing is enabled.
 - A release workflow may run only after CI succeeds for the exact `main` commit being released.
