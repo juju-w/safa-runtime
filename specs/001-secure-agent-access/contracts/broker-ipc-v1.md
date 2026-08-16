@@ -17,6 +17,7 @@ be enabled in a release build.
 ```text
 runtimeStatus() -> RuntimeStatus
 listResources(ResourceQuery) -> ResourcePage
+queryResourceDirectory(ResourceDirectoryRequestV1) -> ResourceDirectoryReplyV1
 submitExecution(ExecutionSubmission) -> RequestSnapshot
 getRequest(RequestID) -> RequestSnapshot
 waitRequest(RequestID, deadline) -> RequestSnapshot
@@ -27,6 +28,11 @@ listAudit(AuditQuery) -> AuditPage
 verifyAudit() -> AuditIntegrityResult
 openTrustedSetup(SetupIntent) -> UserActionSnapshot
 ```
+
+`queryResourceDirectory` is the typed v1 path for `list`, `show`, and protected `inspect`. Public
+queries return only safe summaries. Inspect is broker-authorized with macOS user presence and never
+returns credential references, Keychain locators, passwords, tokens, private/public keys, or host
+fingerprints. New resource-directory work must not add fields to the legacy dynamic broker reply.
 
 This interface accepts no endpoint, username, password, private key, host key, sudo password,
 Keychain identifier, approval decision, or raw grant capability.

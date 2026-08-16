@@ -179,6 +179,12 @@ then confirm that the user can reconstruct the sequence without finding credenti
   runtime and MUST NOT require an external package manager for normal installation.
 - **FR-002**: The system MUST expose registered infrastructure through logical resource aliases and
   MUST allow the Agent to discover only non-secret metadata needed to select a resource.
+- **FR-002a**: The encrypted resource directory MUST support validated, extensible resource types,
+  access methods, typed metadata, alternate aliases, relationships, credential kinds, and
+  credential roles without accepting arbitrary JSON or embedded secrets.
+- **FR-002b**: List/show MUST expose only source-code-allowlisted summary fields. Protected inspect
+  MUST require macOS device-owner authentication, rate-limit prompts, return no details when denied,
+  and never disclose credentials, credential locators, key material, or host fingerprints.
 - **FR-003**: The system MUST collect and update endpoints, usernames, routes, passwords, private-key
   references, sudo credentials, and recovery material through a trusted flow outside Agent-visible
   input and output.
@@ -226,14 +232,17 @@ then confirm that the user can reconstruct the sequence without finding credenti
   inventory while clearly identifying credentials or device-bound keys that require re-enrollment.
 - **FR-025**: The system MUST document and surface the limits of protection under offline theft,
   same-user malware, managed-host compromise, and full local administrator compromise.
-- **FR-026**: The initial release MUST support a single local macOS user managing SSH-accessible
-  servers and NAS devices. Windows, Linux desktops, centralized team vaults, browser credentials,
-  databases, and HTTP credential brokering are outside the initial release.
+- **FR-026**: The initial release MUST support a single local macOS user executing operations against
+  SSH-accessible servers and NAS devices. Windows/Linux desktop clients, centralized team vaults,
+  browser credentials, and database/HTTP/S3/cache execution adapters are outside the initial
+  release, but their resource profiles MUST fit the common encrypted directory rather than require a
+  second inventory or credential architecture.
 
 ### Key Entities
 
-- **Resource**: A logical infrastructure target with an alias, encrypted connection metadata,
-  security-domain membership, host identity, credential references, and lifecycle state.
+- **Resource**: A logical infrastructure target with canonical/alternate aliases, an extensible type,
+  typed encrypted metadata, access methods, relationships, security-domain membership, opaque
+  credential references, and lifecycle state. Host identity applies to SSH profiles.
 - **Credential Reference**: An opaque link to protected authentication material; it exposes type,
   health, and scope but never its secret value.
 - **Execution Request**: A proposed action containing the caller, resource, command representation,

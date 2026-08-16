@@ -19,6 +19,7 @@ safa setup open --json
 
 safa resource list --json [--state active]
 safa resource show ALIAS --json
+safa resource inspect ALIAS --json
 safa resource add ALIAS --json
 safa resource edit ALIAS --json
 safa resource disable ALIAS --json
@@ -114,10 +115,15 @@ overloaded as the SAFA process exit code.
     "resources": [
       {
         "alias": "nas.home",
-        "transport": "ssh",
+        "display_name": null,
+        "resource_type": "host.nas",
         "state": "active",
-        "capabilities": ["exec", "shell", "sudo"],
-        "health": "ready"
+        "capabilities": ["exec"],
+        "health": "ready",
+        "metadata": {
+          "host.os.family": "truenas",
+          "host.docker.available": false
+        }
       }
     ],
     "next_cursor": null
@@ -127,8 +133,13 @@ overloaded as the SAFA process exit code.
 }
 ```
 
-No response field includes host, port, username, jump route, Keychain locator, host fingerprint, or
-credential identifier.
+`resource list` and `resource show` never include host, port, username, alternate alias, jump route,
+Keychain locator, host fingerprint, or credential identifier. Unknown metadata keys remain private.
+
+`resource inspect ALIAS` is an explicit protected read. It triggers a macOS-owned Touch ID/login
+prompt and, only after approval, may return non-secret endpoint and inventory details. A denial or
+rate-limit response contains no resource detail object. Inspect never returns a password, token,
+private/public key, host fingerprint, credential identifier, or Keychain locator.
 
 ## Approval-required response
 

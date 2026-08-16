@@ -4,6 +4,11 @@ import SAFADomain
 
 public struct PrivateResourceDraft: Equatable, Sendable {
     public let alias: ResourceAlias
+    public let resourceType: ResourceTypeIdentifier
+    public let alternateAliases: [ResourceAlias]
+    public let accessMethods: [AccessMethodIdentifier]
+    public let metadata: [ResourceMetadataEntry]
+    public let relationships: [ResourceRelationship]
     public let displayName: String?
     public let endpoint: ResourceEndpoint
     public let username: String
@@ -12,6 +17,11 @@ public struct PrivateResourceDraft: Equatable, Sendable {
 
     public init(
         alias: ResourceAlias,
+        resourceType: ResourceTypeIdentifier = .hostLinux,
+        alternateAliases: [ResourceAlias] = [],
+        accessMethods: [AccessMethodIdentifier] = [.ssh],
+        metadata: [ResourceMetadataEntry] = [],
+        relationships: [ResourceRelationship] = [],
         displayName: String? = nil,
         endpoint: ResourceEndpoint,
         username: String,
@@ -19,6 +29,11 @@ public struct PrivateResourceDraft: Equatable, Sendable {
         hostIdentity: HostIdentity
     ) {
         self.alias = alias
+        self.resourceType = resourceType
+        self.alternateAliases = alternateAliases
+        self.accessMethods = accessMethods
+        self.metadata = metadata
+        self.relationships = relationships
         self.displayName = displayName
         self.endpoint = endpoint
         self.username = username
@@ -29,8 +44,10 @@ public struct PrivateResourceDraft: Equatable, Sendable {
 
 public enum ResourceServiceError: Error, Equatable, Sendable {
     case duplicate(alias: String)
+    case duplicateMetadataKey(String)
     case notFound(alias: String)
     case invalidHostIdentity
+    case invalidRelationship
 }
 
 public actor ResourceService {
@@ -54,13 +71,19 @@ public actor ResourceService {
             throw ResourceServiceError.invalidHostIdentity
         }
         var document = try await vault.readDocument()
-        guard
-            !document.resources.contains(where: {
-                $0.alias == draft.alias && $0.state != .deleted
-            })
-        else {
-            throw ResourceServiceError.duplicate(alias: draft.alias.rawValue)
-        }
+        try Self.ensureUniqueMetadata(draft.metadata)
+        try Self.ensureAliasesAvailable(
+            canonical: draft.alias,
+            alternates: draft.alternateAliases,
+            excluding: nil,
+            resources: document.resources
+        )
+        let resourceID = UUID()
+        try Self.ensureRelationships(
+            draft.relationships,
+            ownerID: resourceID,
+            resources: document.resources
+        )
 
         let credentialID = UUID()
         let passwordCredential = PasswordCredential(store: passwordStore)
@@ -75,8 +98,13 @@ public actor ResourceService {
             createdAt: now
         )
         let resource = Resource(
-            id: UUID(),
+            id: resourceID,
             alias: draft.alias,
+            resourceType: draft.resourceType,
+            alternateAliases: draft.alternateAliases,
+            accessMethods: draft.accessMethods,
+            metadata: draft.metadata,
+            relationships: draft.relationships,
             displayName: draft.displayName,
             endpoint: draft.endpoint,
             username: draft.username,
@@ -121,6 +149,53 @@ public actor ResourceService {
         return resource
     }
 
+    private static func ensureAliasesAvailable(
+        canonical: ResourceAlias,
+        alternates: [ResourceAlias],
+        excluding resourceID: UUID?,
+        resources: [Resource]
+    ) throws {
+        let proposed = Set([canonical] + alternates)
+        guard proposed.count == alternates.count + 1 else {
+            let values = [canonical] + alternates
+            let duplicate =
+                Dictionary(grouping: values, by: \.self)
+                .first(where: { $0.value.count > 1 })?.key ?? canonical
+            throw ResourceServiceError.duplicate(alias: duplicate.rawValue)
+        }
+        for resource in resources where resource.state != .deleted && resource.id != resourceID {
+            for alias in [resource.alias] + resource.resolvedAlternateAliases
+            where proposed.contains(alias) {
+                throw ResourceServiceError.duplicate(alias: alias.rawValue)
+            }
+        }
+    }
+
+    private static func ensureUniqueMetadata(_ metadata: [ResourceMetadataEntry]) throws {
+        var keys: Set<ResourceMetadataKey> = []
+        for entry in metadata where !keys.insert(entry.key).inserted {
+            throw ResourceServiceError.duplicateMetadataKey(entry.key.rawValue)
+        }
+    }
+
+    private static func ensureRelationships(
+        _ relationships: [ResourceRelationship],
+        ownerID: UUID,
+        resources: [Resource]
+    ) throws {
+        let liveIDs = Set(resources.filter { $0.state != .deleted }.map(\.id))
+        var seen: Set<String> = []
+        for relationship in relationships {
+            let key = "\(relationship.kind.rawValue):\(relationship.targetResourceID.uuidString)"
+            guard relationship.targetResourceID != ownerID,
+                liveIDs.contains(relationship.targetResourceID),
+                seen.insert(key).inserted
+            else {
+                throw ResourceServiceError.invalidRelationship
+            }
+        }
+    }
+
     @discardableResult
     public func edit(
         alias: ResourceAlias,
@@ -144,6 +219,18 @@ public actor ResourceService {
         }
 
         var resource = document.resources[index]
+        try Self.ensureUniqueMetadata(draft.metadata)
+        try Self.ensureAliasesAvailable(
+            canonical: draft.alias,
+            alternates: draft.alternateAliases,
+            excluding: resource.id,
+            resources: document.resources
+        )
+        try Self.ensureRelationships(
+            draft.relationships,
+            ownerID: resource.id,
+            resources: document.resources
+        )
         let previousCredentialID = resource.authRef
         var replacementCredentialID: UUID?
         if let replacementPassword {
@@ -165,6 +252,14 @@ public actor ResourceService {
             )
         }
         resource.displayName = draft.displayName
+        resource.profile = ResourceProfile(
+            resourceType: draft.resourceType,
+            alternateAliases: draft.alternateAliases,
+            accessMethods: draft.accessMethods,
+            metadata: draft.metadata,
+            relationships: draft.relationships,
+            credentialBindings: resource.resolvedCredentialBindings
+        )
         resource.endpoint = draft.endpoint
         resource.username = draft.username
         resource.securityDomain = draft.securityDomain

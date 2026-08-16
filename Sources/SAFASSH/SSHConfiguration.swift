@@ -13,6 +13,7 @@ public enum SSHCredentialContext: Equatable, Sendable {
 public enum SSHConfigurationError: Error, Equatable, Sendable {
     case resourceInactive
     case missingHostIdentity
+    case missingSSHConnection
     case hostIdentityChanged
     case invalidHostIdentity
     case invalidRandomness
@@ -53,6 +54,13 @@ public struct SSHConfigurationBuilder: Sendable {
         randomBytes: Data? = nil
     ) throws -> PreparedSSHExecution {
         guard resource.state == .active else { throw SSHConfigurationError.resourceInactive }
+        guard resource.resolvedAccessMethods.contains(.ssh),
+            let endpoint = resource.endpoint,
+            let username = resource.username,
+            !username.isEmpty
+        else {
+            throw SSHConfigurationError.missingSSHConnection
+        }
         guard let identity = resource.hostIdentity else {
             throw SSHConfigurationError.missingHostIdentity
         }
@@ -77,9 +85,9 @@ public struct SSHConfigurationBuilder: Sendable {
                 attributes: [.posixPermissions: 0o700]
             )
             let knownHostName =
-                resource.endpoint.port == 22
-                ? resource.endpoint.host
-                : "[\(resource.endpoint.host)]:\(resource.endpoint.port)"
+                endpoint.port == 22
+                ? endpoint.host
+                : "[\(endpoint.host)]:\(endpoint.port)"
             let hashedHost = hashKnownHost(knownHostName, salt: salt.prefix(20))
             let keyPayload = identity.publicKey.base64EncodedString()
             let knownHosts = "\(hashedHost) \(identity.algorithm) \(keyPayload)\n"
@@ -87,9 +95,9 @@ public struct SSHConfigurationBuilder: Sendable {
 
             var config = """
                 Host \(opaqueAlias)
-                    HostName \(resource.endpoint.host)
-                    Port \(resource.endpoint.port)
-                    User \(resource.username)
+                    HostName \(endpoint.host)
+                    Port \(endpoint.port)
+                    User \(username)
                     CanonicalizeHostname no
                     CheckHostIP no
                     ClearAllForwardings yes

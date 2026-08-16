@@ -7,15 +7,27 @@ import Testing
 struct ResourceCLIContractTests {
     @Test("resource list exposes only logical operational metadata")
     func safeProjection() throws {
-        let resource = TestResourceFactory.active(alias: "nas.home")
+        let resource = TestResourceFactory.active(
+            alias: "nas.home",
+            metadata: [
+                try ResourceMetadataEntry(key: "host.os.family", value: .text("linux")),
+                try ResourceMetadataEntry(key: "host.kernel.release", value: .text("6.8.0")),
+                try ResourceMetadataEntry(key: "private.network.address", value: .text("10.0.0.7")),
+            ]
+        )
         let registry = try ResourceRegistry(resources: [resource])
         let projection = try #require(registry.list(state: .active).first)
         let bytes = try CanonicalCodec.encode(projection)
         let text = try #require(String(data: bytes, encoding: .utf8))
 
         #expect(projection.alias.rawValue == "nas.home")
+        #expect(projection.displayName == nil)
+        #expect(projection.resourceType == .hostLinux)
         #expect(projection.capabilities == ["exec"])
+        #expect(projection.summaryMetadata.map(\.key.rawValue) == ["host.os.family"])
         #expect(!text.contains("203.0.113.10"))
+        #expect(!text.contains("10.0.0.7"))
+        #expect(!text.contains("6.8.0"))
         #expect(!text.contains("diagnostic-user"))
         #expect(!text.contains(resource.id.uuidString))
         #expect(!text.contains(resource.authRef!.uuidString))
@@ -31,11 +43,17 @@ struct ResourceCLIContractTests {
 }
 
 enum TestResourceFactory {
-    static func active(alias: String) -> Resource {
+    static func active(
+        alias: String,
+        metadata: [ResourceMetadataEntry] = []
+    ) -> Resource {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         return Resource(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000001")!,
             alias: try! ResourceAlias(alias),
+            resourceType: .hostLinux,
+            accessMethods: [.ssh],
+            metadata: metadata,
             endpoint: ResourceEndpoint(host: "203.0.113.10", port: 2222),
             username: "diagnostic-user",
             securityDomain: "synthetic",

@@ -55,8 +55,14 @@ Then use the signed bundled CLI:
 /path/to/SAFA.app/Contents/Library/Helpers/safa resource list --json
 ```
 
-The response may contain alias, transport, state, capabilities and health only. It must not contain
-host, port, username, host fingerprint, credential reference or Keychain locator.
+The response may contain alias, resource type, state, capabilities, health, and explicitly
+allowlisted summary metadata only. It must not contain host, port, username, host fingerprint,
+credential reference or Keychain locator.
+
+Use `resource show nas.home --json` for the same non-interactive safe projection. Use
+`resource inspect nas.home --json` only when protected endpoint or inventory metadata is needed;
+macOS asks the local user for Touch ID/login authentication. A denial returns no detail object, and
+an approval still returns no credential, key material, Keychain locator, or host fingerprint.
 
 ## 5. Run the diagnostic MVP
 
