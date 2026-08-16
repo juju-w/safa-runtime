@@ -1,0 +1,6 @@
+interface:
+  display_name: "SAFA"
+  short_description: "Secure macOS access for infrastructure agents"
+  icon_small: "./assets/safa-icon-64.png"
+  icon_large: "./assets/safa-icon-512.png"
+  default_prompt: "Use $safa to inspect or operate a registered server without exposing credentials."

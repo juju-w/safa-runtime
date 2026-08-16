@@ -1,0 +1,190 @@
+import Foundation
+import SAFADomain
+
+public enum BrokerServiceNames {
+    public static let agent = "dev.safa.broker.agent"
+    public static let trustedApp = "dev.safa.broker.trusted-app"
+    public static let askPass = "dev.safa.broker.askpass"
+}
+
+@objc(SAFAAgentBrokerXPC)
+public protocol SAFAAgentBrokerXPC {
+    func sendAgentMessage(_ request: Data, reply: @escaping (Data) -> Void)
+}
+
+@objc(SAFATrustedAppBrokerXPC)
+public protocol SAFATrustedAppBrokerXPC {
+    func sendTrustedAppMessage(_ request: Data, reply: @escaping (Data) -> Void)
+}
+
+@objc(SAFAAskPassBrokerXPC)
+public protocol SAFAAskPassBrokerXPC {
+    func consumeCredential(_ request: Data, reply: @escaping (Data) -> Void)
+}
+
+public struct AskPassRequest: Codable, Equatable, Sendable {
+    public let protocolVersion: UInt
+    public let binding: String
+    public let parentProcessID: Int32
+
+    public init(
+        protocolVersion: UInt = IPCHeader.currentVersion,
+        binding: String,
+        parentProcessID: Int32
+    ) {
+        self.protocolVersion = protocolVersion
+        self.binding = binding
+        self.parentProcessID = parentProcessID
+    }
+}
+
+public struct AskPassReply: Codable, Equatable, Sendable {
+    public let protocolVersion: UInt
+    public let credential: Data?
+    public let errorCode: String?
+
+    public init(
+        protocolVersion: UInt = IPCHeader.currentVersion,
+        credential: Data? = nil,
+        errorCode: String? = nil
+    ) {
+        self.protocolVersion = protocolVersion
+        self.credential = credential
+        self.errorCode = errorCode
+    }
+}
+
+public struct IPCHeader: Codable, Equatable, Sendable {
+    public static let currentVersion: UInt = 1
+
+    public let protocolVersion: UInt
+    public let messageID: UUID
+    public let sentAt: Date
+    public let deadline: Date
+
+    public init(
+        protocolVersion: UInt = Self.currentVersion,
+        messageID: UUID = UUID(),
+        sentAt: Date,
+        deadline: Date
+    ) {
+        self.protocolVersion = protocolVersion
+        self.messageID = messageID
+        self.sentAt = sentAt
+        self.deadline = deadline
+    }
+}
+
+public enum AgentClientOperation: Codable, Equatable, Sendable {
+    case runtimeStatus
+    case listResources(state: ResourceState?)
+    case submitExecution(
+        resourceAlias: ResourceAlias,
+        command: CommandSpec,
+        privilege: Privilege,
+        intent: String,
+        expectedEffect: String?,
+        rollback: String?
+    )
+    case getRequest(id: UUID)
+    case waitRequest(id: UUID, timeoutSeconds: UInt)
+    case cancelRequest(id: UUID)
+    case listGrants
+    case revokeGrant(id: UUID)
+    case listAudit(after: String?, limit: UInt)
+    case verifyAudit
+    case openTrustedSetup(resourceAlias: ResourceAlias?)
+}
+
+public enum TrustedAppOperation: Codable, Equatable, Sendable {
+    case beginPrivateSetup(resourceAlias: ResourceAlias)
+    case commitPrivateSetup(sessionID: UUID, protectedPayload: Data)
+    case getApprovalPresentation(requestID: UUID)
+    case decideApproval(requestID: UUID, approved: Bool, scope: ApprovalScope?)
+    case listSensitiveResourceDetails(resourceID: UUID)
+    case rotateHostIdentity(resourceID: UUID, protectedPayload: Data)
+    case exportRecovery(protectedOptions: Data)
+    case importRecovery(protectedPackage: Data)
+}
+
+public struct AgentClientMessage: Codable, Equatable, Sendable {
+    public let header: IPCHeader
+    public let operation: AgentClientOperation
+
+    public init(header: IPCHeader, operation: AgentClientOperation) {
+        self.header = header
+        self.operation = operation
+    }
+}
+
+public struct TrustedAppMessage: Codable, Equatable, Sendable {
+    public let header: IPCHeader
+    public let operation: TrustedAppOperation
+
+    public init(header: IPCHeader, operation: TrustedAppOperation) {
+        self.header = header
+        self.operation = operation
+    }
+}
+
+public struct ProtectedResourceSetupPayload: Codable, Equatable, Sendable {
+    public let displayName: String?
+    public let host: String
+    public let port: UInt16
+    public let username: String
+    public let securityDomain: String
+    public let hostKeyAlgorithm: String
+    public let hostPublicKey: Data
+    public let hostFingerprint: String
+    public let password: Data
+
+    public init(
+        displayName: String? = nil,
+        host: String,
+        port: UInt16 = 22,
+        username: String,
+        securityDomain: String,
+        hostKeyAlgorithm: String,
+        hostPublicKey: Data,
+        hostFingerprint: String,
+        password: Data
+    ) {
+        self.displayName = displayName
+        self.host = host
+        self.port = port
+        self.username = username
+        self.securityDomain = securityDomain
+        self.hostKeyAlgorithm = hostKeyAlgorithm
+        self.hostPublicKey = hostPublicKey
+        self.hostFingerprint = hostFingerprint
+        self.password = password
+    }
+}
+
+public enum BrokerReplyStatus: String, Codable, Sendable {
+    case completed
+    case userActionRequired = "user_action_required"
+    case failed
+}
+
+public struct BrokerReply: Codable, Equatable, Sendable {
+    public let protocolVersion: UInt
+    public let messageID: UUID
+    public let status: BrokerReplyStatus
+    public let data: [String: JSONValue]
+    public let error: SAFAErrorPayload?
+
+    public init(
+        protocolVersion: UInt = IPCHeader.currentVersion,
+        messageID: UUID,
+        status: BrokerReplyStatus,
+        data: [String: JSONValue] = [:],
+        error: SAFAErrorPayload? = nil
+    ) {
+        self.protocolVersion = protocolVersion
+        self.messageID = messageID
+        self.status = status
+        self.data = data
+        self.error = error
+    }
+}

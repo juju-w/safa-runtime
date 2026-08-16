@@ -1,0 +1,13 @@
+// Shared settings. Release signing identities are injected by the release environment.
+MACOSX_DEPLOYMENT_TARGET = 14.4
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+ENABLE_HARDENED_RUNTIME = YES
+CODE_SIGN_STYLE = Automatic
+DEVELOPMENT_TEAM = $(SAFA_DEVELOPMENT_TEAM)
+PRODUCT_BUNDLE_IDENTIFIER = dev.safa.$(PRODUCT_NAME:rfc1034identifier)
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
+OTHER_SWIFT_FLAGS = $(inherited) -warnings-as-errors
+ALWAYS_SEARCH_USER_PATHS = NO

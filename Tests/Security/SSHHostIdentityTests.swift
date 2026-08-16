@@ -1,0 +1,79 @@
+import Foundation
+import SAFADomain
+import SAFASSH
+import Testing
+
+@Suite("Strict SSH host identity")
+struct SSHHostIdentityTests {
+    @Test("isolated SSH configuration pins a host and keeps the endpoint out of argv")
+    func strictConfiguration() throws {
+        let resource = SyntheticSSHResource.make(status: .trusted)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("safa-ssh-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let prepared = try SSHConfigurationBuilder().prepare(
+            resource: resource,
+            command: try CommandSpec.exec(arguments: ["systemctl", "is-active", "example"]),
+            credential: .password(
+                childBinding: "one-shot-binding",
+                askPassExecutable: URL(fileURLWithPath: "/usr/local/libexec/safa-askpass")
+            ),
+            rootDirectory: root,
+            randomBytes: Data(repeating: 9, count: 20)
+        )
+        let config = try String(contentsOf: prepared.configURL, encoding: .utf8)
+        let knownHosts = try String(contentsOf: prepared.knownHostsURL, encoding: .utf8)
+        let argv = prepared.invocation.arguments.joined(separator: " ")
+
+        #expect(config.contains("StrictHostKeyChecking yes"))
+        #expect(config.contains("UserKnownHostsFile"))
+        #expect(config.contains("GlobalKnownHostsFile /dev/null"))
+        #expect(!config.contains("StrictHostKeyChecking no"))
+        #expect(knownHosts.contains("ssh-ed25519"))
+        #expect(!argv.contains("203.0.113.10"))
+        #expect(!argv.contains("diagnostic-user"))
+        #expect(!argv.contains("synthetic-password"))
+    }
+
+    @Test("a changed host key fails closed before process launch")
+    func changedIdentity() throws {
+        let resource = SyntheticSSHResource.make(status: .changed)
+        #expect(throws: SSHConfigurationError.hostIdentityChanged) {
+            try SSHConfigurationBuilder().prepare(
+                resource: resource,
+                command: CommandSpec.exec(arguments: ["true"]),
+                credential: .none,
+                rootDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString),
+                randomBytes: Data(repeating: 1, count: 20)
+            )
+        }
+    }
+}
+
+enum SyntheticSSHResource {
+    static func make(status: HostIdentityStatus) -> Resource {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        return Resource(
+            id: UUID(),
+            alias: try! ResourceAlias("nas.home"),
+            endpoint: ResourceEndpoint(host: "203.0.113.10", port: 2222),
+            username: "diagnostic-user",
+            securityDomain: "synthetic",
+            hostIdentity: HostIdentity(
+                algorithm: "ssh-ed25519",
+                publicKey: Data(repeating: 7, count: 32),
+                fingerprint: "SHA256:synthetic",
+                verifiedAt: now,
+                verificationMethod: .manual,
+                status: status
+            ),
+            authRef: UUID(),
+            revision: 1,
+            state: .active,
+            createdAt: now,
+            updatedAt: now
+        )
+    }
+}
