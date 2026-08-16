@@ -213,6 +213,21 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 5. Canonical and alternate aliases occupy one collision namespace and resolve to the same stable
    resource identity for inspection and execution.
 
+### Manage resource lifecycle from the CLI
+
+1. `safa resource add ALIAS --from-ssh-config SSH_ALIAS` and `resource edit` carry only logical
+   aliases, an optional display name, and one of the supported host resource types across Agent XPC.
+2. The broker asks macOS for device-owner authentication, then runs bounded `ssh -G SSH_ALIAS`
+   locally and persists the resolved endpoint and username inside the encrypted vault. Private
+   connection values never become CLI arguments or mutation DTO fields.
+3. Imports are `draft/needs_setup`: SSH config discovery does not create a credential or trusted
+   host identity. Credential enrollment and fingerprint verification remain separate work.
+4. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
+   identity is rejected so a mutable SSH config cannot silently redirect trusted access.
+5. `resource disable` and `resource remove` also require macOS user presence. Removal preserves
+   relationship integrity and deletes an unshared credential reference through the broker
+   transaction.
+
 ### Resource directory extension model
 
 - Types are open validated identifiers such as `host.linux`, `host.nas`, `database.mysql`,

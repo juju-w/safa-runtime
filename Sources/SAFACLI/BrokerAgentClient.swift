@@ -12,7 +12,8 @@ public protocol BrokerAgentClient: Sendable {
     func queryResourceDirectory(
         action: ResourceDirectoryActionV1,
         alias: ResourceAlias?,
-        state: ResourceState?
+        state: ResourceState?,
+        mutation: ResourceMutationV1?
     ) async throws -> ResourceDirectoryReplyV1
 }
 
@@ -134,7 +135,8 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
     public func queryResourceDirectory(
         action: ResourceDirectoryActionV1,
         alias: ResourceAlias? = nil,
-        state: ResourceState? = nil
+        state: ResourceState? = nil,
+        mutation: ResourceMutationV1? = nil
     ) async throws -> ResourceDirectoryReplyV1 {
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
@@ -146,7 +148,8 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
             header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
             action: action,
             alias: alias,
-            state: state
+            state: state,
+            mutation: mutation
         )
         let request = try CanonicalCodec.encode(message)
 

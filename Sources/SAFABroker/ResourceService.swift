@@ -42,6 +42,33 @@ public struct PrivateResourceDraft: Equatable, Sendable {
     }
 }
 
+/// A connection discovered from a broker-owned local adapter. It deliberately
+/// carries no credential or host identity: discovery is not proof of trust.
+public struct DiscoveredResourceDraft: Equatable, Sendable {
+    public let alias: ResourceAlias
+    public let resourceType: ResourceTypeIdentifier?
+    public let displayName: String?
+    public let endpoint: ResourceEndpoint
+    public let username: String
+    public let securityDomain: String
+
+    public init(
+        alias: ResourceAlias,
+        resourceType: ResourceTypeIdentifier? = nil,
+        displayName: String? = nil,
+        endpoint: ResourceEndpoint,
+        username: String,
+        securityDomain: String
+    ) {
+        self.alias = alias
+        self.resourceType = resourceType
+        self.displayName = displayName
+        self.endpoint = endpoint
+        self.username = username
+        self.securityDomain = securityDomain
+    }
+}
+
 public enum ResourceServiceError: Error, Equatable, Sendable {
     case duplicate(alias: String)
     case duplicateMetadataKey(String)
@@ -50,6 +77,8 @@ public enum ResourceServiceError: Error, Equatable, Sendable {
     case invalidHostIdentity
     case invalidRelationship
     case referencedByResource(alias: String)
+    case unsafeConnectionChange
+    case unsupportedDiscoveredResourceType(String)
 }
 
 public actor ResourceService {
@@ -62,6 +91,91 @@ public actor ResourceService {
     ) {
         self.vault = vault
         self.passwordStore = passwordStore
+    }
+
+    public func addDiscoveredResource(
+        _ draft: DiscoveredResourceDraft,
+        now: Date = Date()
+    ) async throws -> Resource {
+        var document = try await vault.readDocument()
+        let resourceType = draft.resourceType ?? .hostLinux
+        guard Self.isSSHHostType(resourceType) else {
+            throw ResourceServiceError.unsupportedDiscoveredResourceType(resourceType.rawValue)
+        }
+        try Self.ensureAliasesAvailable(
+            canonical: draft.alias,
+            alternates: [],
+            excluding: nil,
+            resources: document.resources
+        )
+        let resource = Resource(
+            id: UUID(),
+            alias: draft.alias,
+            resourceType: resourceType,
+            accessMethods: [.ssh],
+            displayName: draft.displayName,
+            transport: .ssh,
+            endpoint: draft.endpoint,
+            username: draft.username,
+            securityDomain: draft.securityDomain,
+            revision: 1,
+            state: .draft,
+            createdAt: now,
+            updatedAt: now
+        )
+        document.resources.append(resource)
+        try await vault.writeDocument(document)
+        return resource
+    }
+
+    public func editDiscoveredResource(
+        alias: ResourceAlias,
+        draft: DiscoveredResourceDraft,
+        now: Date = Date()
+    ) async throws -> Resource {
+        guard alias == draft.alias else {
+            throw ResourceServiceError.notFound(alias: alias.rawValue)
+        }
+        var document = try await vault.readDocument()
+        guard
+            let index = document.resources.firstIndex(where: {
+                $0.alias == alias && $0.state != .deleted
+            })
+        else {
+            throw ResourceServiceError.notFound(alias: alias.rawValue)
+        }
+        var resource = document.resources[index]
+        let resourceType = draft.resourceType ?? resource.resolvedResourceType
+        guard Self.isSSHHostType(resource.resolvedResourceType),
+            Self.isSSHHostType(resourceType)
+        else {
+            throw ResourceServiceError.unsupportedDiscoveredResourceType(resourceType.rawValue)
+        }
+        let connectionChanged =
+            resource.endpoint != draft.endpoint
+            || resource.username != draft.username
+            || resource.securityDomain != draft.securityDomain
+        if connectionChanged && (resource.hostIdentity != nil || resource.authRef != nil) {
+            throw ResourceServiceError.unsafeConnectionChange
+        }
+
+        resource.profile = ResourceProfile(
+            resourceType: resourceType,
+            alternateAliases: resource.resolvedAlternateAliases,
+            accessMethods: [.ssh],
+            metadata: resource.resolvedMetadata,
+            relationships: resource.resolvedRelationships,
+            credentialBindings: resource.resolvedCredentialBindings
+        )
+        resource.displayName = draft.displayName ?? resource.displayName
+        resource.endpoint = draft.endpoint
+        resource.username = draft.username
+        resource.securityDomain = draft.securityDomain
+        resource.revision += 1
+        resource.updatedAt = now
+        document.resources[index] = resource
+        try await vault.writeDocument(document)
+        return resource
     }
 
     public func addPasswordResource(
@@ -171,6 +285,12 @@ public actor ResourceService {
                 throw ResourceServiceError.duplicate(alias: alias.rawValue)
             }
         }
+    }
+
+    private static func isSSHHostType(_ resourceType: ResourceTypeIdentifier) -> Bool {
+        resourceType == .hostLinux
+            || resourceType == .hostMacOS
+            || resourceType == .hostNAS
     }
 
     private static func ensureValidMetadata(_ metadata: [ResourceMetadataEntry]) throws {

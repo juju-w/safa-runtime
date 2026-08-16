@@ -18,8 +18,7 @@ cd <skill-directory> && ./scripts/safa doctor --json
 
 Resolve `<skill-directory>` to the directory containing this `SKILL.md`. Parse only the JSON envelope.
 If the runtime reports `user_action_required`, explain that a trusted local action is needed. Follow
-only an explicit returned action; the current preview may report no available registration command.
-Do not collect the missing value in chat.
+only an explicit returned action. Do not collect the missing value in chat.
 
 ## Select a resource
 
@@ -29,10 +28,17 @@ List safe logical aliases:
 safa resource list --json
 ```
 
-Use only an alias returned by SAFA. Do not ask the user for an IP address, port, username, jump route,
-password, private key, sudo password, or token. If the desired alias is absent, report that trusted
-local registration is not available in the current preview. Do not invent a command or collect
-private details in the Agent-facing CLI.
+Use only an alias returned by SAFA for remote work. Do not ask the user for an IP address, port,
+username, jump route, password, private key, sudo password, or token. If the desired alias is absent,
+offer the system-authenticated SSH-config draft import, but invoke it only when the user explicitly
+asks to add the resource:
+
+```bash
+safa resource add ALIAS --from-ssh-config SSH_ALIAS --json
+```
+
+Both names are logical aliases, not endpoints. The command creates `draft/needs_setup`; report that
+credential and host-identity setup are still required before execution.
 
 Use `safa resource show ALIAS --json` for a non-interactive safe summary. Run
 `safa resource inspect ALIAS --json` only when the user explicitly asks for protected inventory or
@@ -50,6 +56,11 @@ safa exec ALIAS --json --intent "Explain the diagnostic purpose" -- COMMAND ARG.
 
 The current preview exposes bounded, non-sudo argument execution only. Shell programs, mutation,
 sudo, grants, and approval are roadmap capabilities; do not invent those commands or bypass SAFA.
+
+Resource-directory lifecycle is the one supported local mutation family. Use `resource edit` only
+when the user asks to refresh an SSH-config mapping, and `resource disable/remove` only on an
+explicit request. Every operation relies on the macOS-owned user-presence prompt; never repeat-spam
+or bypass a denial.
 
 ## Handle lifecycle states
 

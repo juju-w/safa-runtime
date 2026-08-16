@@ -34,10 +34,12 @@ Without a local access boundary, the conversation often becomes:
 That puts infrastructure inventory and reusable credentials into chat history, process context, logs
 or model-visible tools.
 
-With SAFA, a trusted local, system-authenticated registration flow will import `report.prod` without
-putting private values in Agent-visible input. The endpoint, username, pinned host identity and
-password remain behind the broker's encrypted vault and macOS Keychain boundary. Once registered,
-the Agent receives only the safe alias and invokes the signed CLI:
+With SAFA, a system-authenticated CLI flow can import `report.prod` from an existing logical
+OpenSSH config alias without putting its endpoint or username in Agent-visible input. The import is
+stored as a `needs_setup` draft; SAFA does not pretend that SSH configuration proves a trusted host
+identity or supplies a credential. Those values remain separate broker/Keychain concerns. Once the
+resource has completed trusted setup, the Agent receives only the safe alias and invokes the signed
+CLI:
 
 ```bash
 safa exec report.prod --json \
@@ -83,15 +85,19 @@ Fine-grained command scopes, database-role-aware workflows, Touch ID approval, s
 time-limited grants and immediate revocation are specified for the next authorization phase.
 
 Development is CLI-first and the current product has no custom GUI. macOS system Touch ID, Keychain,
-LocalAuthentication and Authorization Services prompts remain part of the security boundary. Until
-a trusted no-GUI registration path exists, the CLI reports private setup as unavailable instead of
-accepting endpoints or credentials from the Agent.
+LocalAuthentication and Authorization Services prompts remain part of the security boundary.
+Resource add/edit/disable/remove operations require macOS user presence. Add/edit resolve only a
+logical `Host` alias through the broker's read-only `ssh -G` adapter; endpoint, username, password,
+private-key path, sudo password and token flags do not exist. This first import adapter accepts only
+`host.linux`, `host.macos`, and `host.nas`; later database/S3/cache adapters remain separate work.
 
 ## Current diagnostic MVP
 
 Implemented now:
 
 - safe resource discovery by logical alias;
+- system-authenticated `resource add/edit/disable/remove`, with SSH-config imports entering
+  `draft/needs_setup` and trusted-resource retargeting rejected;
 - encrypted inventory and Keychain password storage;
 - strict pinned-host SSH configuration;
 - argument-constrained diagnostics such as `systemctl is-active`, fixed-field process/container
@@ -102,8 +108,8 @@ Implemented now:
 
 Not yet shipped:
 
-- arbitrary shell commands, mutations, sudo and trusted user approval;
-- a system-authenticated local resource registration and update flow;
+- arbitrary shell commands, remote mutations, sudo and execution approval;
+- credential enrollment and host-identity verification for an imported resource draft;
 - persistent audit verification, recovery and credential-reuse warnings;
 - complete Secure Enclave public-key onboarding through the SSH agent channel;
 - signed/notarized universal runtime artifacts and an installable global Skill package.

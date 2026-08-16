@@ -10,14 +10,19 @@ safa doctor --json
 safa setup status --json
 safa resource list|ls --json [--state STATE]
 safa resource show|inspect ALIAS --json
+safa resource add|edit ALIAS --json [--from-ssh-config SSH_ALIAS]
+  [--type RESOURCE_TYPE] [--display-name TEXT]
+safa resource disable|remove ALIAS --json
 safa exec ALIAS --json --intent TEXT [--expected-effect TEXT] [--rollback TEXT]
   [--timeout SECONDS] [--output-limit BYTES] -- ARG...
 ```
 
-Sensitive resource setup occurs in a local, system-authenticated workflow. There are no endpoint,
-password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval flags in
-the Agent-facing CLI. Resource registration and update are unavailable in the current preview;
-Agents must report that limitation without requesting private values.
+Resource lifecycle occurs in a local, system-authenticated workflow. There are no endpoint,
+username, password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval
+flags in the Agent-facing CLI. Add/edit resolve a logical alias through the broker's local OpenSSH
+configuration and create or refresh a draft; they do not complete credential or host-identity setup.
+The adapter accepts `host.linux`, `host.macos`, and `host.nas` only. Disable/remove are available
+only with macOS user presence.
 
 `resource list` and `show` expose only a safe summary. `resource inspect` is a protected read and
 requires a macOS Touch ID/login prompt; denial returns no protected detail. It may return non-secret

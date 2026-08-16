@@ -10,6 +10,10 @@ struct ResourceCommand: AsyncParsableCommand {
             ResourceListCommand.self,
             ResourceShowCommand.self,
             ResourceInspectCommand.self,
+            ResourceAddCommand.self,
+            ResourceEditCommand.self,
+            ResourceDisableCommand.self,
+            ResourceRemoveCommand.self,
         ]
     )
 }
@@ -139,6 +143,145 @@ struct ResourceInspectCommand: AsyncParsableCommand, ResourceDirectoryCommand {
         } catch {
             try brokerFailure(command: "resource.inspect")
         }
+    }
+}
+
+private protocol SSHConfigMutationCommand: ResourceDirectoryCommand {
+    var alias: String { get }
+    var fromSSHConfig: String? { get }
+    var resourceType: String? { get }
+    var displayName: String? { get }
+}
+
+extension SSHConfigMutationCommand {
+    func mutationInput() throws -> (ResourceAlias, ResourceMutationV1) {
+        let parsedAlias = try ResourceAlias(alias)
+        let sourceAlias = try ResourceAlias(fromSSHConfig ?? alias)
+        let parsedType = try resourceType.map { try ResourceTypeIdentifier($0) }
+        return (
+            parsedAlias,
+            ResourceMutationV1(
+                sourceSSHConfigAlias: sourceAlias,
+                resourceType: parsedType,
+                displayName: displayName
+            )
+        )
+    }
+
+    func runMutation(action: ResourceDirectoryActionV1, command: String) async throws {
+        do {
+            let (parsedAlias, mutation) = try mutationInput()
+            try emitDirectory(
+                command: command,
+                reply: try await XPCBrokerAgentClient().queryResourceDirectory(
+                    action: action,
+                    alias: parsedAlias,
+                    state: nil,
+                    mutation: mutation
+                )
+            )
+        } catch let exit as ExitCode {
+            throw exit
+        } catch {
+            try brokerFailure(command: command)
+        }
+    }
+}
+
+struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "add",
+        abstract: "Import a draft resource from a local SSH config alias."
+    )
+    @Argument(help: "Logical resource alias to create.") var alias: String
+    @Option(
+        name: .customLong("from-ssh-config"),
+        help: "Logical OpenSSH Host alias; defaults to the resource alias."
+    ) var fromSSHConfig: String?
+    @Option(name: .customLong("type"), help: "Host type: host.linux, host.macos, or host.nas.")
+    var importedResourceType = "host.linux"
+    @Option(name: .customLong("display-name"), help: "Optional human-readable label.")
+    var displayName: String?
+    @Flag var json = false
+
+    var resourceType: String? { importedResourceType }
+
+    func run() async throws {
+        try await runMutation(action: .add, command: "resource.add")
+    }
+}
+
+struct ResourceEditCommand: AsyncParsableCommand, SSHConfigMutationCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "edit",
+        abstract: "Refresh a resource from a local SSH config alias."
+    )
+    @Argument(help: "Existing logical resource alias.") var alias: String
+    @Option(
+        name: .customLong("from-ssh-config"),
+        help: "Logical OpenSSH Host alias; defaults to the resource alias."
+    ) var fromSSHConfig: String?
+    @Option(
+        name: .customLong("type"),
+        help: "New host type; omitted preserves the current type."
+    )
+    var resourceType: String?
+    @Option(name: .customLong("display-name"), help: "New human-readable label.")
+    var displayName: String?
+    @Flag var json = false
+
+    func run() async throws {
+        try await runMutation(action: .edit, command: "resource.edit")
+    }
+}
+
+private protocol AliasMutationCommand: ResourceDirectoryCommand {
+    var alias: String { get }
+}
+
+extension AliasMutationCommand {
+    func runMutation(action: ResourceDirectoryActionV1, command: String) async throws {
+        do {
+            try emitDirectory(
+                command: command,
+                reply: try await XPCBrokerAgentClient().queryResourceDirectory(
+                    action: action,
+                    alias: try ResourceAlias(alias),
+                    state: nil,
+                    mutation: nil
+                )
+            )
+        } catch let exit as ExitCode {
+            throw exit
+        } catch {
+            try brokerFailure(command: command)
+        }
+    }
+}
+
+struct ResourceDisableCommand: AsyncParsableCommand, AliasMutationCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "disable",
+        abstract: "Disable a resource after macOS user authorization."
+    )
+    @Argument(help: "Logical resource alias to disable.") var alias: String
+    @Flag var json = false
+
+    func run() async throws {
+        try await runMutation(action: .disable, command: "resource.disable")
+    }
+}
+
+struct ResourceRemoveCommand: AsyncParsableCommand, AliasMutationCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "remove",
+        abstract: "Remove a resource after macOS user authorization."
+    )
+    @Argument(help: "Logical resource alias to remove.") var alias: String
+    @Flag var json = false
+
+    func run() async throws {
+        try await runMutation(action: .remove, command: "resource.remove")
     }
 }
 

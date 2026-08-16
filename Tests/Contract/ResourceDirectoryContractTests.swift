@@ -27,6 +27,32 @@ struct ResourceDirectoryContractTests {
         #expect(object["alias"] as? String == "hm-105")
     }
 
+    @Test("resource mutation imports only by logical SSH config alias")
+    func mutationRequestDoesNotCarryPrivateConnectionMaterial() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let request = ResourceDirectoryRequestV1(
+            header: IPCHeader(sentAt: date, deadline: date.addingTimeInterval(30)),
+            action: .add,
+            alias: try ResourceAlias("nas.home"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: try ResourceAlias("home-nas"),
+                resourceType: .hostNAS,
+                displayName: "Home NAS"
+            )
+        )
+
+        let text = try #require(
+            String(data: CanonicalCodec.encode(request), encoding: .utf8)
+        )
+        #expect(text.contains("home-nas"))
+        #expect(text.contains("host.nas"))
+        #expect(!text.contains("endpoint"))
+        #expect(!text.contains("username"))
+        #expect(!text.contains("password"))
+        #expect(!text.contains("private_key"))
+        #expect(!text.contains("sudo"))
+    }
+
     @Test("public summary cannot encode connection or credential material")
     func publicSummaryIsSafe() throws {
         let summary = ResourceSummaryV1(

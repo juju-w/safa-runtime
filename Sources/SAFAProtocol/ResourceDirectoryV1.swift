@@ -5,6 +5,52 @@ public enum ResourceDirectoryActionV1: String, Codable, Sendable {
     case list
     case show
     case inspect
+    case add
+    case edit
+    case disable
+    case remove
+}
+
+/// Safe mutation input accepted from an agent-facing CLI. Private connection
+/// values are resolved by the broker from the user's existing SSH config and
+/// never cross this protocol boundary.
+public struct ResourceMutationV1: Codable, Equatable, Sendable {
+    public let sourceSSHConfigAlias: ResourceAlias
+    public let resourceType: ResourceTypeIdentifier?
+    public let displayName: String?
+
+    public init(
+        sourceSSHConfigAlias: ResourceAlias,
+        resourceType: ResourceTypeIdentifier? = nil,
+        displayName: String? = nil
+    ) {
+        self.sourceSSHConfigAlias = sourceSSHConfigAlias
+        self.resourceType = resourceType
+        self.displayName = displayName
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sourceSSHConfigAlias = "source_ssh_config_alias"
+        case resourceType = "resource_type"
+        case displayName = "display_name"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceSSHConfigAlias = try ResourceAlias(
+            container.decode(String.self, forKey: .sourceSSHConfigAlias)
+        )
+        resourceType = try container.decodeIfPresent(String.self, forKey: .resourceType)
+            .map(ResourceTypeIdentifier.init)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sourceSSHConfigAlias.rawValue, forKey: .sourceSSHConfigAlias)
+        try container.encodeIfPresent(resourceType?.rawValue, forKey: .resourceType)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
+    }
 }
 
 public struct ResourceDirectoryRequestV1: Codable, Equatable, Sendable {
@@ -12,17 +58,20 @@ public struct ResourceDirectoryRequestV1: Codable, Equatable, Sendable {
     public let action: ResourceDirectoryActionV1
     public let alias: ResourceAlias?
     public let state: ResourceState?
+    public let mutation: ResourceMutationV1?
 
     public init(
         header: IPCHeader,
         action: ResourceDirectoryActionV1,
         alias: ResourceAlias? = nil,
-        state: ResourceState? = nil
+        state: ResourceState? = nil,
+        mutation: ResourceMutationV1? = nil
     ) {
         self.header = header
         self.action = action
         self.alias = alias
         self.state = state
+        self.mutation = mutation
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -30,6 +79,7 @@ public struct ResourceDirectoryRequestV1: Codable, Equatable, Sendable {
         case action
         case alias
         case state
+        case mutation
     }
 
     public init(from decoder: any Decoder) throws {
@@ -42,6 +92,7 @@ public struct ResourceDirectoryRequestV1: Codable, Equatable, Sendable {
             alias = nil
         }
         state = try container.decodeIfPresent(ResourceState.self, forKey: .state)
+        mutation = try container.decodeIfPresent(ResourceMutationV1.self, forKey: .mutation)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -50,6 +101,7 @@ public struct ResourceDirectoryRequestV1: Codable, Equatable, Sendable {
         try container.encode(action, forKey: .action)
         try container.encodeIfPresent(alias?.rawValue, forKey: .alias)
         try container.encodeIfPresent(state, forKey: .state)
+        try container.encodeIfPresent(mutation, forKey: .mutation)
     }
 }
 

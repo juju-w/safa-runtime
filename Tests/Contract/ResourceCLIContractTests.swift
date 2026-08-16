@@ -6,21 +6,40 @@ import Testing
 
 @Suite("Safe resource CLI projection")
 struct ResourceCLIContractTests {
-    @Test("resource CLI exposes only implemented CLI-first commands and an ls alias")
+    @Test("resource CLI exposes the complete lifecycle and an ls alias")
     func cliFirstCommandSurface() throws {
         #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
         #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
+        #expect(
+            try SAFACommand.parseAsRoot([
+                "resource", "add", "nas.home", "--from-ssh-config", "home-nas",
+            ]) is ResourceAddCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--from-ssh-config", "home-nas",
+            ]) is ResourceEditCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot(["resource", "disable", "nas.home"])
+                is ResourceDisableCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot(["resource", "remove", "nas.home"])
+                is ResourceRemoveCommand
+        )
         #expect(try SAFACommand.parseAsRoot(["setup", "status"]) is SetupStatusCommand)
 
-        for unavailable in [
-            ["resource", "add", "nas.home"],
-            ["resource", "edit", "nas.home"],
-            ["resource", "disable", "nas.home"],
-            ["resource", "remove", "nas.home"],
+        for forbiddenSecretInput in [
+            ["resource", "add", "nas.home", "--password", "secret"],
+            ["resource", "add", "nas.home", "--host", "10.0.0.7"],
+            ["resource", "add", "nas.home", "--username", "root"],
+            ["resource", "edit", "nas.home", "--private-key", "/tmp/id"],
+            ["resource", "edit", "nas.home", "--sudo-password", "secret"],
             ["setup", "open"],
             ["exec", "nas.home", "--intent", "check", "--sudo", "--", "uptime"],
         ] {
-            #expect(commandParsingFails(unavailable))
+            #expect(commandParsingFails(forbiddenSecretInput))
         }
     }
 

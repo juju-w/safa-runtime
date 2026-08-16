@@ -14,13 +14,16 @@ public protocol ResourceDirectoryHandling: Sendable {
 public actor ResourceDirectoryService: ResourceDirectoryHandling {
     private let vault: any VaultDocumentStoring
     private let disclosureAuthorizer: any ResourceDisclosureAuthorizing
+    private let lifecycle: (any ResourceLifecycleHandling)?
 
     public init(
         vault: any VaultDocumentStoring,
-        disclosureAuthorizer: any ResourceDisclosureAuthorizing
+        disclosureAuthorizer: any ResourceDisclosureAuthorizing,
+        lifecycle: (any ResourceLifecycleHandling)? = nil
     ) {
         self.vault = vault
         self.disclosureAuthorizer = disclosureAuthorizer
+        self.lifecycle = lifecycle
     }
 
     public func handle(
@@ -69,6 +72,117 @@ public actor ResourceDirectoryService: ResourceDirectoryHandling {
                     status: .completed,
                     details: Self.details(resource, allResources: document.resources)
                 )
+            case .add, .edit, .disable, .remove:
+                let alias = try requiredAlias(request)
+                guard let lifecycle else {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_lifecycle_unavailable",
+                        message: "Resource lifecycle management is not available."
+                    )
+                }
+                do {
+                    let resource = try await lifecycle.mutate(
+                        action: request.action,
+                        alias: alias,
+                        mutation: request.mutation,
+                        now: now
+                    )
+                    return ResourceDirectoryReplyV1(
+                        messageID: request.header.messageID,
+                        status: .completed,
+                        summaries: [Self.summary(SafeResourceProjection(resource: resource))]
+                    )
+                } catch ResourceLifecycleError.denied {
+                    return denial(
+                        messageID: request.header.messageID,
+                        code: "resource_change_denied",
+                        message: "The resource change was not authorized by the user."
+                    )
+                } catch ResourceLifecycleError.rateLimited {
+                    return denial(
+                        messageID: request.header.messageID,
+                        code: "resource_change_rate_limited",
+                        message: "Resource change authorization is temporarily rate limited."
+                    )
+                } catch ResourceLifecycleError.mutationRequired {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_mutation_required",
+                        message: "This resource change requires typed import settings."
+                    )
+                } catch ResourceLifecycleError.invalidDisplayName {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_display_name_invalid",
+                        message: "The display name is invalid."
+                    )
+                } catch ResourceLifecycleError.unsupportedResourceType(let resourceType) {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_adapter_unsupported",
+                        message: "SSH config import supports host resource types only.",
+                        details: ["resource_type": .string(resourceType)]
+                    )
+                } catch ResourceServiceError.duplicate(let duplicate) {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_alias_conflict",
+                        message: "The resource alias is already registered.",
+                        details: ["resource": .string(duplicate)]
+                    )
+                } catch ResourceServiceError.notFound(let missing) {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_not_found",
+                        message: "The requested resource is not registered.",
+                        details: ["resource": .string(missing)]
+                    )
+                } catch ResourceServiceError.unsafeConnectionChange {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_retarget_requires_setup",
+                        message: "A trusted resource cannot be retargeted by SSH config refresh."
+                    )
+                } catch ResourceServiceError.unsupportedDiscoveredResourceType(let resourceType) {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_adapter_unsupported",
+                        message: "SSH config import supports host resource types only.",
+                        details: ["resource_type": .string(resourceType)]
+                    )
+                } catch ResourceServiceError.referencedByResource(let owner) {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_still_referenced",
+                        message: "Another live resource still references this resource.",
+                        details: ["resource": .string(owner)]
+                    )
+                } catch SSHConfigResolverError.timedOut {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "ssh_config_timeout",
+                        message: "The local SSH configuration resolver timed out."
+                    )
+                } catch SSHConfigResolverError.unavailable {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "ssh_config_unavailable",
+                        message: "The local OpenSSH configuration resolver is unavailable."
+                    )
+                } catch SSHConfigResolverError.invalidConfiguration {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "ssh_config_invalid",
+                        message: "The SSH config alias did not resolve to a valid host."
+                    )
+                } catch {
+                    return failure(
+                        messageID: request.header.messageID,
+                        code: "resource_change_failed",
+                        message: "The resource change could not be completed."
+                    )
+                }
             }
         } catch ResourceRegistryError.notFound(let alias) {
             return failure(

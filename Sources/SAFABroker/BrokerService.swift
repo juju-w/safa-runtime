@@ -501,9 +501,14 @@ public enum BrokerRuntime {
             workingDirectory: applicationSupport.appendingPathComponent(
                 "runtime", isDirectory: true)
         )
+        let resourceStore = ResourceService(vault: vault, passwordStore: keychain)
         let resourceDirectory = ResourceDirectoryService(
             vault: vault,
             disclosureAuthorizer: ResourceDisclosureAuthorizationService(
+                userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
+            ),
+            lifecycle: ResourceLifecycleService(
+                resources: resourceStore,
                 userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
             )
         )

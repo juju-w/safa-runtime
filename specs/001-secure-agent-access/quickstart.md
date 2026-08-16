@@ -25,6 +25,10 @@ swift run safa version --json
 swift run safa --help
 swift run safa resource --help
 swift run safa resource ls --help
+swift run safa resource add --help
+swift run safa resource edit --help
+swift run safa resource disable --help
+swift run safa resource remove --help
 swift run safa exec --help
 ```
 
@@ -45,12 +49,25 @@ This proves native target assembly, not installation. Broker activation and sign
 remain an open delivery task. The broker rejects clients whose Developer Team, signing identifier,
 effective user, or audit session does not match.
 
-## 4. Validate private registration through tests
+## 4. Validate resource lifecycle through tests
 
-The current CLI-first preview intentionally has no `resource add/edit/disable/remove` commands and
-no private registration UI. `ResourceOnboardingTests` exercises the broker transaction with only a
-synthetic fixture. A real system-authenticated, no-GUI registration path must be implemented before
-the preview is usable against a newly registered resource.
+The CLI-first preview has no private registration UI. Its signed runtime exposes
+`resource add/edit/disable/remove`; each mutation requires a macOS Touch ID/login authorization.
+Add/edit accept only a logical SSH config alias and safe presentation fields:
+
+```bash
+safa resource add nas.home --from-ssh-config home-nas \
+  --type host.nas --display-name "Home NAS" --json
+safa resource edit nas.home --from-ssh-config home-nas --json
+safa resource disable nas.home --json
+safa resource remove nas.home --json
+```
+
+The broker resolves endpoint and username locally through `ssh -G`. It does not import a password,
+private key, or trusted host identity. Add therefore returns `draft/needs_setup`; credential and
+host-identity onboarding remain a later trusted setup step. The adapter accepts only
+`host.linux`, `host.macos`, and `host.nas`. `ResourceLifecycleTests` and `ResourceOnboardingTests`
+validate this boundary using synthetic fixtures.
 
 The safe read surface is:
 
@@ -81,7 +98,7 @@ event. A changed host identity or unsupported command fails closed.
 
 ## MVP boundary
 
-This checkpoint does not yet enable real private registration, broker activation, sudo, shell
-programs, arbitrary mutations, approval grants, recovery, notarized distribution, or the final
-packaged Skill. Those remain separate Spec Kit phases; do not bypass the diagnostic allowlist to
-simulate them.
+This checkpoint does not yet enable credential/host-identity onboarding for a draft, broker
+activation, sudo, shell programs, arbitrary remote mutations, approval grants, recovery, notarized
+distribution, or the final packaged Skill. Those remain separate Spec Kit phases; do not bypass the
+diagnostic allowlist to simulate them.

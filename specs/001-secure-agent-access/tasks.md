@@ -89,8 +89,10 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T040 [US1] Implement signed one-shot password response helper in `Sources/SAFAAskPass/AskPassRuntime.swift` and `Sources/SAFAAskPassExecutable/main.swift`
 - [X] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
 - [X] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
-- [X] T043 [P] [US1] Implement `doctor`, `setup status`, and `resource list|ls/show/inspect` CLI
-  commands in `Sources/SAFACLI/`
+- [X] T043 [P] [US1] Implement `doctor`, `setup status`, and complete
+  `resource list|ls/show/inspect/add/edit/disable/remove` CLI commands in `Sources/SAFACLI/`
+- [X] T043b [US1] Implement the system-authenticated SSH-config draft import lifecycle without
+  endpoint, username, password, key, token, or sudo-password CLI fields
 - [X] T043a [US1] Implement the generic encrypted resource directory, alternate-alias collision
   checks, typed metadata, open credential kinds, typed `list/show/inspect` XPC DTOs, and macOS
   user-presence protection for detailed inspection
