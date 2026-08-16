@@ -6,7 +6,7 @@ import SAFAProtocol
 public enum ResourceLifecycleError: Error, Equatable, Sendable {
     case unsupportedAction
     case mutationRequired
-    case invalidDisplayName
+    case invalidRequest
     case unsupportedResourceType(String)
     case denied
     case rateLimited
@@ -14,7 +14,7 @@ public enum ResourceLifecycleError: Error, Equatable, Sendable {
 
 public protocol ResourceLifecycleHandling: Sendable {
     func mutate(
-        action: ResourceDirectoryActionV1,
+        action: ResourceMutationActionV1,
         alias: ResourceAlias,
         mutation: ResourceMutationV1?,
         now: Date
@@ -24,9 +24,10 @@ public protocol ResourceLifecycleHandling: Sendable {
 public actor ResourceLifecycleService: ResourceLifecycleHandling {
     private let resources: ResourceService
     private let sshConfigResolver: any SSHConfigResolving
+    private let setup: (any ResourceSetupHandling)?
     private let userPresenceAuthorizer: any UserPresenceAuthorizing
     private let cooldown: TimeInterval
-    private var lastAttemptAt: Date?
+    private var lastDeniedAt: Date?
 
     public init(
         resources: ResourceService,
@@ -36,39 +37,56 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
     ) {
         self.resources = resources
         self.sshConfigResolver = sshConfigResolver
+        setup = nil
+        self.userPresenceAuthorizer = userPresenceAuthorizer
+        self.cooldown = max(0, cooldown)
+    }
+
+    init(
+        resources: ResourceService,
+        sshConfigResolver: any SSHConfigResolving = OpenSSHConfigResolver(),
+        setup: any ResourceSetupHandling,
+        userPresenceAuthorizer: any UserPresenceAuthorizing,
+        cooldown: TimeInterval = 10
+    ) {
+        self.resources = resources
+        self.sshConfigResolver = sshConfigResolver
+        self.setup = setup
         self.userPresenceAuthorizer = userPresenceAuthorizer
         self.cooldown = max(0, cooldown)
     }
 
     public func mutate(
-        action: ResourceDirectoryActionV1,
+        action: ResourceMutationActionV1,
         alias: ResourceAlias,
         mutation: ResourceMutationV1?,
         now: Date = Date()
     ) async throws -> Resource {
         switch action {
-        case .add, .edit:
+        case .add, .edit, .setup:
             guard let mutation else { throw ResourceLifecycleError.mutationRequired }
-            try Self.validate(displayName: mutation.displayName)
+            if action == .setup, mutation.resourceType != nil {
+                throw ResourceLifecycleError.invalidRequest
+            }
             if let resourceType = mutation.resourceType,
                 !Self.isSSHHostType(resourceType)
             {
                 throw ResourceLifecycleError.unsupportedResourceType(resourceType.rawValue)
             }
         case .disable, .remove:
-            break
-        case .list, .show, .inspect:
-            throw ResourceLifecycleError.unsupportedAction
+            guard mutation == nil else { throw ResourceLifecycleError.invalidRequest }
         }
 
-        if let lastAttemptAt, now.timeIntervalSince(lastAttemptAt) < cooldown {
+        if let lastDeniedAt, now.timeIntervalSince(lastDeniedAt) < cooldown {
             throw ResourceLifecycleError.rateLimited
         }
-        lastAttemptAt = now
         let approved = await userPresenceAuthorizer.authorize(
             reason: Self.authorizationReason(action: action, alias: alias)
         )
-        guard approved else { throw ResourceLifecycleError.denied }
+        guard approved else {
+            lastDeniedAt = now
+            throw ResourceLifecycleError.denied
+        }
 
         switch action {
         case .add, .edit:
@@ -79,7 +97,7 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
             let draft = DiscoveredResourceDraft(
                 alias: alias,
                 resourceType: mutation.resourceType,
-                displayName: mutation.displayName,
+                displayName: nil,
                 endpoint: resolved.endpoint,
                 username: resolved.username,
                 securityDomain: "local-ssh-config"
@@ -92,22 +110,19 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
                 draft: draft,
                 now: now
             )
+        case .setup:
+            guard let mutation, let setup else {
+                throw ResourceLifecycleError.unsupportedAction
+            }
+            return try await setup.setup(
+                alias: alias,
+                sourceSSHConfigAlias: mutation.sourceSSHConfigAlias,
+                now: now
+            )
         case .disable:
             return try await resources.disable(alias: alias, now: now)
         case .remove:
             return try await resources.remove(alias: alias, now: now)
-        case .list, .show, .inspect:
-            throw ResourceLifecycleError.unsupportedAction
-        }
-    }
-
-    private static func validate(displayName: String?) throws {
-        guard let displayName else { return }
-        guard !displayName.isEmpty,
-            displayName.utf8.count <= 128,
-            !displayName.contains(where: \Character.isNewline)
-        else {
-            throw ResourceLifecycleError.invalidDisplayName
         }
     }
 
@@ -118,16 +133,16 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
     }
 
     private static func authorizationReason(
-        action: ResourceDirectoryActionV1,
+        action: ResourceMutationActionV1,
         alias: ResourceAlias
     ) -> String {
         let verb: String
         switch action {
         case .add: verb = "Add"
         case .edit: verb = "Edit"
+        case .setup: verb = "Set up"
         case .disable: verb = "Disable"
         case .remove: verb = "Remove"
-        case .list, .show, .inspect: verb = "Modify"
         }
         return "\(verb) SAFA resource \(alias.rawValue)"
     }

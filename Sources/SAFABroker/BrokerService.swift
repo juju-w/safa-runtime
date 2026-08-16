@@ -74,17 +74,20 @@ public actor BrokerRequestDispatcher {
     private let agentHandler: any AgentOperationHandling
     private let trustedHandler: any TrustedLocalOperationHandling
     private let resourceDirectoryHandler: any ResourceDirectoryHandling
+    private let resourceMutationHandler: any ResourceMutationHandling
     private let log: SecurityLog
 
     public init(
         agentHandler: any AgentOperationHandling,
         trustedHandler: any TrustedLocalOperationHandling,
         resourceDirectoryHandler: any ResourceDirectoryHandling,
+        resourceMutationHandler: any ResourceMutationHandling,
         log: SecurityLog = SecurityLog()
     ) {
         self.agentHandler = agentHandler
         self.trustedHandler = trustedHandler
         self.resourceDirectoryHandler = resourceDirectoryHandler
+        self.resourceMutationHandler = resourceMutationHandler
         self.log = log
     }
 
@@ -176,6 +179,44 @@ public actor BrokerRequestDispatcher {
         }
     }
 
+    public func dispatchResourceMutation(
+        _ request: Data,
+        caller: CallerIdentity,
+        now: Date = Date()
+    ) async -> Data {
+        do {
+            let message = try CanonicalCodec.decode(
+                ResourceMutationRequestV1.self,
+                from: request,
+                maxBytes: Self.maximumMessageBytes
+            )
+            try validate(message.header, now: now)
+            return try CanonicalCodec.encode(
+                await resourceMutationHandler.handle(message, caller: caller, now: now)
+            )
+        } catch {
+            log.invalidMessage(role: .agent, code: "invalid_resource_mutation_message")
+            let code: String
+            if case ProtocolCodecError.inputTooLarge = error {
+                code = "message_too_large"
+            } else if error as? BrokerDispatchError == .expired {
+                code = "message_expired"
+            } else {
+                code = "invalid_message"
+            }
+            let reply = ResourceMutationReplyV1(
+                messageID: UUID(),
+                status: .failed,
+                error: SAFAErrorPayload(
+                    code: code,
+                    message: "The broker rejected the resource mutation request.",
+                    retryable: false
+                )
+            )
+            return (try? CanonicalCodec.encode(reply)) ?? Data()
+        }
+    }
+
     private func validate(_ header: IPCHeader, now: Date) throws {
         guard header.protocolVersion == IPCHeader.currentVersion else {
             throw BrokerDispatchError.unsupportedProtocol
@@ -239,6 +280,13 @@ private final class AgentXPCExport: NSObject, SAFAAgentBrokerXPC, @unchecked Sen
         let replyBox = ReplyBox(reply)
         Task {
             replyBox.value(await dispatcher.dispatchResourceDirectory(request, caller: caller))
+        }
+    }
+
+    func mutateResource(_ request: Data, reply: @escaping (Data) -> Void) {
+        let replyBox = ReplyBox(reply)
+        Task {
+            replyBox.value(await dispatcher.dispatchResourceMutation(request, caller: caller))
         }
     }
 }
@@ -493,29 +541,42 @@ public enum BrokerRuntime {
         let executableDirectory =
             Bundle.main.executableURL?
             .deletingLastPathComponent() ?? URL(fileURLWithPath: "/usr/local/libexec")
+        let resourceStore = ResourceService(vault: vault, passwordStore: keychain)
         let handler = MVPBrokerHandler(
             vault: vault,
             passwordStore: keychain,
             bindingStore: bindingStore,
+            resourceService: resourceStore,
             askPassExecutable: executableDirectory.appendingPathComponent("safa-askpass"),
             workingDirectory: applicationSupport.appendingPathComponent(
                 "runtime", isDirectory: true)
         )
-        let resourceStore = ResourceService(vault: vault, passwordStore: keychain)
         let resourceDirectory = ResourceDirectoryService(
             vault: vault,
             disclosureAuthorizer: ResourceDisclosureAuthorizationService(
                 userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
-            ),
+            )
+        )
+        let resourceMutation = ResourceMutationService(
             lifecycle: ResourceLifecycleService(
                 resources: resourceStore,
+                setup: OpenSSHResourceSetupService(
+                    resources: resourceStore,
+                    verifier: OpenSSHSetupVerifier(
+                        workingDirectory: applicationSupport.appendingPathComponent(
+                            "runtime",
+                            isDirectory: true
+                        )
+                    )
+                ),
                 userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
             )
         )
         let dispatcher = BrokerRequestDispatcher(
             agentHandler: handler,
             trustedHandler: handler,
-            resourceDirectoryHandler: resourceDirectory
+            resourceDirectoryHandler: resourceDirectory,
+            resourceMutationHandler: resourceMutation
         )
         do {
             try BrokerService(

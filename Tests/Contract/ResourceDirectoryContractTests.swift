@@ -15,7 +15,7 @@ struct ResourceDirectoryContractTests {
                 deadline: date.addingTimeInterval(30)
             ),
             action: .inspect,
-            alias: try ResourceAlias("hm-105")
+            alias: try ResourceAlias("gpu.lab")
         )
 
         let object = try #require(
@@ -24,20 +24,19 @@ struct ResourceDirectoryContractTests {
         )
         #expect(Set(object.keys) == ["header", "action", "alias"])
         #expect(object["action"] as? String == "inspect")
-        #expect(object["alias"] as? String == "hm-105")
+        #expect(object["alias"] as? String == "gpu.lab")
     }
 
     @Test("resource mutation imports only by logical SSH config alias")
     func mutationRequestDoesNotCarryPrivateConnectionMaterial() throws {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let request = ResourceDirectoryRequestV1(
+        let request = ResourceMutationRequestV1(
             header: IPCHeader(sentAt: date, deadline: date.addingTimeInterval(30)),
             action: .add,
             alias: try ResourceAlias("nas.home"),
             mutation: ResourceMutationV1(
                 sourceSSHConfigAlias: try ResourceAlias("home-nas"),
-                resourceType: .hostNAS,
-                displayName: "Home NAS"
+                resourceType: .hostNAS
             )
         )
 
@@ -46,6 +45,7 @@ struct ResourceDirectoryContractTests {
         )
         #expect(text.contains("home-nas"))
         #expect(text.contains("host.nas"))
+        #expect(!text.contains("display_name"))
         #expect(!text.contains("endpoint"))
         #expect(!text.contains("username"))
         #expect(!text.contains("password"))
@@ -56,7 +56,7 @@ struct ResourceDirectoryContractTests {
     @Test("public summary cannot encode connection or credential material")
     func publicSummaryIsSafe() throws {
         let summary = ResourceSummaryV1(
-            alias: "hm-105",
+            alias: "gpu.lab",
             displayName: "GPU worker",
             resourceType: "host.linux",
             state: "active",
@@ -83,7 +83,7 @@ struct ResourceDirectoryContractTests {
     @Test("authorized details remain non-secret and explicitly typed")
     func protectedDetailsAreTypedAndNonSecret() throws {
         let details = ResourceDetailsV1(
-            alias: "hm-105",
+            alias: "gpu.lab",
             displayName: "GPU worker",
             resourceType: "host.linux",
             alternateAliases: ["gpu-worker"],

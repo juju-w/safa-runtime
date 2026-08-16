@@ -157,7 +157,8 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
   fixtures, threat-model tests.
 - **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, trusted no-GUI
   registration, managed Secure Enclave key or password SSH, strict host identity, read-only
-  execution and audit. Registration remains an open gate in the current preview.
+  execution and audit. Existing direct OpenSSH identity/agent registration is implemented in the
+  current preview; managed Secure Enclave/password enrollment and proxy-route setup remain open.
 - **M2 command authority**: arbitrary `exec`/`shell`, policy classifier, trusted approval, sudo,
   scoped grants, revocation, bounded streaming and redaction.
 - **M3 distribution hardening**: universal signed/notarized runtime, Skill packaging, package verification,

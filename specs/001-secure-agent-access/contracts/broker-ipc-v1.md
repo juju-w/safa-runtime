@@ -19,6 +19,7 @@ be enabled in a release build.
 runtimeStatus() -> RuntimeStatus
 listResources(ResourceQuery) -> ResourcePage
 queryResourceDirectory(ResourceDirectoryRequestV1) -> ResourceDirectoryReplyV1
+mutateResource(ResourceMutationRequestV1) -> ResourceMutationReplyV1
 submitExecution(ExecutionSubmission) -> RequestSnapshot
 getRequest(RequestID) -> RequestSnapshot
 waitRequest(RequestID, deadline) -> RequestSnapshot
@@ -33,6 +34,12 @@ verifyAudit() -> AuditIntegrityResult
 queries return only safe summaries. Inspect is broker-authorized with macOS user presence and never
 returns credential references, Keychain locators, passwords, tokens, private/public keys, or host
 fingerprints. New resource-directory work must not add fields to the legacy dynamic broker reply.
+
+`mutateResource` is a separate typed method for `add`, `edit`, `setup`, `disable`, and `remove`.
+Every mutation requires macOS user presence. The request may carry logical aliases and a supported
+resource type, but no endpoint, username, credential locator, key path, host key, or approval value.
+This separation prevents a future query-only client from gaining mutations merely by selecting a
+different action on the query DTO.
 
 This interface accepts no endpoint, username, password, private key, host key, sudo password,
 Keychain identifier, approval decision, or raw grant capability.

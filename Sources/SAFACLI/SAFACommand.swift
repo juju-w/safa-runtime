@@ -95,15 +95,27 @@ extension JSONCommand {
         throw ExitCode(SAFAProcessExit.runtimeFailure.rawValue)
     }
 
+    func invalidInvocation(command: String, message: String) throws -> Never {
+        let error = SAFAErrorPayload(
+            code: "invalid_invocation",
+            message: message,
+            retryable: false
+        )
+        try emit(
+            CLIEnvelope(
+                command: command,
+                status: .failed,
+                data: ["error": .object(error.jsonObject)]
+            ),
+            humanMessage: message
+        )
+        throw ExitCode(SAFAProcessExit.invalidInvocation.rawValue)
+    }
+
     private func exitCode(_ reply: BrokerReply) -> SAFAProcessExit {
         if reply.status == .userActionRequired { return .userActionRequired }
         guard reply.status != .failed else {
-            switch reply.error?.code {
-            case "resource_not_found": return .notFound
-            case "resource_not_ready", "host_identity_changed": return .securityFailure
-            case "transport_failure": return .transportFailure
-            default: return .runtimeFailure
-            }
+            return SAFAProcessExit.map(errorCode: reply.error?.code)
         }
         if case let .object(execution)? = reply.data["execution"],
             case let .integer(remoteExit)? = execution["remote_exit_code"],

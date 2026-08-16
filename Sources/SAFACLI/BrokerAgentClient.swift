@@ -10,11 +10,15 @@ public enum BrokerAgentClientError: Error, Equatable, Sendable {
 public protocol BrokerAgentClient: Sendable {
     func send(_ operation: AgentClientOperation) async throws -> BrokerReply
     func queryResourceDirectory(
-        action: ResourceDirectoryActionV1,
+        action: ResourceQueryActionV1,
         alias: ResourceAlias?,
-        state: ResourceState?,
-        mutation: ResourceMutationV1?
+        state: ResourceState?
     ) async throws -> ResourceDirectoryReplyV1
+    func mutateResource(
+        action: ResourceMutationActionV1,
+        alias: ResourceAlias,
+        mutation: ResourceMutationV1?
+    ) async throws -> ResourceMutationReplyV1
 }
 
 private final class BrokerContinuationBox: @unchecked Sendable {
@@ -64,6 +68,38 @@ private final class ResourceDirectoryContinuationBox: @unchecked Sendable {
     func fail(_ error: any Error) { finish(.failure(error)) }
 
     private func finish(_ result: Result<ResourceDirectoryReplyV1, any Error>) {
+        lock.lock()
+        guard !completed else {
+            lock.unlock()
+            return
+        }
+        completed = true
+        let retainedConnection = connection
+        connection = nil
+        lock.unlock()
+        retainedConnection?.invalidate()
+        continuation.resume(with: result)
+    }
+}
+
+private final class ResourceMutationContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var completed = false
+    private var connection: NSXPCConnection?
+    private let continuation: CheckedContinuation<ResourceMutationReplyV1, any Error>
+
+    init(
+        connection: NSXPCConnection,
+        continuation: CheckedContinuation<ResourceMutationReplyV1, any Error>
+    ) {
+        self.connection = connection
+        self.continuation = continuation
+    }
+
+    func succeed(_ reply: ResourceMutationReplyV1) { finish(.success(reply)) }
+    func fail(_ error: any Error) { finish(.failure(error)) }
+
+    private func finish(_ result: Result<ResourceMutationReplyV1, any Error>) {
         lock.lock()
         guard !completed else {
             lock.unlock()
@@ -133,10 +169,9 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
     }
 
     public func queryResourceDirectory(
-        action: ResourceDirectoryActionV1,
+        action: ResourceQueryActionV1,
         alias: ResourceAlias? = nil,
-        state: ResourceState? = nil,
-        mutation: ResourceMutationV1? = nil
+        state: ResourceState? = nil
     ) async throws -> ResourceDirectoryReplyV1 {
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
@@ -148,8 +183,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
             header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
             action: action,
             alias: alias,
-            state: state,
-            mutation: mutation
+            state: state
         )
         let request = try CanonicalCodec.encode(message)
 
@@ -178,6 +212,66 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                 do {
                     let reply = try CanonicalCodec.decode(
                         ResourceDirectoryReplyV1.self,
+                        from: data,
+                        maxBytes: 2 * 1_048_576
+                    )
+                    guard reply.protocolVersion == IPCHeader.currentVersion,
+                        reply.messageID == message.header.messageID
+                    else {
+                        throw BrokerAgentClientError.invalidReply
+                    }
+                    box.succeed(reply)
+                } catch {
+                    box.fail(error)
+                }
+            }
+        }
+    }
+
+    public func mutateResource(
+        action: ResourceMutationActionV1,
+        alias: ResourceAlias,
+        mutation: ResourceMutationV1? = nil
+    ) async throws -> ResourceMutationReplyV1 {
+        let team = try CodeSigningRequirement.currentTeamIdentifier()
+        let requirement = try CodeSigningRequirement.requirement(
+            teamIdentifier: team,
+            signingIdentifiers: ["dev.safa.broker"]
+        )
+        let now = Date()
+        let message = ResourceMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: action,
+            alias: alias,
+            mutation: mutation
+        )
+        let request = try CanonicalCodec.encode(message)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let connection = NSXPCConnection(machServiceName: BrokerServiceNames.agent)
+            let box = ResourceMutationContinuationBox(
+                connection: connection,
+                continuation: continuation
+            )
+            connection.remoteObjectInterface = NSXPCInterface(
+                with: (any SAFAAgentBrokerXPC).self
+            )
+            connection.setCodeSigningRequirement(requirement)
+            connection.interruptionHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.invalidationHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.resume()
+            guard
+                let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+                    box.fail(BrokerAgentClientError.unavailable)
+                }) as? any SAFAAgentBrokerXPC
+            else {
+                box.fail(BrokerAgentClientError.unavailable)
+                return
+            }
+            proxy.mutateResource(request) { data in
+                do {
+                    let reply = try CanonicalCodec.decode(
+                        ResourceMutationReplyV1.self,
                         from: data,
                         maxBytes: 2 * 1_048_576
                     )

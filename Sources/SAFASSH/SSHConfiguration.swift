@@ -8,6 +8,7 @@ public enum SSHCredentialContext: Equatable, Sendable {
     case none
     case password(childBinding: String, askPassExecutable: URL)
     case secureEnclave(agentSocket: URL)
+    case openSSH(identityFiles: [URL], identityAgent: URL?)
 }
 
 public enum SSHConfigurationError: Error, Equatable, Sendable {
@@ -124,6 +125,21 @@ public struct SSHConfigurationBuilder: Sendable {
             case let .secureEnclave(agentSocket):
                 config +=
                     "    BatchMode yes\n    PasswordAuthentication no\n    PubkeyAuthentication yes\n    IdentityAgent \(agentSocket.path)\n"
+            case let .openSSH(identityFiles, identityAgent):
+                guard !identityFiles.isEmpty || identityAgent != nil else {
+                    throw SSHConfigurationError.missingSSHConnection
+                }
+                config +=
+                    "    BatchMode yes\n    PasswordAuthentication no\n    PubkeyAuthentication yes\n    IgnoreUnknown UseKeychain\n    UseKeychain yes\n"
+                if identityFiles.isEmpty {
+                    config += "    IdentitiesOnly no\n"
+                }
+                for identityFile in identityFiles {
+                    config += "    IdentityFile \(Self.quoteConfig(identityFile.path))\n"
+                }
+                if let identityAgent {
+                    config += "    IdentityAgent \(Self.quoteConfig(identityAgent.path))\n"
+                }
             }
             try writePrivate(Data(config.utf8), to: configURL)
 
@@ -152,6 +168,14 @@ public struct SSHConfigurationBuilder: Sendable {
     public static func posixQuote(_ argument: String) -> String {
         if argument.isEmpty { return "''" }
         return "'" + argument.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    static func quoteConfig(_ value: String) -> String {
+        let escaped =
+            value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     private func hashKnownHost(_ host: String, salt: Data.SubSequence) -> String {

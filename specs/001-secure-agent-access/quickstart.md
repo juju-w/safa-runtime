@@ -52,22 +52,25 @@ effective user, or audit session does not match.
 ## 4. Validate resource lifecycle through tests
 
 The CLI-first preview has no private registration UI. Its signed runtime exposes
-`resource add/edit/disable/remove`; each mutation requires a macOS Touch ID/login authorization.
-Add/edit accept only a logical SSH config alias and safe presentation fields:
+`resource add/edit/setup/disable/remove`; each mutation requires a macOS Touch ID/login
+authorization. Add/edit/setup accept only logical aliases and an optional supported host type:
 
 ```bash
 safa resource add nas.home --from-ssh-config home-nas \
-  --type host.nas --display-name "Home NAS" --json
+  --type host.nas --json
 safa resource edit nas.home --from-ssh-config home-nas --json
+safa resource setup nas.home --from-ssh-config home-nas --json
 safa resource disable nas.home --json
 safa resource remove nas.home --json
 ```
 
-The broker resolves endpoint and username locally through `ssh -G`. It does not import a password,
-private key, or trusted host identity. Add therefore returns `draft/needs_setup`; credential and
-host-identity onboarding remain a later trusted setup step. The adapter accepts only
-`host.linux`, `host.macos`, and `host.nas`. `ResourceLifecycleTests` and `ResourceOnboardingTests`
-validate this boundary using synthetic fixtures.
+The broker resolves endpoint and username locally through `ssh -G`. Add returns
+`draft/needs_setup` and imports no password, private-key bytes, or host identity. Setup separately
+requires an existing `known_hosts` entry and available OpenSSH identity-file/agent route, verifies
+the direct route, and atomically returns `active`. `ProxyJump` and `ProxyCommand` remain unsupported.
+The adapter accepts only `host.linux`, `host.macos`, and `host.nas`.
+`ResourceLifecycleTests`, `ReadOnlySSHJourneyTests`, and `ResourceOnboardingTests` validate this
+boundary using synthetic fixtures and contact no real host.
 
 The safe read surface is:
 

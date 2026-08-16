@@ -11,6 +11,7 @@ public enum BrokerServiceNames {
 public protocol SAFAAgentBrokerXPC {
     func sendAgentMessage(_ request: Data, reply: @escaping (Data) -> Void)
     func queryResourceDirectory(_ request: Data, reply: @escaping (Data) -> Void)
+    func mutateResource(_ request: Data, reply: @escaping (Data) -> Void)
 }
 
 @objc(SAFATrustedLocalBrokerXPC)

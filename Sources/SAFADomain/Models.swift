@@ -129,6 +129,7 @@ public struct CredentialKind: RawRepresentable, Codable, Hashable, Sendable {
 
     public static let sshSecureEnclaveKey = try! Self("ssh_secure_enclave_key")
     public static let sshPassword = try! Self("ssh_password")
+    public static let sshOpenSSH = try! Self("ssh.open-ssh")
     public static let sudoPassword = try! Self("sudo_password")
     public static let databasePassword = try! Self("database.password")
     public static let objectStorageAccessKey = try! Self("object-storage.access-key")

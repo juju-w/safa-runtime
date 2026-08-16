@@ -2,6 +2,7 @@ import Foundation
 import SAFADomain
 import SAFAProtocol
 import Testing
+
 @testable import SAFACLI
 
 @Suite("Safe resource CLI projection")
@@ -21,6 +22,11 @@ struct ResourceCLIContractTests {
             ]) is ResourceEditCommand
         )
         #expect(
+            try SAFACommand.parseAsRoot([
+                "resource", "setup", "nas.home", "--from-ssh-config", "home-nas",
+            ]) is ResourceSetupCommand
+        )
+        #expect(
             try SAFACommand.parseAsRoot(["resource", "disable", "nas.home"])
                 is ResourceDisableCommand
         )
@@ -36,6 +42,7 @@ struct ResourceCLIContractTests {
             ["resource", "add", "nas.home", "--username", "root"],
             ["resource", "edit", "nas.home", "--private-key", "/tmp/id"],
             ["resource", "edit", "nas.home", "--sudo-password", "secret"],
+            ["resource", "add", "nas.home", "--display-name", "Private name"],
             ["setup", "open"],
             ["exec", "nas.home", "--intent", "check", "--sudo", "--", "uptime"],
         ] {

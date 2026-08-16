@@ -37,9 +37,9 @@ or model-visible tools.
 With SAFA, a system-authenticated CLI flow can import `report.prod` from an existing logical
 OpenSSH config alias without putting its endpoint or username in Agent-visible input. The import is
 stored as a `needs_setup` draft; SAFA does not pretend that SSH configuration proves a trusted host
-identity or supplies a credential. Those values remain separate broker/Keychain concerns. Once the
-resource has completed trusted setup, the Agent receives only the safe alias and invokes the signed
-CLI:
+identity or supplies a credential. A separate macOS-authenticated `resource setup` can activate a
+direct route only when the host already exists in `known_hosts` and an existing OpenSSH identity or
+agent succeeds. Once setup completes, the Agent receives only the safe alias and invokes the signed CLI:
 
 ```bash
 safa exec report.prod --json \
@@ -86,7 +86,7 @@ time-limited grants and immediate revocation are specified for the next authoriz
 
 Development is CLI-first and the current product has no custom GUI. macOS system Touch ID, Keychain,
 LocalAuthentication and Authorization Services prompts remain part of the security boundary.
-Resource add/edit/disable/remove operations require macOS user presence. Add/edit resolve only a
+Resource add/edit/setup/disable/remove operations require macOS user presence. Add/edit resolve only a
 logical `Host` alias through the broker's read-only `ssh -G` adapter; endpoint, username, password,
 private-key path, sudo password and token flags do not exist. This first import adapter accepts only
 `host.linux`, `host.macos`, and `host.nas`; later database/S3/cache adapters remain separate work.
@@ -96,8 +96,9 @@ private-key path, sudo password and token flags do not exist. This first import 
 Implemented now:
 
 - safe resource discovery by logical alias;
-- system-authenticated `resource add/edit/disable/remove`, with SSH-config imports entering
-  `draft/needs_setup` and trusted-resource retargeting rejected;
+- system-authenticated `resource add/edit/setup/disable/remove`, with SSH-config imports entering
+  `draft/needs_setup`, direct existing OpenSSH routes activating only after pinned-host verification,
+  and trusted-resource retargeting rejected;
 - encrypted inventory and Keychain password storage;
 - strict pinned-host SSH configuration;
 - argument-constrained diagnostics such as `systemctl is-active`, fixed-field process/container
@@ -109,7 +110,8 @@ Implemented now:
 Not yet shipped:
 
 - arbitrary shell commands, remote mutations, sudo and execution approval;
-- credential enrollment and host-identity verification for an imported resource draft;
+- password/Secure Enclave credential enrollment, first-use host confirmation, and
+  `ProxyJump`/`ProxyCommand` route snapshotting;
 - persistent audit verification, recovery and credential-reuse warnings;
 - complete Secure Enclave public-key onboarding through the SSH agent channel;
 - signed/notarized universal runtime artifacts and an installable global Skill package.

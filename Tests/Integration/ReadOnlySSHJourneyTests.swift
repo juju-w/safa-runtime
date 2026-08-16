@@ -1,11 +1,12 @@
 import Foundation
-import SAFABroker
 import SAFADomain
 import SAFAProtocol
 import SAFASSH
 import SAFATestFixtures
 import SAFATransport
 import Testing
+
+@testable import SAFABroker
 
 @Suite("Read-only synthetic SSH journey")
 struct ReadOnlySSHJourneyTests {
@@ -25,7 +26,21 @@ struct ReadOnlySSHJourneyTests {
             )
         )
         let vault = InMemoryVaultDocumentStore(
-            document: VaultDocument(schemaVersion: 1, resources: [resource])
+            document: VaultDocument(
+                schemaVersion: 1,
+                resources: [resource],
+                credentialReferences: [
+                    CredentialReference(
+                        id: resource.authRef!,
+                        kind: .sshPassword,
+                        storageLocator: Data("synthetic-locator".utf8),
+                        securityDomains: ["synthetic"],
+                        accessClass: .automaticWithinPolicy,
+                        health: .ready,
+                        createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+                    )
+                ]
+            )
         )
         let credentials = InMemoryPasswordSecretStore()
         await credentials.storeSecret(
@@ -77,6 +92,74 @@ struct ReadOnlySSHJourneyTests {
         #expect(!agentSurface.contains("203.0.113.10"))
         #expect(!agentSurface.contains("diagnostic-user"))
         #expect(!agentSurface.contains("synthetic-password"))
+    }
+
+    @Test("an imported OpenSSH identity executes without a password binding")
+    func openSSHJourney() async throws {
+        let resource = JourneyResourceFactory.active(alias: "nas.home")
+        let locator = try OpenSSHCredentialLocatorV1(
+            identityFiles: ["/synthetic/id_ed25519"],
+            identityAgent: nil
+        )
+        let runner = FakeProcessRunner(
+            result: ProcessExecutionResult(
+                termination: .exit,
+                exitCode: 0,
+                stdout: Data("synthetic-host\n".utf8),
+                stderr: Data(),
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                finishedAt: Date(timeIntervalSince1970: 1_700_000_001),
+                stdoutTruncated: false,
+                stderrTruncated: false
+            )
+        )
+        let vault = InMemoryVaultDocumentStore(
+            document: VaultDocument(
+                schemaVersion: 1,
+                resources: [resource],
+                credentialReferences: [
+                    CredentialReference(
+                        id: resource.authRef!,
+                        kind: .sshOpenSSH,
+                        storageLocator: try CanonicalCodec.encode(locator),
+                        securityDomains: ["synthetic"],
+                        accessClass: .automaticWithinPolicy,
+                        health: .ready,
+                        createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+                    )
+                ]
+            )
+        )
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore(),
+            bindingStore: ChildCredentialBindingStore(),
+            transport: SSHTransport(runner: runner),
+            askPassExecutable: URL(fileURLWithPath: "/usr/local/libexec/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("safa-openssh-journey-\(UUID().uuidString)")
+        )
+
+        let reply = await handler.handle(
+            .submitExecution(
+                resourceAlias: resource.alias,
+                command: try CommandSpec.exec(arguments: ["hostname"]),
+                privilege: .user,
+                intent: "Check the synthetic hostname",
+                expectedEffect: nil,
+                rollback: nil
+            ),
+            caller: CallerIdentity(
+                signingIdentifier: "dev.safa.cli",
+                teamIdentifier: "TESTTEAM1",
+                effectiveUserID: 501,
+                auditSessionID: 77
+            ),
+            messageID: UUID()
+        )
+
+        #expect(reply.status == .completed)
+        #expect(await runner.lastInvocation() != nil)
     }
 }
 

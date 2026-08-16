@@ -6,8 +6,8 @@
 - Agent callers MUST pass `--json`; the Skill always does so.
 - Human-readable output is optional and MUST be derived from the same response object.
 - Secrets and encrypted infrastructure metadata are never accepted as ordinary command arguments.
-- Private setup is never accepted through stdin. Resource lifecycle imports only a logical SSH
-  config alias and safe presentation fields; credential and host-identity setup remain broker-only.
+- Private setup is never accepted through stdin. Resource lifecycle imports only logical aliases;
+  host identity and local authentication sources are resolved inside the broker.
 - `--` terminates SAFA options before remote argument vectors.
 
 ## Command surface
@@ -21,9 +21,10 @@ safa resource list|ls --json [--state active]
 safa resource show ALIAS --json
 safa resource inspect ALIAS --json
 safa resource add ALIAS --json [--from-ssh-config SSH_ALIAS]
-  [--type RESOURCE_TYPE] [--display-name TEXT]
+  [--type RESOURCE_TYPE]
 safa resource edit ALIAS --json [--from-ssh-config SSH_ALIAS]
-  [--type RESOURCE_TYPE] [--display-name TEXT]
+  [--type RESOURCE_TYPE]
+safa resource setup ALIAS --json [--from-ssh-config SSH_ALIAS]
 safa resource disable ALIAS --json
 safa resource remove ALIAS --json
 
@@ -36,7 +37,8 @@ This is the complete command surface of the diagnostic preview. Shell, sudo, req
 approval, and audit commands are not advertised until their broker workflows exist. Endpoint,
 username, password, sudo password, private key, host-key approval, and recovery material have no
 Agent-facing flags. Add/edit use the resource alias as the SSH config alias when
-`--from-ssh-config` is omitted.
+`--from-ssh-config` is omitted. Setup does the same and supports only a pre-existing direct
+OpenSSH identity-file/agent route whose host identity is already in `known_hosts`.
 
 ## Response envelope
 
@@ -130,14 +132,17 @@ prompt and, only after approval, may return non-secret endpoint and inventory de
 rate-limit response contains no resource detail object. Inspect never returns a password, token,
 private/public key, host fingerprint, credential identifier, or Keychain locator.
 
-`resource add/edit/disable/remove` are protected mutations and each triggers a macOS-owned
-Touch ID/login prompt. Add/edit send only logical aliases, resource type, and display name to the
-broker. The broker resolves OpenSSH connection settings locally. A new import is always
-`draft/needs_setup`; it contains no credential or trusted host identity. Editing cannot retarget a
-resource that already carries either one. Disable/remove use the broker's revisioned resource
-transaction, and removal is rejected while another live resource references the target. The SSH
-config adapter accepts only `host.linux`, `host.macos`, and `host.nas`; other resource profiles wait
-for their own typed adapter.
+`resource add/edit/setup/disable/remove` are protected mutations and each triggers a macOS-owned
+Touch ID/login prompt. Add/edit send only logical aliases and resource type to the broker. The broker
+resolves OpenSSH connection settings locally. A new import is always `draft/needs_setup`; it contains
+no credential or trusted host identity. Editing cannot retarget a resource that already carries
+either one. Setup imports a prior `known_hosts` trust entry plus an available existing OpenSSH
+identity/agent locator, verifies `hostname` and the expected `id -un`, and commits `active` only if
+the draft revision is unchanged. `ProxyJump` and `ProxyCommand` return `user_action_required` until
+their route can be reviewed and snapshotted. Disable/remove use the same serialized revisioned
+resource transaction, and removal is rejected while another live resource references the target.
+The SSH config adapter accepts only `host.linux`, `host.macos`, and `host.nas`; other resource
+profiles wait for their own typed adapter.
 
 ## Reserved approval-required response
 

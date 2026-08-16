@@ -216,17 +216,22 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 ### Manage resource lifecycle from the CLI
 
 1. `safa resource add ALIAS --from-ssh-config SSH_ALIAS` and `resource edit` carry only logical
-   aliases, an optional display name, and one of the supported host resource types across Agent XPC.
+   aliases and one of the supported host resource types across the mutation XPC method.
 2. The broker asks macOS for device-owner authentication, then runs bounded `ssh -G SSH_ALIAS`
    locally and persists the resolved endpoint and username inside the encrypted vault. Private
    connection values never become CLI arguments or mutation DTO fields.
-3. Imports are `draft/needs_setup`: SSH config discovery does not create a credential or trusted
-   host identity. Credential enrollment and fingerprint verification remain separate work.
-4. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
+3. Imports are `draft/needs_setup`: discovery alone does not create a credential or trusted host
+   identity. `resource setup` separately authenticates the local user, imports a previously trusted
+   `known_hosts` identity and an available existing OpenSSH identity/agent route, then verifies
+   `hostname` and the exact remote username before committing `active`.
+4. Setup currently accepts direct routes, including a local Core Tunnel listener expressed as the
+   resolved endpoint. `ProxyJump` and `ProxyCommand` fail with `user_action_required` until SAFA can
+   review and snapshot their complete route rather than inherit mutable SSH configuration.
+5. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
    identity is rejected so a mutable SSH config cannot silently redirect trusted access.
-5. `resource disable` and `resource remove` also require macOS user presence. Removal preserves
-   relationship integrity and deletes an unshared credential reference through the broker
-   transaction.
+6. `resource disable` and `resource remove` also require macOS user presence. All resource writes
+   pass through one serialized broker transaction gate. Removal preserves relationship integrity
+   and deletes an unshared credential reference through the same transaction.
 
 ### Resource directory extension model
 
@@ -248,22 +253,24 @@ The normative schema and initial host keys are defined in
 
 ### Import an existing SSH host
 
-1. A local human selects an existing alias; the broker resolves it through a read-only
-   `ssh -G <alias>` adapter without importing a private key or password value.
-2. The CLI shows a sanitized route summary: route type, jump requirement, and tunnel health. Private
-   endpoints remain inside the broker boundary.
-3. The broker probes host keys and returns readable SHA-256 fingerprints. The human verifies one
-   through a trusted channel and confirms it through system user presence; raw base64 entry is not a
-   normal flow.
-4. The user chooses an authentication mode:
-   - existing macOS OpenSSH agent/`UseKeychain` identity for parity;
-   - a new device-bound Secure Enclave key for managed hosts;
-   - explicit legacy password onboarding when no key route exists.
-5. The broker runs a non-destructive `hostname; id -un` verification and the CLI reports a bounded,
-   non-secret result.
+1. A local human adds an explicitly declared OpenSSH `Host` alias. The broker resolves it through a
+   bounded read-only `ssh -G <alias>` adapter without importing private-key or password bytes.
+2. A separate `resource setup` authorization imports an existing entry from the user's configured
+   `known_hosts` files. Absence is not silently accepted: the command returns
+   `host_identity_setup_required`.
+3. Setup references only existing readable identity-file paths or an existing SSH-agent socket. The
+   path/socket locator remains encrypted in the broker vault and is never returned by list, show, or
+   inspect. Private-key bytes do not enter SAFA storage.
+4. The broker constructs an isolated, pinned OpenSSH configuration and runs non-destructive
+   `hostname` and `id -un` checks. Authentication as a username other than the imported username
+   fails setup.
+5. Only after successful verification does a revision-checked transaction add the OpenSSH
+   credential reference and mark the resource active.
 
-The execution-time route is snapshotted and host-pinned in the encrypted vault. SAFA does not blindly
-trust later edits to `~/.ssh/config`.
+Execution snapshots the direct endpoint, remote username, trusted host key, and approved local
+OpenSSH credential locator. Later retargeting through `~/.ssh/config` is rejected. Managed Secure
+Enclave onboarding, password entry, first-use host confirmation, and `ProxyJump`/`ProxyCommand`
+snapshotting remain later work.
 
 ### Add sudo capability
 
@@ -280,8 +287,8 @@ trust later edits to `~/.ssh/config`.
 
 ```text
 safa host list --json
-safa host check hm-106 --json
-safa exec hm-106 --json -- systemctl status docker
+safa host check app.prod --json
+safa exec app.prod --json -- systemctl status docker
 ```
 
 The Agent sees aliases, capabilities, health, stable errors, and bounded output. If Core Tunnel is
@@ -292,10 +299,10 @@ down, the response directs the user to start it instead of asking for an IP or p
 | Existing workflow capability | Current SAFA state | Native target state | Priority |
 |---|---|---|---|
 | Business-name/alias resolution | Canonical and alternate alias resolution implemented | Search and import UX over the encrypted directory | P0 |
-| `ssh -G` route inspection | Missing | Broker-owned import adapter with reviewed snapshot | P0 |
-| Core Tunnel listener preflight | Missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
-| Public-key `BatchMode=yes` SSH | Not wired end-to-end | Existing OpenSSH identity plus managed Secure Enclave identity | P0 |
-| Strict host-key checking | Implemented, manual UX | Fingerprint probe/confirmation and rotation flow | P0 |
+| `ssh -G` route inspection | Explicit-host import implemented for direct routes | Reviewed `ProxyJump`/`ProxyCommand` snapshot | P0 |
+| Core Tunnel listener preflight | Direct local-listener routes execute; dedicated health check missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
+| Public-key `BatchMode=yes` SSH | Existing identity-file/agent route wired end-to-end | Managed Secure Enclave identity | P0 |
+| Strict host-key checking | Existing `known_hosts` import and pinned execution implemented | First-use confirmation and rotation flow | P0 |
 | Read-only diagnosis | Narrow allowlist exists | Argument-aware policy that excludes secret-dumping forms | P0 |
 | Per-host sudo in Keychain | Model only | Separate credential, system approval, protected stdin | P1 |
 | One scoped sudo command | Missing | Broker-owned sudo adapter and exact approval | P1 |

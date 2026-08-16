@@ -38,7 +38,16 @@ safa resource add ALIAS --from-ssh-config SSH_ALIAS --json
 ```
 
 Both names are logical aliases, not endpoints. The command creates `draft/needs_setup`; report that
-credential and host-identity setup are still required before execution.
+setup is still required before execution. When the user explicitly asks to complete setup, use:
+
+```bash
+safa resource setup ALIAS --from-ssh-config SSH_ALIAS --json
+```
+
+Setup uses macOS user presence, a pre-existing trusted `known_hosts` entry, and an existing local
+OpenSSH identity or agent. It supports direct routes, including an already running local Core Tunnel
+listener. If SAFA returns a host-identity, authentication, tunnel, or route remediation, report it;
+never collect the missing secret or bypass the failure with raw SSH.
 
 Use `safa resource show ALIAS --json` for a non-interactive safe summary. Run
 `safa resource inspect ALIAS --json` only when the user explicitly asks for protected inventory or
@@ -58,9 +67,9 @@ The current preview exposes bounded, non-sudo argument execution only. Shell pro
 sudo, grants, and approval are roadmap capabilities; do not invent those commands or bypass SAFA.
 
 Resource-directory lifecycle is the one supported local mutation family. Use `resource edit` only
-when the user asks to refresh an SSH-config mapping, and `resource disable/remove` only on an
-explicit request. Every operation relies on the macOS-owned user-presence prompt; never repeat-spam
-or bypass a denial.
+when the user asks to refresh an SSH-config mapping, `resource setup` only when the user asks to
+activate its existing local OpenSSH route, and `resource disable/remove` only on an explicit request.
+Every operation relies on the macOS-owned user-presence prompt; never repeat-spam or bypass a denial.
 
 ## Handle lifecycle states
 

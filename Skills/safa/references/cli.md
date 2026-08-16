@@ -11,7 +11,8 @@ safa setup status --json
 safa resource list|ls --json [--state STATE]
 safa resource show|inspect ALIAS --json
 safa resource add|edit ALIAS --json [--from-ssh-config SSH_ALIAS]
-  [--type RESOURCE_TYPE] [--display-name TEXT]
+  [--type RESOURCE_TYPE]
+safa resource setup ALIAS --json [--from-ssh-config SSH_ALIAS]
 safa resource disable|remove ALIAS --json
 safa exec ALIAS --json --intent TEXT [--expected-effect TEXT] [--rollback TEXT]
   [--timeout SECONDS] [--output-limit BYTES] -- ARG...
@@ -20,9 +21,11 @@ safa exec ALIAS --json --intent TEXT [--expected-effect TEXT] [--rollback TEXT]
 Resource lifecycle occurs in a local, system-authenticated workflow. There are no endpoint,
 username, password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval
 flags in the Agent-facing CLI. Add/edit resolve a logical alias through the broker's local OpenSSH
-configuration and create or refresh a draft; they do not complete credential or host-identity setup.
-The adapter accepts `host.linux`, `host.macos`, and `host.nas` only. Disable/remove are available
-only with macOS user presence.
+configuration and create or refresh a draft. Setup imports a prior `known_hosts` trust entry and an
+available existing OpenSSH identity-file/agent route, verifies the direct route, and atomically marks
+the draft active. It does not accept password, key-path, host-key, or approval input. `ProxyJump` and
+`ProxyCommand` routes require later reviewed route support. The adapter accepts `host.linux`,
+`host.macos`, and `host.nas` only. Setup/disable/remove are available only with macOS user presence.
 
 `resource list` and `show` expose only a safe summary. `resource inspect` is a protected read and
 requires a macOS Touch ID/login prompt; denial returns no protected detail. It may return non-secret
