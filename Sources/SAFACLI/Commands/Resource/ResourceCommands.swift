@@ -13,6 +13,7 @@ struct ResourceCommand: AsyncParsableCommand {
             ResourceEditCommand.self,
             ResourceSetupCommand.self,
             ResourceDisableCommand.self,
+            ResourceEnableCommand.self,
             ResourceRemoveCommand.self,
         ]
     )

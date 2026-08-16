@@ -95,6 +95,16 @@ struct ResourceLifecycleTests {
                 now: Date(timeIntervalSince1970: 1_700_000_000)
             )
         }
+        await #expect(throws: ResourceLifecycleError.invalidRequest) {
+            try await lifecycle.mutate(
+                action: .enable,
+                alias: ResourceAlias("nas.home"),
+                mutation: ResourceMutationV1(
+                    sourceSSHConfigAlias: ResourceAlias("home-nas")
+                ),
+                now: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        }
         #expect(await authorizer.reasons.isEmpty)
     }
 
@@ -182,8 +192,8 @@ struct ResourceLifecycleTests {
         #expect(edited.displayName == nil)
     }
 
-    @Test("disable and remove are real authorized broker transactions")
-    func disableAndRemove() async throws {
+    @Test("disable, re-enable, and remove are real authorized broker transactions")
+    func disableEnableAndRemove() async throws {
         let vault = InMemoryVaultDocumentStore()
         let resources = ResourceService(
             vault: vault,
@@ -207,21 +217,57 @@ struct ResourceLifecycleTests {
             mutation: nil,
             now: Date(timeIntervalSince1970: 1_700_000_001)
         )
-        let removed = try await lifecycle.mutate(
-            action: .remove,
+        let enabled = try await lifecycle.mutate(
+            action: .enable,
             alias: ResourceAlias("nas.home"),
             mutation: nil,
             now: Date(timeIntervalSince1970: 1_700_000_002)
         )
+        let removed = try await lifecycle.mutate(
+            action: .remove,
+            alias: ResourceAlias("nas.home"),
+            mutation: nil,
+            now: Date(timeIntervalSince1970: 1_700_000_003)
+        )
 
         #expect(disabled.state == .disabled)
+        #expect(enabled.state == .active)
         #expect(removed.state == .deleted)
         #expect(
             await authorizer.reasons == [
                 "Disable SAFA resource nas.home",
+                "Enable SAFA resource nas.home",
                 "Remove SAFA resource nas.home",
             ]
         )
+    }
+
+    @Test("enable rejects resources that are not disabled")
+    func enableRequiresDisabledResource() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let resources = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        _ = try await resources.addPasswordResource(
+            PrivateResourceDraft.synthetic(alias: "nas.home"),
+            password: Data("synthetic-password".utf8)
+        )
+        let lifecycle = ResourceLifecycleService(
+            resources: resources,
+            sshConfigResolver: FailingSSHConfigResolver(),
+            userPresenceAuthorizer: LifecyclePresenceAuthorizer(result: true),
+            cooldown: 0
+        )
+
+        await #expect(throws: DomainValidationError.invalidTransition) {
+            try await lifecycle.mutate(
+                action: .enable,
+                alias: ResourceAlias("nas.home"),
+                mutation: nil,
+                now: Date(timeIntervalSince1970: 1_700_000_001)
+            )
+        }
     }
 
     @Test("OpenSSH effective config parser selects typed connection fields")

@@ -69,6 +69,7 @@ sudo, grants, and approval are roadmap capabilities; do not invent those command
 Resource-directory lifecycle is the one supported local mutation family. Use `resource edit` only
 when the user asks to refresh an SSH-config mapping, `resource setup` only when the user asks to
 activate its existing local OpenSSH route, and `resource disable/remove` only on an explicit request.
+Use `resource enable` only when the user explicitly asks to restore a previously disabled resource.
 Every operation relies on the macOS-owned user-presence prompt; never repeat-spam or bypass a denial.
 
 ## Handle lifecycle states

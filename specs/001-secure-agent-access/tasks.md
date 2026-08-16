@@ -79,7 +79,7 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 ### Implementation for User Story 1
 
 - [X] T033 [P] [US1] Implement resource alias validation, safe projections, and registry queries in `Sources/SAFADomain/ResourceRegistry.swift`
-- [X] T034 [US1] Implement private add/edit/disable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
+- [X] T034 [US1] Implement private add/edit/disable/enable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
 - [ ] T035 [P] [US1] Implement a trusted, system-authenticated no-GUI resource registration and
   credential-entry flow without adding secret flags or Agent-controlled stdin
 - [X] T036 [P] [US1] Implement device-bound P-256 key creation and public-key enrollment export in `Sources/SAFACrypto/SecureEnclaveSSHKey.swift`
@@ -90,7 +90,7 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
 - [X] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
 - [X] T043 [P] [US1] Implement `doctor`, `setup status`, and complete
-  `resource list|ls/show/inspect/add/edit/setup/disable/remove` CLI commands in `Sources/SAFACLI/`
+  `resource list|ls/show/inspect/add/edit/setup/disable/enable/remove` CLI commands in `Sources/SAFACLI/`
 - [X] T043b [US1] Implement the system-authenticated SSH-config draft import lifecycle without
   endpoint, username, password, key, token, or sudo-password CLI fields
 - [X] T043c [US1] Implement system-authenticated setup for an existing direct OpenSSH

@@ -3,6 +3,34 @@ import SAFADomain
 
 extension ResourceService {
     @discardableResult
+    public func enable(alias: ResourceAlias, now: Date = Date()) async throws -> Resource {
+        try await mutationGate.withLock { [self] in
+            try await enableUnlocked(alias: alias, now: now)
+        }
+    }
+
+    func enableUnlocked(alias: ResourceAlias, now: Date) async throws -> Resource {
+        var document = try await vault.readDocument()
+        guard
+            let index = document.resources.firstIndex(where: {
+                $0.alias == alias && $0.state != .deleted
+            })
+        else {
+            throw ResourceServiceError.notFound(alias: alias.rawValue)
+        }
+        var resource = document.resources[index]
+        guard resource.state.canTransition(to: .active) else {
+            throw DomainValidationError.invalidTransition
+        }
+        resource.state = .active
+        resource.revision += 1
+        resource.updatedAt = now
+        document.resources[index] = resource
+        try await vault.writeDocument(document)
+        return resource
+    }
+
+    @discardableResult
     public func disable(alias: ResourceAlias, now: Date = Date()) async throws -> Resource {
         try await mutationGate.withLock { [self] in
             try await disableUnlocked(alias: alias, now: now)

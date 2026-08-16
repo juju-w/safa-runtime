@@ -26,6 +26,7 @@ safa resource edit ALIAS --json [--from-ssh-config SSH_ALIAS]
   [--type RESOURCE_TYPE]
 safa resource setup ALIAS --json [--from-ssh-config SSH_ALIAS]
 safa resource disable ALIAS --json
+safa resource enable ALIAS --json
 safa resource remove ALIAS --json
 
 safa exec ALIAS --json \
@@ -132,15 +133,17 @@ prompt and, only after approval, may return non-secret endpoint and inventory de
 rate-limit response contains no resource detail object. Inspect never returns a password, token,
 private/public key, host fingerprint, credential identifier, or Keychain locator.
 
-`resource add/edit/setup/disable/remove` are protected mutations and each triggers a macOS-owned
-Touch ID/login prompt. Add/edit send only logical aliases and resource type to the broker. The broker
-resolves OpenSSH connection settings locally. A new import is always `draft/needs_setup`; it contains
-no credential or trusted host identity. Editing cannot retarget a resource that already carries
-either one. Setup imports a prior `known_hosts` trust entry plus an available existing OpenSSH
-identity/agent locator, verifies `hostname` and the expected `id -un`, and commits `active` only if
-the draft revision is unchanged. `ProxyJump` and `ProxyCommand` return `user_action_required` until
-their route can be reviewed and snapshotted. Disable/remove use the same serialized revisioned
-resource transaction, and removal is rejected while another live resource references the target.
+`resource add/edit/setup/disable/enable/remove` are protected mutations and each triggers a
+macOS-owned Touch ID/login prompt. Add/edit send only logical aliases and resource type to the
+broker. The broker resolves OpenSSH connection settings locally. A new import is always
+`draft/needs_setup`; it contains no credential or trusted host identity. Editing cannot retarget a
+resource that already carries either one. Setup imports a prior `known_hosts` trust entry plus an
+available existing OpenSSH identity/agent locator, verifies `hostname` and the expected `id -un`,
+and commits `active` only if the draft revision is unchanged. `ProxyJump` and `ProxyCommand` return
+`user_action_required` until
+their route can be reviewed and snapshotted. Disable/enable/remove use the same serialized revisioned
+resource transaction. Enable accepts only a disabled resource; removal is rejected while another
+live resource references the target.
 The SSH config adapter accepts only `host.linux`, `host.macos`, and `host.nas`; other resource
 profiles wait for their own typed adapter.
 

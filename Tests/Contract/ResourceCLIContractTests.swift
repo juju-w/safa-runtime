@@ -31,6 +31,10 @@ struct ResourceCLIContractTests {
                 is ResourceDisableCommand
         )
         #expect(
+            try SAFACommand.parseAsRoot(["resource", "enable", "nas.home"])
+                is ResourceEnableCommand
+        )
+        #expect(
             try SAFACommand.parseAsRoot(["resource", "remove", "nas.home"])
                 is ResourceRemoveCommand
         )

@@ -229,9 +229,10 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
    review and snapshot their complete route rather than inherit mutable SSH configuration.
 5. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
    identity is rejected so a mutable SSH config cannot silently redirect trusted access.
-6. `resource disable` and `resource remove` also require macOS user presence. All resource writes
-   pass through one serialized broker transaction gate. Removal preserves relationship integrity
-   and deletes an unshared credential reference through the same transaction.
+6. `resource disable`, `resource enable`, and `resource remove` also require macOS user presence.
+   Enable accepts only a disabled resource and preserves its trusted route. All resource writes pass
+   through one serialized broker transaction gate. Removal preserves relationship integrity and
+   deletes an unshared credential reference through the same transaction.
 
 ### Resource directory extension model
 

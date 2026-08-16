@@ -86,17 +86,18 @@ time-limited grants and immediate revocation are specified for the next authoriz
 
 Development is CLI-first and the current product has no custom GUI. macOS system Touch ID, Keychain,
 LocalAuthentication and Authorization Services prompts remain part of the security boundary.
-Resource add/edit/setup/disable/remove operations require macOS user presence. Add/edit resolve only a
-logical `Host` alias through the broker's read-only `ssh -G` adapter; endpoint, username, password,
-private-key path, sudo password and token flags do not exist. This first import adapter accepts only
-`host.linux`, `host.macos`, and `host.nas`; later database/S3/cache adapters remain separate work.
+Resource add/edit/setup/disable/enable/remove operations require macOS user presence. Add/edit
+resolve only a logical `Host` alias through the broker's read-only `ssh -G` adapter; endpoint,
+username, password, private-key path, sudo password and token flags do not exist. This first import
+adapter accepts only `host.linux`, `host.macos`, and `host.nas`; later database/S3/cache adapters
+remain separate work.
 
 ## Current diagnostic MVP
 
 Implemented now:
 
 - safe resource discovery by logical alias;
-- system-authenticated `resource add/edit/setup/disable/remove`, with SSH-config imports entering
+- system-authenticated `resource add/edit/setup/disable/enable/remove`, with SSH-config imports entering
   `draft/needs_setup`, direct existing OpenSSH routes activating only after pinned-host verification,
   and trusted-resource retargeting rejected;
 - encrypted inventory and Keychain password storage;

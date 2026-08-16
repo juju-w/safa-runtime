@@ -145,6 +145,19 @@ struct ResourceDisableCommand: AsyncParsableCommand, AliasMutationCommand {
     }
 }
 
+struct ResourceEnableCommand: AsyncParsableCommand, AliasMutationCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "enable",
+        abstract: "Re-enable a disabled resource after macOS user authorization."
+    )
+    @Argument(help: "Logical resource alias to enable.") var alias: String
+    @Flag var json = false
+
+    func run() async throws {
+        try await runMutation(action: .enable, command: "resource.enable")
+    }
+}
+
 struct ResourceRemoveCommand: AsyncParsableCommand, AliasMutationCommand {
     static let configuration = CommandConfiguration(
         commandName: "remove",

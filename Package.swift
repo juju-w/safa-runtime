@@ -111,7 +111,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SAFAProtocolContractTests",
-            dependencies: ["SAFADomain", "SAFAProtocol"],
+            dependencies: ["SAFACLI", "SAFADomain", "SAFAProtocol"],
             path: "Tests/Contract",
             swiftSettings: strictConcurrency
         ),

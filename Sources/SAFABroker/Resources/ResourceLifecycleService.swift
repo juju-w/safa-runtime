@@ -73,7 +73,7 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
             {
                 throw ResourceLifecycleError.unsupportedResourceType(resourceType.rawValue)
             }
-        case .disable, .remove:
+        case .disable, .enable, .remove:
             guard mutation == nil else { throw ResourceLifecycleError.invalidRequest }
         }
 
@@ -121,6 +121,8 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
             )
         case .disable:
             return try await resources.disable(alias: alias, now: now)
+        case .enable:
+            return try await resources.enable(alias: alias, now: now)
         case .remove:
             return try await resources.remove(alias: alias, now: now)
         }
@@ -142,6 +144,7 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
         case .edit: verb = "Edit"
         case .setup: verb = "Set up"
         case .disable: verb = "Disable"
+        case .enable: verb = "Enable"
         case .remove: verb = "Remove"
         }
         return "\(verb) SAFA resource \(alias.rawValue)"

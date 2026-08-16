@@ -6,6 +6,7 @@ public enum ResourceMutationActionV1: String, Codable, Sendable {
     case edit
     case setup
     case disable
+    case enable
     case remove
 }
 

@@ -28,6 +28,7 @@ swift run safa resource ls --help
 swift run safa resource add --help
 swift run safa resource edit --help
 swift run safa resource disable --help
+swift run safa resource enable --help
 swift run safa resource remove --help
 swift run safa exec --help
 ```
@@ -52,7 +53,7 @@ effective user, or audit session does not match.
 ## 4. Validate resource lifecycle through tests
 
 The CLI-first preview has no private registration UI. Its signed runtime exposes
-`resource add/edit/setup/disable/remove`; each mutation requires a macOS Touch ID/login
+`resource add/edit/setup/disable/enable/remove`; each mutation requires a macOS Touch ID/login
 authorization. Add/edit/setup accept only logical aliases and an optional supported host type:
 
 ```bash
@@ -61,6 +62,7 @@ safa resource add nas.home --from-ssh-config home-nas \
 safa resource edit nas.home --from-ssh-config home-nas --json
 safa resource setup nas.home --from-ssh-config home-nas --json
 safa resource disable nas.home --json
+safa resource enable nas.home --json
 safa resource remove nas.home --json
 ```
 
