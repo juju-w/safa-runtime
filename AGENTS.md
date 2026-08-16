@@ -116,6 +116,16 @@ swift build -c release
 
 ## Spec Kit and task discipline
 
+- Read `ARCHITECTURE.md` before adding a feature, target, executable, XPC operation, credential type,
+  or CLI command. Architecture changes must update that document in the same pull request.
+- New Agent/XPC wire operations use explicit versioned DTOs; do not add a new dynamic
+  `[String: JSONValue]` contract or depend on synthesized enum encoding for a stable external schema.
+- Keep CLI command parsing, broker use cases, platform adapters, and presentation separate. Do not
+  add behavior to the existing target-wide monolith files when the architecture document assigns it
+  to a feature directory.
+- Capability and security claims in README/UI require matching automated evidence. Never label an
+  operation read-only merely because it does not mutate state if it can expose environment values,
+  credentials, private endpoints, or other sensitive data.
 - Keep `specs/<feature>/spec.md`, `plan.md`, contracts, and `tasks.md` aligned with implementation.
 - Write security-sensitive tests before implementation and record only genuinely completed tasks as
   `[X]`.

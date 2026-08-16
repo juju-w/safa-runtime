@@ -136,6 +136,8 @@ brand assets are available as a [transparent mascot](docs/assets/safa-mascot.web
 [GitHub avatar candidate](docs/assets/safa-github-avatar.png). The same icon is wired into the native
 macOS asset catalog and Skill metadata; publishing those packages remains intentionally disabled.
 
+- [Normative architecture and SSH parity plan](ARCHITECTURE.md)
+- [Initial code architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)
 - [Project constitution](.specify/memory/constitution.md)
 - [Feature specification](specs/001-secure-agent-access/spec.md)
 - [Implementation plan](specs/001-secure-agent-access/plan.md)

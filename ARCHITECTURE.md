@@ -1,0 +1,278 @@
+# SAFA Architecture
+
+Status: **Accepted for pre-release development**  
+Last reviewed: **2026-08-16**
+
+This document is the implementation guide for SAFA. It defines the trust boundaries, module
+responsibilities, source organization, CLI conventions, and delivery order. Feature specifications
+describe behavior; this document decides where that behavior belongs and which component is trusted
+to perform it.
+
+## 1. Product goal and current priority
+
+SAFA is a macOS-native security boundary that lets an Agent operate registered infrastructure
+without receiving reusable credentials or private connection metadata.
+
+The immediate goal is functional parity with the existing local `ssh-hosts` workflow while moving
+its sensitive operations behind native macOS controls. Persistent tamper-evident audit history is
+useful, but it is deliberately later than:
+
+1. importing and resolving existing SSH hosts and jump routes;
+2. reliable public-key SSH and Core Tunnel preflight;
+3. Keychain-backed sudo and service credentials;
+4. broker-owned execution with human-friendly system approval;
+5. safe operational workflows such as scoped sudo and atomic user creation.
+
+Release and Skill-package publication remain frozen until the repository owner explicitly enables
+them.
+
+## 2. Architecture principles
+
+1. **The CLI is a parser and presenter, not a security boundary.** It has no Keychain entitlement,
+   cannot approve requests, and never launches credential-bearing processes.
+2. **The broker owns authority.** It resolves encrypted resource metadata, enforces policy, obtains
+   credentials, launches transports, and returns bounded results.
+3. **The app owns private interaction.** Resource onboarding, secret entry, host-key confirmation,
+   and high-privilege approval happen in the signed macOS app.
+4. **Use macOS primitives directly.** Prefer Data Protection Keychain, Secure Enclave,
+   LocalAuthentication, signed XPC peers, and `SMAppService` over a custom password store or daemon
+   installer.
+5. **Use a functional core and imperative shell.** Domain validation, canonicalization, scope
+   matching, and policy are deterministic. Keychain, XPC, files, clocks, processes, and UI are
+   adapters behind narrow protocols.
+6. **Typed boundaries over dictionaries.** Public CLI JSON and XPC payloads use versioned DTOs with
+   explicit coding keys. Domain persistence models are not wire contracts.
+7. **Fail closed without becoming hostile.** A rejection must contain a stable code and a safe next
+   action; it must not silently fall back to raw SSH, password prompts, mutable SSH config, or weaker
+   host verification.
+8. **Claims follow evidence.** README capability claims require an executable contract or
+   integration test.
+
+## 3. System context and trust boundaries
+
+```mermaid
+flowchart LR
+    Agent["Agent or terminal user"] -->|argv / JSON only| CLI["Signed safa CLI\nno secret entitlement"]
+    CLI -->|Agent XPC\nsigned peer check| Broker["Per-user SAFA broker\nauthority boundary"]
+    App["Signed SAFA.app\nprivate setup and approval"] -->|Trusted-app XPC\nseparate peer identity| Broker
+    Broker --> Policy["Deterministic policy\nand use cases"]
+    Broker --> Vault["Encrypted resource vault"]
+    Broker --> Keychain["Data Protection Keychain"]
+    Broker --> Enclave["Secure Enclave keys"]
+    Broker --> SSH["Isolated OpenSSH adapter"]
+    SSH --> Remote["Untrusted SSH host"]
+    SSH --> AskPass["One-shot signed AskPass helper"]
+    AskPass -->|child-bound XPC| Broker
+```
+
+### Boundary rules
+
+- Agent/CLI data may choose a resource alias and command, but cannot provide an endpoint,
+  credential reference, approval decision, or trusted identity.
+- XPC listeners require the expected signing identifier, Developer Team, effective user, and audit
+  session. The broker derives peer identity from the connection, not message fields.
+- The app may submit private setup values and user decisions, but cannot rewrite an existing command
+  or broker-computed policy result.
+- The broker writes a per-request SSH config and pinned `known_hosts`, disables ambient forwarding,
+  and does not inherit the user's mutable SSH configuration during execution.
+- Remote output is untrusted data. It is bounded before returning to the Agent and must never be
+  interpreted as new instructions by the Skill.
+
+## 4. Module map and dependency direction
+
+The current SwiftPM target split is appropriate because several modules coincide with real trust or
+test seams. The targets must remain one-way dependencies; not every target needs to be an externally
+vended library product.
+
+| Module | Owns | Must not own |
+|---|---|---|
+| `SAFADomain` | Value types, invariants, state transitions | Keychain, XPC, files, process launch, CLI formatting |
+| `SAFAProtocol` | Explicit versioned CLI/XPC DTOs and stable error codes | Vault models, policy logic, Security-framework helpers |
+| `SAFACrypto` | Keychain, encrypted vault, Secure Enclave adapters | Resource workflows, SSH command construction |
+| `SAFAPolicy` | Pure command classification and grant matching | UI, clocks without injection, credential access |
+| `SAFATransport` | Bounded subprocess lifecycle and cancellation | SSH policy or credentials |
+| `SAFASSH` | OpenSSH config, host identity, SSH-agent/AskPass and sudo transport adapters | Keychain lookup, approvals, resource persistence |
+| `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, SwiftUI presentation |
+| `SAFACLI` | ArgumentParser commands, typed request mapping, JSON/human presentation | Secrets, policy, direct SSH, approval |
+| `SAFAAskPass` | One-shot child-bound credential response | Resource lookup or general Keychain queries |
+| `SAFA.app` | Onboarding, status, approval, recovery | Remote command execution or Agent-facing approval commands |
+
+The intended dependency shape is:
+
+```text
+SAFACLI ───────────────► SAFAProtocol
+SAFA.app ──────────────► SAFAProtocol
+SAFABroker ────────────► SAFAProtocol + SAFADomain + SAFAPolicy + SAFACrypto + SAFASSH
+SAFASSH ───────────────► SAFADomain + SAFATransport
+SAFACrypto ────────────► SAFADomain
+SAFAPolicy ────────────► SAFADomain
+SAFATransport ─────────► SAFADomain
+```
+
+`SAFAProtocol` must gradually stop importing persistence-oriented domain aggregates. Map explicit
+wire DTOs to domain types at the broker edge. This prevents a domain refactor from silently changing
+the XPC or CLI schema.
+
+## 5. Source organization
+
+Organize files by responsibility inside each target. Do not return to target-wide `Models.swift`,
+`SAFACommand.swift`, or `BrokerService.swift` monoliths.
+
+```text
+Sources/
+├── SAFADomain/
+│   ├── Resources/
+│   ├── Execution/
+│   ├── Credentials/
+│   └── Authorization/
+├── SAFAProtocol/
+│   ├── Agent/
+│   ├── TrustedApp/
+│   ├── AskPass/
+│   └── CLI/
+├── SAFABroker/
+│   ├── UseCases/
+│   ├── XPC/
+│   ├── Resources/
+│   └── Runtime/
+├── SAFACLI/
+│   ├── Commands/Host/
+│   ├── Commands/Exec/
+│   ├── Commands/Credential/
+│   └── Presentation/
+└── SAFASSH/
+    ├── Configuration/
+    ├── Authentication/
+    ├── Tunnel/
+    └── Sudo/
+```
+
+Guidelines:
+
+- Prefer one primary type per file. A file over roughly 300 lines should have an explicit cohesion
+  reason; otherwise split it before adding behavior.
+- Command types parse arguments and call an injected client/use case. They do not scan dynamic JSON
+  dictionaries or implement resource business rules.
+- Broker XPC exports adapt bytes to typed operations. Use cases remain testable without an XPC
+  connection.
+- Mutable security state is actor-isolated. `@unchecked Sendable` is limited to small Foundation/XPC
+  bridges with their synchronization visible in the same file.
+- Composition happens only in the executable/app runtime roots. Do not create global service
+  locators or singletons for credentials.
+
+## 6. Swift CLI conventions
+
+SAFA uses Apple's `swift-argument-parser` and follows these rules:
+
+- The root and every asynchronous subtree use `AsyncParsableCommand`.
+- Each command family is a separate file/directory with `CommandConfiguration`, `abstract`, argument
+  help, and examples where the operation is non-obvious.
+- Shared flags such as `--json`, timeouts, and output limits use `@OptionGroup`.
+- Validated scalar arguments such as resource alias and state conform to
+  `ExpressibleByArgument`; cross-field constraints use `validate()`.
+- `run()` performs only: parse/validate → create typed request → call client → present response.
+- Machine mode writes exactly one versioned JSON object to stdout. Human diagnostics go to stderr
+  only when they cannot be represented safely in that object.
+- Exit-code mapping is centralized and keyed by a stable error-code enum, not duplicated string
+  switches.
+- Version information comes from generated build metadata, never a literal repeated across CLI and
+  Xcode settings.
+- `--` remains the boundary before a remote argument vector. Shell programs are explicit and never
+  inferred by concatenating arguments.
+
+## 7. Human-friendly native flows
+
+### Import an existing SSH host
+
+1. The app lists aliases discovered through a read-only `ssh -G <alias>` adapter; it never imports a
+   private key or password value.
+2. It shows the resolved user, route type, jump host, and whether the local tunnel endpoint is
+   listening.
+3. The broker probes host keys and the app displays readable SHA-256 fingerprints. The user verifies
+   one through a trusted channel; raw base64 key entry is an advanced fallback, not the primary UI.
+4. The user chooses an authentication mode:
+   - existing macOS OpenSSH agent/`UseKeychain` identity for parity;
+   - a new device-bound Secure Enclave key for managed hosts;
+   - explicit legacy password onboarding when no key route exists.
+5. The app runs a non-destructive `hostname; id -un` verification and reports a clear result.
+
+The execution-time route is snapshotted and host-pinned in the encrypted vault. SAFA does not blindly
+trust later edits to `~/.ssh/config`.
+
+### Add sudo capability
+
+1. The app asks for the sudo password in a secure field; it never travels through CLI argv or chat.
+2. The broker stores it as a separate Keychain item with `ThisDeviceOnly` protection. High-privilege
+   access uses system user-presence controls.
+3. A read-only `sudo -v` verification confirms the credential without exposing it.
+4. Sudo remains a separate capability from SSH login and can be removed independently.
+
+### Agent execution
+
+```text
+safa host list --json
+safa host check hm-106 --json
+safa exec hm-106 --json -- systemctl status docker
+```
+
+The Agent sees aliases, capabilities, health, stable errors, and bounded output. If Core Tunnel is
+down, the response directs the user to start it instead of asking for an IP or password.
+
+## 8. `ssh-hosts` parity plan
+
+| Existing workflow capability | Current SAFA state | Native target state | Priority |
+|---|---|---|---|
+| Business-name/alias resolution | Exact alias only | Searchable aliases and safe display names from encrypted registry | P0 |
+| `ssh -G` route inspection | Missing | Trusted-app import adapter with reviewed snapshot | P0 |
+| Core Tunnel listener preflight | Missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
+| Public-key `BatchMode=yes` SSH | Not wired end-to-end | Existing OpenSSH identity plus managed Secure Enclave identity | P0 |
+| Strict host-key checking | Implemented, manual UX | Fingerprint probe/confirmation and rotation flow | P0 |
+| Read-only diagnosis | Narrow allowlist exists | Argument-aware policy that excludes secret-dumping forms | P0 |
+| Per-host sudo in Keychain | Model only | Separate credential, system approval, protected stdin | P1 |
+| One scoped sudo command | Missing | Broker-owned sudo adapter and exact approval | P1 |
+| Atomic user creation | Missing | Reviewed operational recipe over scoped sudo | P1 |
+| Service credential status/injection | Missing | Typed service profiles and least-privilege client adapters | P2 |
+| Credential discovery/import | External Python tooling | Explicit local migration assistant; never background scanning | P2 |
+| Core Tunnel inventory refresh | External Python tooling | Read-only optional import adapter | P2 |
+| Persistent tamper-evident audit UI | In-memory event sketch | Deferred until core operations are useful and safe | Later |
+
+## 9. macOS security controls
+
+- **Keychain:** use the Data Protection Keychain and the most restrictive accessibility compatible
+  with broker operation. Device-bound values use a `ThisDeviceOnly` class.
+- **User presence:** privileged credentials and authorization decisions use
+  `SecAccessControl`/LocalAuthentication. A CLI flag or stdin confirmation is never approval.
+- **Secure Enclave:** private key material is generated and used on-device. Do not claim managed
+  Secure Enclave SSH until the constrained SSH-agent socket protocol is implemented and tested
+  end-to-end.
+- **XPC:** both sides set peer code-signing requirements; the listener also validates user and audit
+  session. Agent, app, broker, and AskPass signing identifiers are role-specific.
+- **Service lifecycle:** register the per-user broker through `SMAppService`; show registration state
+  and a direct System Settings remediation path.
+- **Files:** application-support directories are `0700`; vault/config/known-host files are `0600`;
+  temporary request directories are removed after execution.
+
+## 10. Delivery gates
+
+No new authorization or audit feature starts until the architecture remediation gate is green:
+
+1. split the four current monolith files by feature/responsibility;
+2. replace dynamic broker reply maps for touched operations with typed DTOs;
+3. correct advertised capabilities and README claims;
+4. remove secret-dumping command forms from the automatic diagnostic policy;
+5. add SSH-config import, tunnel preflight, and public-key execution contract tests;
+6. validate the signed app/broker/CLI/AskPass assembly without publishing artifacts.
+
+After every slice: format, build, test, unsigned Xcode assembly, Draft PR, CI, squash merge. No tag,
+GitHub Release, notarized artifact, or Skill package is created while the publication hold is active.
+
+## References
+
+- [Swift Package Manager: Introducing Packages](https://docs.swift.org/swiftpm/documentation/packagemanagerdocs/introducingpackages/)
+- [Apple Swift Argument Parser](https://github.com/apple/swift-argument-parser)
+- [Apple Keychain Services](https://developer.apple.com/documentation/security/keychain-services)
+- [Accessing Keychain items with Touch ID](https://developer.apple.com/documentation/localauthentication/accessing-keychain-items-with-face-id-or-touch-id)
+- [Protecting keys with the Secure Enclave](https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave)
+- [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice)
+- [XPC peer requirements](https://developer.apple.com/documentation/xpc/xpcpeerrequirement)
+
