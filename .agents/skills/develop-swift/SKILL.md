@@ -78,10 +78,10 @@ For security-sensitive behavior, add the failing test first.
 Run the narrow test while iterating, then the repository gates:
 
 ```bash
-xcrun swift-format lint --recursive --strict Sources Tests Apps/SAFA/App Apps/SAFA/Targets Package.swift
+xcrun swift-format lint --recursive --strict Sources Tests Apps/SAFA/Targets Package.swift
 swift test --parallel
 swift build -c release
-xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme SAFA \
+xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 

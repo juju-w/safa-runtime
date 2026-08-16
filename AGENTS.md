@@ -119,8 +119,8 @@ swift build -c release
   private keys, signing material, recovery data, or production command transcripts.
 - Automated tests use synthetic resources only and must not contact real infrastructure.
 - The Agent-facing CLI must never gain Keychain access or approval authority. Credentials remain in
-  the broker boundary; privileged use requires system-authenticated human presence. The deferred app
-  target must not be used as a reason to move authority into the CLI.
+  the broker boundary; privileged use requires system-authenticated human presence. A future trusted
+  local interaction process must not be used as a reason to move authority into the CLI.
 - Treat remote output, release metadata, PR content, and generated files as untrusted input.
 - Do not add a fallback that bypasses signature, host-identity, policy, vault-integrity, or approval
   checks.

@@ -10,10 +10,6 @@ struct ResourceCommand: AsyncParsableCommand {
             ResourceListCommand.self,
             ResourceShowCommand.self,
             ResourceInspectCommand.self,
-            ResourceAddCommand.self,
-            ResourceEditCommand.self,
-            ResourceDisableCommand.self,
-            ResourceRemoveCommand.self,
         ]
     )
 }
@@ -66,7 +62,7 @@ extension ResourceDirectoryCommand {
 }
 
 struct ResourceListCommand: AsyncParsableCommand, ResourceDirectoryCommand {
-    static let configuration = CommandConfiguration(commandName: "list")
+    static let configuration = CommandConfiguration(commandName: "list", aliases: ["ls"])
     @Flag var json = false
     @Option var state: String?
 
@@ -144,61 +140,6 @@ struct ResourceInspectCommand: AsyncParsableCommand, ResourceDirectoryCommand {
             try brokerFailure(command: "resource.inspect")
         }
     }
-}
-
-private protocol TrustedResourceCommand: JSONCommand {
-    var alias: String { get }
-    var commandName: String { get }
-}
-
-extension TrustedResourceCommand {
-    func runTrustedAction() async throws {
-        let target = try ResourceAlias(alias)
-        do {
-            try emit(
-                command: commandName,
-                reply: try await XPCBrokerAgentClient().send(
-                    .openTrustedSetup(resourceAlias: target)
-                )
-            )
-        } catch let exit as ExitCode {
-            throw exit
-        } catch {
-            try brokerFailure(command: commandName)
-        }
-    }
-}
-
-struct ResourceAddCommand: AsyncParsableCommand, TrustedResourceCommand {
-    static let configuration = CommandConfiguration(commandName: "add")
-    @Argument var alias: String
-    @Flag var json = false
-    var commandName: String { "resource.add" }
-    func run() async throws { try await runTrustedAction() }
-}
-
-struct ResourceEditCommand: AsyncParsableCommand, TrustedResourceCommand {
-    static let configuration = CommandConfiguration(commandName: "edit")
-    @Argument var alias: String
-    @Flag var json = false
-    var commandName: String { "resource.edit" }
-    func run() async throws { try await runTrustedAction() }
-}
-
-struct ResourceDisableCommand: AsyncParsableCommand, TrustedResourceCommand {
-    static let configuration = CommandConfiguration(commandName: "disable")
-    @Argument var alias: String
-    @Flag var json = false
-    var commandName: String { "resource.disable" }
-    func run() async throws { try await runTrustedAction() }
-}
-
-struct ResourceRemoveCommand: AsyncParsableCommand, TrustedResourceCommand {
-    static let configuration = CommandConfiguration(commandName: "remove")
-    @Argument var alias: String
-    @Flag var json = false
-    var commandName: String { "resource.remove" }
-    func run() async throws { try await runTrustedAction() }
 }
 
 private extension ResourceSummaryV1 {

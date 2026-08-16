@@ -81,15 +81,6 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
                     caller: caller,
                     messageID: messageID
                 )
-            case let .openTrustedSetup(resourceAlias):
-                return BrokerReply(
-                    messageID: messageID,
-                    status: .userActionRequired,
-                    data: [
-                        "resource": resourceAlias.map { .string($0.rawValue) } ?? .null,
-                        "trusted_app": .string("SAFA"),
-                    ]
-                )
             case .getRequest, .waitRequest, .cancelRequest, .listGrants, .revokeGrant,
                 .listAudit, .verifyAudit:
                 return unsupported(messageID: messageID)

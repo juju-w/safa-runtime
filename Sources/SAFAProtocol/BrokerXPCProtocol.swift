@@ -94,7 +94,6 @@ public enum AgentClientOperation: Codable, Equatable, Sendable {
     case revokeGrant(id: UUID)
     case listAudit(after: String?, limit: UInt)
     case verifyAudit
-    case openTrustedSetup(resourceAlias: ResourceAlias?)
 }
 
 public enum TrustedAppOperation: Codable, Equatable, Sendable {

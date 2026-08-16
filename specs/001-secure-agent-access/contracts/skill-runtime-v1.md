@@ -13,7 +13,8 @@ The `safa` Skill MUST:
 6. Follow only `next_action` values marked `safe_for_agent: true`.
 7. Never ask the user to paste a password, private key, sudo password, token, endpoint, or recovery
    secret into conversation.
-8. Direct private setup and approval to SAFA's trusted local UI.
+8. Direct private setup and approval to SAFA's trusted, system-authenticated local workflow. If the
+   current runtime provides no such action, report the limitation without collecting private data.
 9. Explain elevated operations to the user without claiming the Agent's risk review is authorization.
 10. Stop on runtime integrity, unsupported platform, vault, host identity, or protocol mismatch errors.
 
@@ -62,13 +63,15 @@ safa.skill/
 ├── agents/openai.yaml
 ├── scripts/safa
 ├── references/cli.md
-├── assets/SAFA.app.zip
+├── assets/runtime.zip
 └── assets/manifest.json
 ```
 
-`manifest.json` contains hashes and public signing metadata, never credentials. A size-constrained
-platform MAY omit the app payload and use a pinned release URL, but the launcher still verifies both
-the committed hash and Apple code identity before execution.
+`runtime.zip` contains the signed `safa`, `safa-broker`, and `safa-askpass` executables plus the
+broker activation payload. `manifest.json` contains per-component hashes and public signing
+metadata, never credentials. A size-constrained platform MAY omit the runtime payload and use a
+pinned release URL, but the launcher still verifies both the committed hash and every Apple code
+identity before execution.
 
 ## Agent-visible safety invariant
 

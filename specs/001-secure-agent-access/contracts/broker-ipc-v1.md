@@ -2,8 +2,9 @@
 
 ## Boundary
 
-The CLI and approval app communicate with the per-user broker over a named XPC/Mach service. The
-broker exposes no TCP listener and no general-purpose secret API.
+The CLI and separately signed trusted local processes communicate with the per-user broker over
+named XPC/Mach services. The broker exposes no TCP listener and no general-purpose secret API. The
+current preview ships no custom trusted-interaction UI client.
 
 Before accepting a message, each side validates the peer's code-signing requirement. The broker also
 checks effective user and audit session. Distribution builds accept only the expected Developer Team,
@@ -26,7 +27,6 @@ listGrants(GrantQuery) -> GrantPage
 revokeGrant(GrantID) -> GrantSnapshot
 listAudit(AuditQuery) -> AuditPage
 verifyAudit() -> AuditIntegrityResult
-openTrustedSetup(SetupIntent) -> UserActionSnapshot
 ```
 
 `queryResourceDirectory` is the typed v1 path for `list`, `show`, and protected `inspect`. Public
@@ -37,7 +37,7 @@ fingerprints. New resource-directory work must not add fields to the legacy dyna
 This interface accepts no endpoint, username, password, private key, host key, sudo password,
 Keychain identifier, approval decision, or raw grant capability.
 
-### Trusted app interface
+### Reserved trusted local interface
 
 ```text
 beginPrivateSetup(PrivateSetupDraft) -> SetupSession
@@ -50,9 +50,10 @@ exportRecovery(RecoveryOptions, AuthenticationContextProof) -> RecoveryResult
 importRecovery(RecoveryPackage, AuthenticationContextProof) -> RecoveryResult
 ```
 
-The broker accepts approval only from the separately identified app peer. The app may choose among
-broker-proposed scopes but cannot replace the command, target, risk findings, or privilege ceiling in
-an existing request.
+The broker will accept future approval only from a separately identified trusted local peer. That
+peer may choose among broker-proposed scopes but cannot replace the command, target, risk findings,
+or privilege ceiling in an existing request. The source-level `TrustedApp` name is an internal v1
+protocol identifier, not evidence that a GUI is part of the current product.
 
 ## Message properties
 

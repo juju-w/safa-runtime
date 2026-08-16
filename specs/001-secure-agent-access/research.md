@@ -13,7 +13,7 @@ concurrency checking also helps isolate mutable request/grant state.
 **Alternatives considered**:
 
 - **Rust**: strong memory-safety and CLI tooling, but the macOS trust surface would still require
-  Objective-C/C bridges and a separately maintained native approval app.
+  Objective-C/C bridges and a separately maintained native interaction component.
 - **Go**: good static CLI distribution, but cgo and native UI/XPC integration add a second security
   implementation layer.
 - **Python**: excellent for prototypes but inappropriate as the trusted long-lived broker and signed
@@ -43,21 +43,20 @@ part of the system.
 
 ## 3. Process and trust-boundary architecture
 
-**Decision**: Split the product into four signed components:
+**Decision**: Split the current runtime into three signed components:
 
 1. `safa` CLI, which has no credential entitlements;
 2. a per-user `SAFABroker` launch agent, which owns protected state and execution;
-3. `SAFA.app`, which owns onboarding, approval presentation, revocation, and audit UI;
-4. a one-shot signed askpass helper used only as a child of an approved broker execution.
+3. a one-shot signed askpass helper used only as a child of an approved broker execution.
 
-**Delivery update**: Component 3 is deferred during the CLI-first parity phase. Do not add new
-SwiftUI, menu-bar, dashboard, or custom approval work. Preserve its distinct identity as a future
-trusted interaction host while system Keychain and LocalAuthentication prompts enforce the native
-human-presence checks that are currently implementable without product GUI.
+**Delivery update**: The CLI-first parity phase has no custom GUI target. A future trusted local
+interaction process requires its own specification and signing identity; it is not part of the
+current build. System Keychain and LocalAuthentication prompts enforce the native human-presence
+checks that are implementable without product GUI.
 
 Use named XPC/Mach services rather than TCP. Require the expected signing identifier, team identity,
-entitlement, effective user, and audit session on both CLI-to-broker and app-to-broker connections.
-Register the broker as a per-user launch agent embedded in the app.
+entitlement, effective user, and audit session on every broker connection. Broker activation remains
+an explicit delivery task and must not rely on an undeclared application bundle.
 
 **Rationale**: The Agent-facing CLI must remain incapable of reading Keychain items or approving its
 own request. XPC supplies peer process identity and code-signature requirement APIs; a per-user agent
@@ -70,7 +69,7 @@ avoids a privileged system daemon and public listener.
 - **Loopback HTTP service**: rejected because bearer-token authentication and a listening port add a
   new replay and cross-process attack surface.
 - **Unix socket without peer signing**: file permissions identify a user, not an approved binary;
-  same-user malware could impersonate the CLI or approval UI.
+  same-user malware could impersonate the CLI or a future trusted local peer.
 - **Root daemon**: unnecessary for remote SSH and increases blast radius.
 
 **Sources**:
@@ -156,8 +155,9 @@ with it.
 
 **Decision**: Make execution asynchronous at the protocol level. The broker creates an immutable
 request, computes its fingerprint, evaluates deterministic policy, and either executes it or returns
-`approval_required`. The app displays the exact target alias, sanitized command, privilege, reasons,
-intent, expected effect, rollback, and proposed scope. LocalAuthentication proves user presence.
+`approval_required`. A future separately signed local workflow presents the exact target alias,
+sanitized command, privilege, reasons, intent, expected effect, rollback, and proposed scope.
+LocalAuthentication proves user presence; the current diagnostic preview does not expose this flow.
 
 After approval, issue a random capability with only a stored hash and bind it to:
 
@@ -173,9 +173,9 @@ the request; the broker associates the approved capability internally. Exact app
 Session and full-access grants are visible and revocable.
 
 **Rationale**: A CLI command such as `safa approve` could be invoked by the same Agent and therefore
-cannot prove human approval. A native authentication prompt and separate signed app establish an
-independent user-presence channel. Binding the grant to immutable request properties prevents replay
-and target/command substitution.
+cannot prove human approval. A native authentication prompt and separately signed trusted process
+establish an independent user-presence channel. Binding the grant to immutable request properties
+prevents replay and target/command substitution.
 
 **Alternatives considered**:
 
@@ -230,15 +230,15 @@ rollback but does not claim remote immutability.
 
 ## 9. Skill-first packaging
 
-**Decision**: Publish a minimal `safa` Skill containing `SKILL.md`, UI metadata, a thin launcher,
-concise CLI reference, and a pinned signed/notarized universal `SAFA.app` release payload. The
-launcher verifies platform, version, bundle identifier, Developer ID/team identity, code signature,
-and package manifest before first activation. It does not contain credentials and does not download
-or execute an unverified installer.
+**Decision**: Publish a minimal `safa` Skill containing `SKILL.md`, display metadata, a thin launcher,
+concise CLI reference, and a pinned signed/notarized universal runtime payload. The launcher verifies
+platform, version, per-component identifiers, Developer ID/team identity, code signatures, and the
+package manifest before first activation. It does not contain credentials and does not download or
+execute an unverified installer.
 
-If a Skill platform enforces artifact-size limits, publish the app as a version-pinned release asset
-and have the bundled bootstrap download it over TLS, verify a committed SHA-256 manifest and Apple
-code signature, then activate it. `latest` URLs and `curl | sh` are prohibited.
+If a Skill platform enforces artifact-size limits, publish the runtime as a version-pinned release
+asset and have the bundled bootstrap download it over TLS, verify a committed SHA-256 manifest and
+all Apple code identities, then activate it. `latest` URLs and `curl | sh` are prohibited.
 
 **Rationale**: Skill installation is the intended user journey. The Skill must remain token-efficient
 while the native runtime provides the actual security boundary.

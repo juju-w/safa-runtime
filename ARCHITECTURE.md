@@ -26,12 +26,10 @@ useful, but it is deliberately later than:
 4. broker-owned execution with human-friendly system approval;
 5. safe operational workflows such as scoped sudo and atomic user creation.
 
-Delivery is CLI-first. The existing `SAFA.app` target is retained as a deferred prototype and build
-compatibility surface, but the parity phase adds no new window, menu-bar feature, dashboard, custom
-approval UI, or SwiftUI workflow. System-provided Touch ID, Keychain, LocalAuthentication, and
-Authorization Services prompts are security controls rather than product GUI. If a safe operation
-cannot yet be completed through those controls, SAFA returns `user_action_required` instead of
-accepting a secret or approval through the Agent-facing CLI.
+Delivery is CLI-first and the current product has no custom GUI target. System-provided Touch ID,
+Keychain, LocalAuthentication, and Authorization Services prompts are security controls rather than
+product UI. If a safe operation cannot yet be completed through those controls, SAFA returns
+`user_action_required` instead of accepting a secret or approval through the Agent-facing CLI.
 
 Release and Skill-package publication remain frozen until the repository owner explicitly enables
 them.
@@ -43,8 +41,8 @@ them.
 2. **The broker owns authority.** It resolves encrypted resource metadata, enforces policy, obtains
    credentials, launches transports, and returns bounded results.
 3. **macOS owns human presence.** During the CLI-first phase, privileged credential use and human
-   confirmation rely on system-provided Keychain and LocalAuthentication interaction. The existing
-   app is deferred; its authority never moves into the Agent-facing CLI.
+   confirmation rely on system-provided Keychain and LocalAuthentication interaction. That
+   authority never moves into the Agent-facing CLI.
 4. **Use macOS primitives directly.** Prefer Data Protection Keychain, Secure Enclave,
    LocalAuthentication, signed XPC peers, and `SMAppService` over a custom password store or daemon
    installer.
@@ -70,7 +68,6 @@ flowchart LR
     CLI -->|Agent XPC\nsigned peer check| Broker["Per-user SAFA broker\nauthority boundary"]
     Human["Local human"] -->|Touch ID / system prompt| Native["macOS Security UI\nno custom product GUI"]
     Native -->|user presence result| Broker
-    App["Deferred SAFA.app prototype"] -.->|future trusted XPC only| Broker
     Broker --> Policy["Deterministic policy\nand use cases"]
     Broker --> Vault["Encrypted resource vault"]
     Broker --> Keychain["Data Protection Keychain"]
@@ -93,8 +90,8 @@ flowchart LR
   session. The broker derives peer identity from the connection, not message fields.
 - The Agent-facing CLI cannot submit a secret or approval. A system-authenticated local workflow may
   confirm a broker-computed request but cannot rewrite its target, command, or policy result.
-- The deferred app target is not part of current feature delivery. If it is reactivated later, it
-  retains a separate signing identity and trusted XPC contract.
+- A future trusted local-interaction process, if specified, must retain a separate signing identity
+  and XPC contract. No such product UI ships in the current phase.
 - The broker writes a per-request SSH config and pinned `known_hosts`, disables ambient forwarding,
   and does not inherit the user's mutable SSH configuration during execution.
 - Remote output is untrusted data. It is bounded before returning to the Agent and must never be
@@ -117,13 +114,11 @@ vended library product.
 | `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, product presentation |
 | `SAFACLI` | ArgumentParser commands, typed request mapping, JSON/human presentation | Secrets, policy, direct SSH, approval |
 | `SAFAAskPass` | One-shot child-bound credential response | Resource lookup or general Keychain queries |
-| `SAFA.app` | Deferred prototype and future trusted local interaction host | New parity-phase GUI, remote execution, Agent-facing approval commands |
 
 The intended dependency shape is:
 
 ```text
 SAFACLI ───────────────► SAFAProtocol
-SAFA.app ──────────────► SAFAProtocol
 SAFABroker ────────────► SAFAProtocol + SAFADomain + SAFAPolicy + SAFACrypto + SAFASSH
 SAFASSH ───────────────► SAFADomain + SAFATransport
 SAFACrypto ────────────► SAFADomain
@@ -179,7 +174,7 @@ Guidelines:
   connection.
 - Mutable security state is actor-isolated. `@unchecked Sendable` is limited to small Foundation/XPC
   bridges with their synchronization visible in the same file.
-- Composition happens only in the executable/app runtime roots. Do not create global service
+- Composition happens only in executable runtime roots. Do not create global service
   locators or singletons for credentials.
 
 ## 6. Swift CLI conventions
@@ -282,7 +277,7 @@ down, the response directs the user to start it instead of asking for an IP or p
 | Existing workflow capability | Current SAFA state | Native target state | Priority |
 |---|---|---|---|
 | Business-name/alias resolution | Canonical and alternate alias resolution implemented | Search and import UX over the encrypted directory | P0 |
-| `ssh -G` route inspection | Missing | Trusted-app import adapter with reviewed snapshot | P0 |
+| `ssh -G` route inspection | Missing | Broker-owned import adapter with reviewed snapshot | P0 |
 | Core Tunnel listener preflight | Missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
 | Public-key `BatchMode=yes` SSH | Not wired end-to-end | Existing OpenSSH identity plus managed Secure Enclave identity | P0 |
 | Strict host-key checking | Implemented, manual UX | Fingerprint probe/confirmation and rotation flow | P0 |
@@ -321,8 +316,8 @@ No new authorization or audit feature starts until the architecture remediation 
 3. correct advertised capabilities and README claims;
 4. remove secret-dumping command forms from the automatic diagnostic policy;
 5. add SSH-config import, tunnel preflight, and public-key execution contract tests;
-6. validate the signed broker/CLI/AskPass boundaries and keep the deferred app target buildable
-   without adding GUI work or publishing artifacts.
+6. validate the signed broker/CLI/AskPass boundaries without adding GUI work or publishing
+   artifacts.
 
 After every slice: format, build, test, unsigned Xcode assembly, Draft PR, CI, squash merge. No tag,
 GitHub Release, notarized artifact, or Skill package is created while the publication hold is active.

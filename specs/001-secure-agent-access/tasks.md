@@ -18,10 +18,10 @@ tests first and confirm they fail before the matching implementation.
 **Purpose**: Establish the native project, test layout, and reproducible build surface.
 
 - [X] T001 Create SwiftPM products and dependency graph from `plan.md` in `Package.swift`
-- [X] T002 Create the signed app, broker launch-agent, CLI, and askpass targets in `Apps/SAFA/SAFA.xcodeproj/project.pbxproj`
+- [X] T002 Create the broker, CLI, AskPass, and native runtime aggregate targets in `Apps/SAFA/SAFA.xcodeproj/project.pbxproj`
 - [X] T003 [P] Add Debug and Release signing/build settings in `Apps/SAFA/Config/BuildSettings.xcconfig`
 - [X] T004 [P] Add component Info.plist and entitlement templates in `Apps/SAFA/Config/`
-- [X] T005 [P] Create unit, contract, integration, security, UI, and fixture directories under `Tests/`
+- [X] T005 [P] Create unit, contract, integration, security, and fixture directories under `Tests/`
 - [X] T006 [P] Add Swift format/lint and strict-concurrency configuration in `.swift-format` and `Package.swift`
 - [X] T007 [P] Add macOS build and test workflow without signing secrets in `.github/workflows/ci.yml`
 - [X] T008 Document third-party license obligations for Swift Argument Parser in `THIRD_PARTY_NOTICES.md`
@@ -51,7 +51,8 @@ tests first and confirm they fail before the matching implementation.
 - [X] T023 Implement the per-user broker listener and bounded request dispatcher in `Sources/SAFABroker/BrokerService.swift`
 - [X] T024 [P] Implement sanitized OSLog events with private-by-default fields in `Sources/SAFABroker/SecurityLog.swift`
 - [X] T025 [P] Add an in-memory fake vault, fake approval provider, and fake transport in `Tests/Fixtures/Fakes/`
-- [X] T026 Wire the broker launch-agent payload and registration service in `Apps/SAFA/BrokerLaunchAgent/` and `Apps/SAFA/App/BrokerRegistration.swift`
+- [ ] T026 Wire the broker launch-agent payload to a reviewed, system-authenticated no-GUI
+  activation flow; `Apps/SAFA/BrokerLaunchAgent/` currently contains only the payload
 
 **Checkpoint**: Protocol, encrypted state, peer validation, and deterministic test doubles work
 without a real server or credential.
@@ -79,7 +80,8 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 
 - [X] T033 [P] [US1] Implement resource alias validation, safe projections, and registry queries in `Sources/SAFADomain/ResourceRegistry.swift`
 - [X] T034 [US1] Implement private add/edit/disable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
-- [X] T035 [P] [US1] Build trusted resource onboarding and credential entry views in `Apps/SAFA/App/Onboarding/`
+- [ ] T035 [P] [US1] Implement a trusted, system-authenticated no-GUI resource registration and
+  credential-entry flow without adding secret flags or Agent-controlled stdin
 - [X] T036 [P] [US1] Implement device-bound P-256 key creation and public-key enrollment export in `Sources/SAFACrypto/SecureEnclaveSSHKey.swift`
 - [X] T037 [P] [US1] Implement Keychain password credential creation and lookup in `Sources/SAFACrypto/PasswordCredential.swift`
 - [X] T038 [US1] Implement isolated SSH configuration and strict known-host management in `Sources/SAFASSH/SSHConfiguration.swift`
@@ -87,7 +89,8 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T040 [US1] Implement signed one-shot password response helper in `Sources/SAFAAskPass/AskPassRuntime.swift` and `Sources/SAFAAskPassExecutable/main.swift`
 - [X] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
 - [X] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
-- [X] T043 [P] [US1] Implement `doctor`, `setup`, and `resource` CLI commands in `Sources/SAFACLI/SAFACommand.swift`
+- [X] T043 [P] [US1] Implement `doctor`, `setup status`, and `resource list|ls/show/inspect` CLI
+  commands in `Sources/SAFACLI/`
 - [X] T043a [US1] Implement the generic encrypted resource directory, alternate-alias collision
   checks, typed metadata, open credential kinds, typed `list/show/inspect` XPC DTOs, and macOS
   user-presence protection for detailed inspection
@@ -123,9 +126,12 @@ a 15-minute command scope, reject command/target mutation, and revoke the grant.
 - [ ] T054 [P] [US2] Implement deterministic risk findings and deny/approval precedence in `Sources/SAFAPolicy/PolicyEngine.swift`
 - [ ] T055 [US2] Implement request state machine and asynchronous wait/cancel lifecycle in `Sources/SAFABroker/RequestService.swift`
 - [ ] T056 [US2] Implement exact, prefix, and full-access scope matching with monotonic expiry in `Sources/SAFAPolicy/GrantMatcher.swift`
-- [ ] T057 [US2] Implement LocalAuthentication-backed approval decisions in `Apps/SAFA/App/Approvals/ApprovalAuthenticator.swift`
-- [ ] T058 [P] [US2] Build immutable approval presentation and scope selection UI in `Apps/SAFA/App/Approvals/ApprovalView.swift`
-- [ ] T059 [US2] Implement trusted-app approval IPC and grant issuance in `Sources/SAFABroker/ApprovalService.swift`
+- [ ] T057 [US2] Implement LocalAuthentication-backed approval decisions behind a broker-owned
+  protocol in `Sources/SAFABroker/ApprovalAuthenticator.swift`
+- [ ] T058 [P] [US2] Specify an immutable, system-authenticated no-GUI approval presentation and
+  scope-selection workflow before implementation
+- [ ] T059 [US2] Implement separately signed trusted-local approval IPC and grant issuance in
+  `Sources/SAFABroker/ApprovalService.swift`
 - [ ] T060 [US2] Implement explicit sudo command composition and protected stdin injection in `Sources/SAFASSH/SudoExecutor.swift`
 - [ ] T061 [US2] Implement `shell`, request wait/get/cancel, and risk-review fields in `Sources/SAFACLI/Commands/`
 - [ ] T062 [US2] Integrate policy, grants, approval, exec/shell, TTY, timeout, cancellation, and sudo in `Sources/SAFABroker/ExecutionService.swift`
@@ -154,11 +160,12 @@ no other endpoint-and-credential combination becomes usable.
 ### Implementation for User Story 3
 
 - [ ] T068 [P] [US3] Implement security-domain credential reuse detection in `Sources/SAFABroker/CredentialIsolationService.swift`
-- [ ] T069 [US3] Add reuse warnings and explicit acceptance to trusted onboarding in `Apps/SAFA/App/Onboarding/CredentialScopeView.swift`
+- [ ] T069 [US3] Add reuse warnings and explicit acceptance to the trusted local registration flow
 - [ ] T070 [US3] Implement vault integrity, rollback, copied-installation, and fail-closed health states in `Sources/SAFACrypto/VaultIntegrityService.swift`
 - [ ] T071 [US3] Implement encrypted recovery export/import excluding device-bound private keys in `Sources/SAFACrypto/RecoveryPackage.swift`
-- [ ] T072 [US3] Build recovery and reenrollment flow in `Apps/SAFA/App/Recovery/`
-- [ ] T073 [US3] Surface explicit threat-model/security-state limits in `Apps/SAFA/App/SecurityStatusView.swift` and `Sources/SAFACLI/Commands/DoctorCommand.swift`
+- [ ] T072 [US3] Build a system-authenticated no-GUI recovery and reenrollment flow
+- [ ] T073 [US3] Surface explicit threat-model/security-state limits through
+  `Sources/SAFACLI/Commands/DoctorCommand.swift`
 
 **Checkpoint**: Security claims are supported by tests and do not overpromise protection after full
 local administrator compromise.
@@ -185,7 +192,8 @@ request, complete trusted setup, and execute through the pinned signed runtime.
 - [ ] T078 [P] [US4] Generate matching display metadata in `Skills/safa/agents/openai.yaml`
 - [ ] T079 [P] [US4] Write the versioned compact Agent CLI reference in `Skills/safa/references/cli.md`
 - [ ] T080 [US4] Implement the macOS-only thin runtime resolver and verifier in `Skills/safa/scripts/safa`
-- [ ] T081 [US4] Implement universal app assembly, manifest generation, and pinned Skill packaging in `Scripts/build-release.sh` and `Scripts/package-skill.sh`
+- [ ] T081 [US4] Implement universal runtime assembly, per-component manifest generation, and pinned
+  Skill packaging in `Scripts/build-release.sh` and `Scripts/package-skill.sh`
 - [ ] T082 [US4] Implement package, signature, entitlement, architecture, schema, and source-only verification in `Scripts/verify-package.sh`
 - [ ] T083 [US4] Implement repository and artifact secret/infrastructure scanning in `Scripts/scan-secrets.sh`
 - [ ] T084 [US4] Run an independent clean-profile Skill journey and record fixtures in `Tests/Contract/SkillBehaviorTests.md`
@@ -213,7 +221,8 @@ the chain and prove no credential appears in UI, CLI, or export.
 
 - [ ] T088 [US5] Implement canonical sanitized audit events, chained integrity, rotation, and Keychain anchors in `Sources/SAFABroker/AuditStore.swift`
 - [ ] T089 [US5] Implement audit list/verify pagination and export commands in `Sources/SAFACLI/Commands/AuditCommands.swift`
-- [ ] T090 [P] [US5] Build activity, integrity, active grant, and revoke-all UI in `Apps/SAFA/App/Activity/`
+- [ ] T090 [P] [US5] Build activity, integrity, active-grant, and revoke-all CLI projections plus a
+  system-authenticated local revocation path
 - [ ] T091 [US5] Enforce immediate revocation against pending/running request boundaries in `Sources/SAFABroker/GrantService.swift`
 - [ ] T092 [US5] Complete mixed-event incident reconstruction assertions in `Tests/Integration/GrantRevocationTests.swift`
 
@@ -275,20 +284,20 @@ All selected stories -> Polish
 
 ```text
 T027 resource CLI contract || T028 onboarding || T029 host identity || T030 enclave || T031 askpass
-T033 registry              || T035 onboarding UI || T036 enclave key || T037 password credential
+T033 registry || T035 trusted no-GUI registration || T036 enclave key || T037 password credential
 ```
 
 ### User Story 2
 
 ```text
 T047 policy || T048 command canonicalization || T049 grant binding || T050 approval || T051 sudo
-T053 canonicalizer || T054 policy engine || T058 approval UI
+T053 canonicalizer || T054 policy engine || T058 trusted local approval workflow
 ```
 
 ### User Stories 3-5 after the MVP
 
 ```text
-US3 vault/recovery hardening || US4 Skill packaging || US5 audit UI and verification
+US3 vault/recovery hardening || US4 Skill packaging || US5 audit and revocation
 ```
 
 ## Implementation Strategy

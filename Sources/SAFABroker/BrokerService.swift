@@ -60,7 +60,7 @@ public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedAppOperati
             status: .userActionRequired,
             error: SAFAErrorPayload(
                 code: "trusted_setup_required",
-                message: "Complete setup in the trusted SAFA app.",
+                message: "Complete setup through a trusted local, system-authenticated workflow.",
                 retryable: false
             )
         )

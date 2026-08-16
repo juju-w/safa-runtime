@@ -6,23 +6,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		100000000000000000000001 /* SAFAApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* SAFAApp.swift */; };
-		100000000000000000000002 /* BrokerRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* BrokerRegistration.swift */; };
 		100000000000000000000003 /* BrokerMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* BrokerMain.swift */; };
 		100000000000000000000004 /* CLIMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* CLIMain.swift */; };
 		100000000000000000000005 /* AskPassMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* AskPassMain.swift */; };
 		100000000000000000000006 /* SAFABroker in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000001 /* SAFABroker */; };
 		100000000000000000000007 /* SAFACLI in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000002 /* SAFACLI */; };
 		100000000000000000000008 /* SAFAAskPass in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000003 /* SAFAAskPass */; };
-		100000000000000000000009 /* safa-broker in Embed Helpers */ = {isa = PBXBuildFile; fileRef = 300000000000000000000002 /* safa-broker */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		10000000000000000000000A /* safa in Embed Helpers */ = {isa = PBXBuildFile; fileRef = 300000000000000000000003 /* safa */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		10000000000000000000000B /* safa-askpass in Embed Helpers */ = {isa = PBXBuildFile; fileRef = 300000000000000000000004 /* safa-askpass */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		10000000000000000000000C /* dev.safa.broker.plist in LaunchAgents */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* dev.safa.broker.plist */; };
-		10000000000000000000000D /* ResourceOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000010 /* ResourceOnboardingView.swift */; };
-		10000000000000000000000E /* TrustedBrokerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000011 /* TrustedBrokerClient.swift */; };
-		10000000000000000000000F /* SAFAProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000005 /* SAFAProtocol */; };
-		100000000000000000000010 /* SAFADomain in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000006 /* SAFADomain */; };
-		100000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000012 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,55 +20,42 @@
 		A00000000000000000000003 = {isa = PBXContainerItemProxy; containerPortal = 700000000000000000000001 /* Project object */; proxyType = 1; remoteGlobalIDString = 500000000000000000000004; remoteInfo = "SAFA AskPass Helper"; };
 /* End PBXContainerItemProxy section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		400000000000000000000009 /* Embed Helpers */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Library/Helpers; dstSubfolderSpec = 1; files = (100000000000000000000009, 10000000000000000000000A, 10000000000000000000000B, ); name = "Embed Helpers"; runOnlyForDeploymentPostprocessing = 0; };
-		40000000000000000000000A /* Embed LaunchAgents */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = Contents/Library/LaunchAgents; dstSubfolderSpec = 1; files = (10000000000000000000000C, ); name = "Embed LaunchAgents"; runOnlyForDeploymentPostprocessing = 0; };
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
-		200000000000000000000001 /* SAFAApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SAFAApp.swift; sourceTree = "<group>"; };
-		200000000000000000000002 /* BrokerRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrokerRegistration.swift; sourceTree = "<group>"; };
 		200000000000000000000003 /* BrokerMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrokerMain.swift; sourceTree = "<group>"; };
 		200000000000000000000004 /* CLIMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIMain.swift; sourceTree = "<group>"; };
 		200000000000000000000005 /* AskPassMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskPassMain.swift; sourceTree = "<group>"; };
 		200000000000000000000006 /* dev.safa.broker.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = dev.safa.broker.plist; sourceTree = "<group>"; };
 		200000000000000000000007 /* BuildSettings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = BuildSettings.xcconfig; sourceTree = "<group>"; };
-		200000000000000000000008 /* App-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "App-Info.plist"; sourceTree = "<group>"; };
 		200000000000000000000009 /* Broker-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Broker-Info.plist"; sourceTree = "<group>"; };
 		20000000000000000000000A /* CLI-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "CLI-Info.plist"; sourceTree = "<group>"; };
 		20000000000000000000000B /* AskPass-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "AskPass-Info.plist"; sourceTree = "<group>"; };
-		20000000000000000000000C /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		20000000000000000000000D /* Broker.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Broker.entitlements; sourceTree = "<group>"; };
 		20000000000000000000000E /* CLI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLI.entitlements; sourceTree = "<group>"; };
 		20000000000000000000000F /* AskPass.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AskPass.entitlements; sourceTree = "<group>"; };
-		200000000000000000000010 /* ResourceOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceOnboardingView.swift; sourceTree = "<group>"; };
-		200000000000000000000011 /* TrustedBrokerClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustedBrokerClient.swift; sourceTree = "<group>"; };
-		200000000000000000000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		300000000000000000000001 /* SAFA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SAFA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		300000000000000000000002 /* safa-broker */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "safa-broker"; sourceTree = BUILT_PRODUCTS_DIR; };
 		300000000000000000000003 /* safa */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = safa; sourceTree = BUILT_PRODUCTS_DIR; };
 		300000000000000000000004 /* safa-askpass */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "safa-askpass"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		400000000000000000000001 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (10000000000000000000000F, 100000000000000000000010, ); runOnlyForDeploymentPostprocessing = 0; };
 		400000000000000000000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000006, ); runOnlyForDeploymentPostprocessing = 0; };
 		400000000000000000000003 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000007, ); runOnlyForDeploymentPostprocessing = 0; };
 		400000000000000000000004 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000008, ); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		600000000000000000000001 = {isa = PBXGroup; children = (600000000000000000000002, 600000000000000000000003, 600000000000000000000004, 600000000000000000000005, 600000000000000000000006, ); sourceTree = "<group>"; };
-		600000000000000000000002 /* App */ = {isa = PBXGroup; children = (200000000000000000000012, 200000000000000000000001, 200000000000000000000002, 200000000000000000000011, 600000000000000000000007, ); path = App; sourceTree = "<group>"; };
+		600000000000000000000001 = {isa = PBXGroup; children = (600000000000000000000003, 600000000000000000000004, 600000000000000000000005, 600000000000000000000006, ); sourceTree = "<group>"; };
 		600000000000000000000003 /* Targets */ = {isa = PBXGroup; children = (200000000000000000000003, 200000000000000000000004, 200000000000000000000005, ); path = Targets; sourceTree = "<group>"; };
 		600000000000000000000004 /* BrokerLaunchAgent */ = {isa = PBXGroup; children = (200000000000000000000006, ); path = BrokerLaunchAgent; sourceTree = "<group>"; };
-		600000000000000000000005 /* Config */ = {isa = PBXGroup; children = (200000000000000000000007, 200000000000000000000008, 200000000000000000000009, 20000000000000000000000A, 20000000000000000000000B, 20000000000000000000000C, 20000000000000000000000D, 20000000000000000000000E, 20000000000000000000000F, ); path = Config; sourceTree = "<group>"; };
-		600000000000000000000006 /* Products */ = {isa = PBXGroup; children = (300000000000000000000001, 300000000000000000000002, 300000000000000000000003, 300000000000000000000004, ); name = Products; sourceTree = "<group>"; };
-		600000000000000000000007 /* Onboarding */ = {isa = PBXGroup; children = (200000000000000000000010, ); path = Onboarding; sourceTree = "<group>"; };
+		600000000000000000000005 /* Config */ = {isa = PBXGroup; children = (200000000000000000000007, 200000000000000000000009, 20000000000000000000000A, 20000000000000000000000B, 20000000000000000000000D, 20000000000000000000000E, 20000000000000000000000F, ); path = Config; sourceTree = "<group>"; };
+		600000000000000000000006 /* Products */ = {isa = PBXGroup; children = (300000000000000000000002, 300000000000000000000003, 300000000000000000000004, ); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
+/* Begin PBXAggregateTarget section */
+		500000000000000000000001 /* SAFA Runtime */ = {isa = PBXAggregateTarget; buildConfigurationList = 800000000000000000000002; buildPhases = (); dependencies = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, ); name = "SAFA Runtime"; productName = "SAFA Runtime"; };
+/* End PBXAggregateTarget section */
+
 /* Begin PBXNativeTarget section */
-		500000000000000000000001 /* SAFA */ = {isa = PBXNativeTarget; buildConfigurationList = 800000000000000000000002; buildPhases = (400000000000000000000005, 400000000000000000000001, 40000000000000000000000B, 400000000000000000000009, 40000000000000000000000A, ); buildRules = (); dependencies = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, ); name = SAFA; packageProductDependencies = (900000000000000000000005, 900000000000000000000006, ); productName = SAFA; productReference = 300000000000000000000001; productType = "com.apple.product-type.application"; };
 		500000000000000000000002 /* SAFA Broker Helper */ = {isa = PBXNativeTarget; buildConfigurationList = 800000000000000000000003; buildPhases = (400000000000000000000006, 400000000000000000000002, ); buildRules = (); dependencies = (); name = "SAFA Broker Helper"; packageProductDependencies = (900000000000000000000001, ); productName = "safa-broker"; productReference = 300000000000000000000002; productType = "com.apple.product-type.tool"; };
 		500000000000000000000003 /* SAFA CLI Helper */ = {isa = PBXNativeTarget; buildConfigurationList = 800000000000000000000004; buildPhases = (400000000000000000000007, 400000000000000000000003, ); buildRules = (); dependencies = (); name = "SAFA CLI Helper"; packageProductDependencies = (900000000000000000000002, ); productName = safa; productReference = 300000000000000000000003; productType = "com.apple.product-type.tool"; };
 		500000000000000000000004 /* SAFA AskPass Helper */ = {isa = PBXNativeTarget; buildConfigurationList = 800000000000000000000005; buildPhases = (400000000000000000000008, 400000000000000000000004, ); buildRules = (); dependencies = (); name = "SAFA AskPass Helper"; packageProductDependencies = (900000000000000000000003, ); productName = "safa-askpass"; productReference = 300000000000000000000004; productType = "com.apple.product-type.tool"; };
@@ -89,12 +65,7 @@
 		700000000000000000000001 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2650; LastUpgradeCheck = 2650; TargetAttributes = {500000000000000000000001 = {CreatedOnToolsVersion = 26.5; }; 500000000000000000000002 = {CreatedOnToolsVersion = 26.5; }; 500000000000000000000003 = {CreatedOnToolsVersion = 26.5; }; 500000000000000000000004 = {CreatedOnToolsVersion = 26.5; }; }; }; buildConfigurationList = 800000000000000000000001; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base, ); mainGroup = 600000000000000000000001; packageReferences = (900000000000000000000004, ); productRefGroup = 600000000000000000000006; projectDirPath = ""; projectRoot = ""; targets = (500000000000000000000001, 500000000000000000000002, 500000000000000000000003, 500000000000000000000004, ); };
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		40000000000000000000000B = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000011, ); runOnlyForDeploymentPostprocessing = 0; };
-/* End PBXResourcesBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
-		400000000000000000000005 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000001, 100000000000000000000002, 10000000000000000000000D, 10000000000000000000000E, ); runOnlyForDeploymentPostprocessing = 0; };
 		400000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000003, ); runOnlyForDeploymentPostprocessing = 0; };
 		400000000000000000000007 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000004, ); runOnlyForDeploymentPostprocessing = 0; };
 		400000000000000000000008 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000005, ); runOnlyForDeploymentPostprocessing = 0; };
@@ -109,8 +80,8 @@
 /* Begin XCBuildConfiguration section */
 		B000000000000000000000001 = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
 		B000000000000000000000002 = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
-		B000000000000000000000003 = {isa = XCBuildConfiguration; baseConfigurationReference = 200000000000000000000007; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = Config/App.entitlements; INFOPLIST_FILE = Config/App-Info.plist; PRODUCT_BUNDLE_IDENTIFIER = dev.safa.app; PRODUCT_NAME = SAFA; }; name = Debug; };
-		B000000000000000000000004 = {isa = XCBuildConfiguration; baseConfigurationReference = 200000000000000000000007; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = Config/App.entitlements; INFOPLIST_FILE = Config/App-Info.plist; PRODUCT_BUNDLE_IDENTIFIER = dev.safa.app; PRODUCT_NAME = SAFA; }; name = Release; };
+		B000000000000000000000003 = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+		B000000000000000000000004 = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
 		B000000000000000000000005 = {isa = XCBuildConfiguration; baseConfigurationReference = 200000000000000000000007; buildSettings = {CODE_SIGN_ENTITLEMENTS = Config/Broker.entitlements; INFOPLIST_FILE = Config/Broker-Info.plist; PRODUCT_BUNDLE_IDENTIFIER = dev.safa.broker; PRODUCT_NAME = "safa-broker"; }; name = Debug; };
 		B000000000000000000000006 = {isa = XCBuildConfiguration; baseConfigurationReference = 200000000000000000000007; buildSettings = {CODE_SIGN_ENTITLEMENTS = Config/Broker.entitlements; INFOPLIST_FILE = Config/Broker-Info.plist; PRODUCT_BUNDLE_IDENTIFIER = dev.safa.broker; PRODUCT_NAME = "safa-broker"; }; name = Release; };
 		B000000000000000000000007 = {isa = XCBuildConfiguration; baseConfigurationReference = 200000000000000000000007; buildSettings = {CODE_SIGN_ENTITLEMENTS = Config/CLI.entitlements; INFOPLIST_FILE = Config/CLI-Info.plist; PRODUCT_BUNDLE_IDENTIFIER = dev.safa.cli; PRODUCT_NAME = safa; }; name = Debug; };
@@ -135,8 +106,6 @@
 		900000000000000000000001 /* SAFABroker */ = {isa = XCSwiftPackageProductDependency; package = 900000000000000000000004; productName = SAFABroker; };
 		900000000000000000000002 /* SAFACLI */ = {isa = XCSwiftPackageProductDependency; package = 900000000000000000000004; productName = SAFACLI; };
 		900000000000000000000003 /* SAFAAskPass */ = {isa = XCSwiftPackageProductDependency; package = 900000000000000000000004; productName = SAFAAskPass; };
-		900000000000000000000005 /* SAFAProtocol */ = {isa = XCSwiftPackageProductDependency; package = 900000000000000000000004; productName = SAFAProtocol; };
-		900000000000000000000006 /* SAFADomain */ = {isa = XCSwiftPackageProductDependency; package = 900000000000000000000004; productName = SAFADomain; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 700000000000000000000001 /* Project object */;

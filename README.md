@@ -34,10 +34,10 @@ Without a local access boundary, the conversation often becomes:
 That puts infrastructure inventory and reusable credentials into chat history, process context, logs
 or model-visible tools.
 
-With SAFA, the user first imports `report.prod` through a local, system-authenticated setup flow.
-The endpoint, username, pinned host identity and password are stored behind the broker's encrypted
-vault and macOS Keychain boundary. The Agent normally receives only the safe alias and invokes the
-signed CLI:
+With SAFA, a trusted local, system-authenticated registration flow will import `report.prod` without
+putting private values in Agent-visible input. The endpoint, username, pinned host identity and
+password remain behind the broker's encrypted vault and macOS Keychain boundary. Once registered,
+the Agent receives only the safe alias and invokes the signed CLI:
 
 ```bash
 safa exec report.prod --json \
@@ -60,8 +60,8 @@ of asking the user for a credential or falling back to raw SSH.
   key material.
 - **macOS-backed credentials** — passwords use the data-protection Keychain; device-bound P-256 key
   primitives use Secure Enclave where supported.
-- **Signed local boundary** — the app, per-user broker, CLI and AskPass helper authenticate peers by
-  code signature, Developer Team, effective user and audit session.
+- **Signed local boundary** — the per-user broker, CLI and AskPass helper authenticate peers by code
+  signature, Developer Team, effective user and audit session.
 - **Strict remote identity** — every SSH execution uses an isolated configuration and a pinned host
   key. Changed identity is a hard failure.
 - **One-shot password delivery** — AskPass credentials are bound to the exact launched SSH child PID,
@@ -82,16 +82,15 @@ The current MVP isolates each resource credential and permits only a small diagn
 Fine-grained command scopes, database-role-aware workflows, Touch ID approval, sudo injection,
 time-limited grants and immediate revocation are specified for the next authorization phase.
 
-Development is currently CLI-first. The existing SwiftUI app is a deferred prototype: no new
-windows, menu-bar features, dashboards, or custom approval UI will be added until `ssh-hosts` parity
-and the native security gates are complete. macOS system Touch ID and Keychain prompts remain part
-of the security boundary.
+Development is CLI-first and the current product has no custom GUI. macOS system Touch ID, Keychain,
+LocalAuthentication and Authorization Services prompts remain part of the security boundary. Until
+a trusted no-GUI registration path exists, the CLI reports private setup as unavailable instead of
+accepting endpoints or credentials from the Agent.
 
 ## Current diagnostic MVP
 
 Implemented now:
 
-- private password-backed add/edit resource onboarding in the existing deferred app prototype;
 - safe resource discovery by logical alias;
 - encrypted inventory and Keychain password storage;
 - strict pinned-host SSH configuration;
@@ -99,26 +98,27 @@ Implemented now:
   metrics, `df`, `free` and `uptime`; secret-dumping variants are rejected;
 - child-bound one-shot AskPass, output redaction and sanitized audit emission;
 - fail-closed unsigned runtime, peer, host-identity, timeout and unsupported-command behavior;
-- 37 synthetic contract, integration and security tests that contact no real server.
+- synthetic contract, integration and security tests that contact no real server.
 
 Not yet shipped:
 
 - arbitrary shell commands, mutations, sudo and trusted user approval;
+- a system-authenticated local resource registration and update flow;
 - persistent audit verification, recovery and credential-reuse warnings;
 - complete Secure Enclave public-key onboarding through the SSH agent channel;
-- signed/notarized universal app artifacts and an installable global Skill package.
+- signed/notarized universal runtime artifacts and an installable global Skill package.
 
 ## Build and validate
 
 The unsigned build validates assembly only. Runtime XPC, Keychain and ServiceManagement behavior
-requires all four components to be signed by the same configured Apple Developer Team.
+requires the native components to be signed by the same configured Apple Developer Team.
 
 ```bash
 xcrun swift-format lint --recursive --strict \
-  Sources Tests Apps/SAFA/App Apps/SAFA/Targets Package.swift
+  Sources Tests Apps/SAFA/Targets Package.swift
 swift test
 swift build -c release
-xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme SAFA \
+xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
@@ -147,8 +147,8 @@ forward-test are complete.
 The owl guardian is SAFA's visual shorthand for a local, watchful security boundary. Source-ready
 brand assets are available as a [transparent mascot](docs/assets/safa-mascot.webp), a
 [square icon master](docs/assets/safa-icon-master.png) and a
-[GitHub avatar candidate](docs/assets/safa-github-avatar.png). The same icon is wired into the native
-macOS asset catalog and Skill metadata; publishing those packages remains intentionally disabled.
+[GitHub avatar candidate](docs/assets/safa-github-avatar.png). Skill metadata uses the mascot;
+publishing that package remains intentionally disabled.
 
 - [Normative architecture and SSH parity plan](ARCHITECTURE.md)
 - [Initial code architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)

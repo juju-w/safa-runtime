@@ -2,9 +2,28 @@ import Foundation
 import SAFADomain
 import SAFAProtocol
 import Testing
+@testable import SAFACLI
 
 @Suite("Safe resource CLI projection")
 struct ResourceCLIContractTests {
+    @Test("resource CLI exposes only implemented CLI-first commands and an ls alias")
+    func cliFirstCommandSurface() throws {
+        #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
+        #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
+        #expect(try SAFACommand.parseAsRoot(["setup", "status"]) is SetupStatusCommand)
+
+        for unavailable in [
+            ["resource", "add", "nas.home"],
+            ["resource", "edit", "nas.home"],
+            ["resource", "disable", "nas.home"],
+            ["resource", "remove", "nas.home"],
+            ["setup", "open"],
+            ["exec", "nas.home", "--intent", "check", "--sudo", "--", "uptime"],
+        ] {
+            #expect(commandParsingFails(unavailable))
+        }
+    }
+
     @Test("resource list exposes only logical operational metadata")
     func safeProjection() throws {
         let resource = TestResourceFactory.active(
@@ -39,6 +58,15 @@ struct ResourceCLIContractTests {
         #expect(throws: ResourceRegistryError.notFound(alias: "missing.host")) {
             try registry.resource(alias: ResourceAlias("missing.host"))
         }
+    }
+}
+
+private func commandParsingFails(_ arguments: [String]) -> Bool {
+    do {
+        _ = try SAFACommand.parseAsRoot(arguments)
+        return false
+    } catch {
+        return true
     }
 }
 

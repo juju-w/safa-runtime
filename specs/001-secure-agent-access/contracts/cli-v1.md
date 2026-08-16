@@ -6,7 +6,8 @@
 - Agent callers MUST pass `--json`; the Skill always does so.
 - Human-readable output is optional and MUST be derived from the same response object.
 - Secrets and encrypted infrastructure metadata are never accepted as ordinary command arguments.
-- Sensitive setup commands open or hand off to the trusted app; they do not prompt through stdin.
+- Private setup is not exposed through the Agent-facing CLI and never prompts through stdin. The
+  current preview reports the trusted registration flow as unavailable.
 - `--` terminates SAFA options before remote argument vectors.
 
 ## Command surface
@@ -15,39 +16,20 @@
 safa version --json
 safa doctor --json
 safa setup status --json
-safa setup open --json
 
-safa resource list --json [--state active]
+safa resource list|ls --json [--state active]
 safa resource show ALIAS --json
 safa resource inspect ALIAS --json
-safa resource add ALIAS --json
-safa resource edit ALIAS --json
-safa resource disable ALIAS --json
-safa resource remove ALIAS --json
 
 safa exec ALIAS --json \
   --intent TEXT [--expected-effect TEXT] [--rollback TEXT] \
-  [--sudo] [--timeout SECONDS] [--output-limit BYTES] -- ARG...
-
-safa shell ALIAS --json \
-  --intent TEXT --expected-effect TEXT [--rollback TEXT] \
-  [--sudo] [--timeout SECONDS] [--output-limit BYTES] --command PROGRAM
-
-safa request get REQUEST_ID --json
-safa request wait REQUEST_ID --json [--timeout SECONDS]
-safa request cancel REQUEST_ID --json
-
-safa grant list --json
-safa grant revoke GRANT_ID --json
-safa grant revoke-all --json [--resource ALIAS]
-
-safa audit list --json [--after CURSOR] [--limit COUNT]
-safa audit verify --json
+  [--timeout SECONDS] [--output-limit BYTES] -- ARG...
 ```
 
-`resource add/edit` returns `user_action_required` and opens the trusted setup application when
-possible. Endpoint, username, password, sudo password, private key, host-key approval, and recovery
-material have no Agent-facing flags.
+This is the complete command surface of the diagnostic preview. Registration/update, shell, sudo,
+request, grant, approval, and audit commands are not advertised until their broker workflows exist.
+Endpoint, username, password, sudo password, private key, host-key approval, and recovery material
+have no Agent-facing flags.
 
 ## Response envelope
 
@@ -141,7 +123,10 @@ prompt and, only after approval, may return non-secret endpoint and inventory de
 rate-limit response contains no resource detail object. Inspect never returns a password, token,
 private/public key, host fingerprint, credential identifier, or Keychain locator.
 
-## Approval-required response
+## Reserved approval-required response
+
+The schema reserves this response for the M2 authorization phase; the current command surface does
+not expose an Agent-callable approval operation.
 
 ```json
 {
@@ -218,8 +203,8 @@ Failures put a stable object in `data.error`:
   "retryable": false,
   "details": {"resource": "nas.home"},
   "remediation": {
-    "kind": "trusted_setup",
-    "command": ["safa", "resource", "edit", "nas.home", "--json"]
+    "kind": "complete_local_setup",
+    "command": []
   }
 }
 ```

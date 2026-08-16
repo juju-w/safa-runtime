@@ -67,8 +67,8 @@ extension JSONCommand {
             data: data,
             nextAction: status == .userActionRequired
                 ? NextAction(
-                    kind: "trusted_setup",
-                    command: ["open", "-a", "SAFA"],
+                    kind: "complete_local_setup",
+                    command: [],
                     safeForAgent: false
                 )
                 : nil
@@ -154,7 +154,7 @@ struct DoctorCommand: AsyncParsableCommand, JSONCommand {
 struct SetupCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "setup",
-        subcommands: [SetupStatusCommand.self, SetupOpenCommand.self]
+        subcommands: [SetupStatusCommand.self]
     )
 }
 
@@ -175,31 +175,12 @@ struct SetupStatusCommand: AsyncParsableCommand, JSONCommand {
     }
 }
 
-struct SetupOpenCommand: AsyncParsableCommand, JSONCommand {
-    static let configuration = CommandConfiguration(commandName: "open")
-    @Flag var json = false
-
-    func run() async throws {
-        do {
-            try emit(
-                command: "setup.open",
-                reply: try await XPCBrokerAgentClient().send(.openTrustedSetup(resourceAlias: nil))
-            )
-        } catch let exit as ExitCode {
-            throw exit
-        } catch {
-            try brokerFailure(command: "setup.open")
-        }
-    }
-}
-
 struct ExecCommand: AsyncParsableCommand, JSONCommand {
     static let configuration = CommandConfiguration(commandName: "exec")
     @Argument var alias: String
     @Option var intent: String
     @Option(name: .customLong("expected-effect")) var expectedEffect: String?
     @Option var rollback: String?
-    @Flag var sudo = false
     @Option var timeout: UInt = 60
     @Option(name: .customLong("output-limit")) var outputLimit: UInt = 1_048_576
     @Flag var json = false
@@ -219,7 +200,7 @@ struct ExecCommand: AsyncParsableCommand, JSONCommand {
                     .submitExecution(
                         resourceAlias: target,
                         command: command,
-                        privilege: sudo ? .sudo : .user,
+                        privilege: .user,
                         intent: intent,
                         expectedEffect: expectedEffect,
                         rollback: rollback
