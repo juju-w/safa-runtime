@@ -46,7 +46,8 @@ public enum SAFAProcessExit: Int32, Sendable {
             .securityFailure
         case "transport_failure", "ssh_config_timeout":
             .transportFailure
-        case "broker_unavailable", "ssh_config_unavailable", "resource_lifecycle_unavailable":
+        case "broker_unavailable", "broker_activation_failed", "broker_deactivation_failed",
+            "runtime_not_bundled", "ssh_config_unavailable", "resource_lifecycle_unavailable":
             .runtimeFailure
         default:
             .unexpected

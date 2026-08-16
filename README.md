@@ -105,6 +105,8 @@ Implemented now:
 - argument-constrained diagnostics such as `systemctl is-active`, fixed-field process/container
   metrics, `df`, `free` and `uptime`; secret-dumping variants are rejected;
 - child-bound one-shot AskPass, output redaction and sanitized audit emission;
+- signed, idempotent per-user broker activation through macOS `SMAppService`, packaged in a
+  GUI-less app container with no custom product UI;
 - fail-closed unsigned runtime, peer, host-identity, timeout and unsupported-command behavior;
 - synthetic contract, integration and security tests that contact no real server.
 

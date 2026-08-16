@@ -51,8 +51,8 @@ tests first and confirm they fail before the matching implementation.
 - [X] T023 Implement the per-user broker listener and bounded request dispatcher in `Sources/SAFABroker/BrokerService.swift`
 - [X] T024 [P] Implement sanitized OSLog events with private-by-default fields in `Sources/SAFABroker/SecurityLog.swift`
 - [X] T025 [P] Add an in-memory fake vault, fake approval provider, and fake transport in `Tests/Fixtures/Fakes/`
-- [ ] T026 Wire the broker launch-agent payload to a reviewed, system-authenticated no-GUI
-  activation flow; `Apps/SAFA/BrokerLaunchAgent/` currently contains only the payload
+- [X] T026 Wire the broker launch-agent payload to a reviewed, system-authenticated no-GUI
+  activation flow
 
 **Checkpoint**: Protocol, encrypted state, peer validation, and deterministic test doubles work
 without a real server or credential.

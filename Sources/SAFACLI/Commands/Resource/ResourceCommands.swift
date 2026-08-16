@@ -30,7 +30,7 @@ extension ResourceDirectoryCommand {
         case .failed: status = .failed
         }
         var data: [String: JSONValue] = [:]
-        if !reply.summaries.isEmpty {
+        if command == "resource.list" || !reply.summaries.isEmpty {
             data["resources"] = .array(reply.summaries.map(\.jsonValue))
         }
         if let details = reply.details {

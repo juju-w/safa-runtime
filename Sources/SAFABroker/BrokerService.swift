@@ -477,17 +477,23 @@ public final class BrokerService: @unchecked Sendable {
         )
     }
 
-    public func run() -> Never {
+    public func run() async -> Never {
         agentListener.resume()
         trustedListener.resume()
         askPassListener.resume()
-        RunLoop.current.run()
-        Foundation.exit(70)
+        while true {
+            do {
+                try await Task.sleep(for: .seconds(3_600))
+            } catch {
+                Foundation.exit(0)
+            }
+        }
     }
 }
 
 public enum BrokerRuntime {
     public static func main() async -> Never {
+        BrokerProcessEnvironment.apply()
         let teamIdentifier: String
         do {
             teamIdentifier = try CodeSigningRequirement.currentTeamIdentifier()
@@ -538,16 +544,17 @@ public enum BrokerRuntime {
         } catch {
             Foundation.exit(42)
         }
-        let executableDirectory =
-            Bundle.main.executableURL?
-            .deletingLastPathComponent() ?? URL(fileURLWithPath: "/usr/local/libexec")
+        let askPassExecutable = BrokerRuntimePaths.askPassExecutable(
+            bundleURL: Bundle.main.bundleURL,
+            executableURL: Bundle.main.executableURL
+        )
         let resourceStore = ResourceService(vault: vault, passwordStore: keychain)
         let handler = MVPBrokerHandler(
             vault: vault,
             passwordStore: keychain,
             bindingStore: bindingStore,
             resourceService: resourceStore,
-            askPassExecutable: executableDirectory.appendingPathComponent("safa-askpass"),
+            askPassExecutable: askPassExecutable,
             workingDirectory: applicationSupport.appendingPathComponent(
                 "runtime", isDirectory: true)
         )
@@ -579,7 +586,7 @@ public enum BrokerRuntime {
             resourceMutationHandler: resourceMutation
         )
         do {
-            try BrokerService(
+            try await BrokerService(
                 validator: PeerValidator(policy: policy),
                 dispatcher: dispatcher,
                 bindingStore: bindingStore

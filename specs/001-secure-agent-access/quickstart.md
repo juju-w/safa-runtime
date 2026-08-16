@@ -36,19 +36,34 @@ swift run safa exec --help
 An unsigned `doctor` must fail closed because it cannot derive a Developer Team identity. It must
 not fall back to raw SSH or ask for a credential.
 
-## 3. Inspect the native runtime aggregate
+## 3. Build and activate the signed development runtime
 
-The Xcode project intentionally contains no GUI target. To inspect the broker, CLI, and AskPass
-runtime roots with one configured Apple Developer Team, build:
+The product has no custom windows, menus, or SwiftUI/AppKit workflow. Apple requires a GUI-less app
+container for `SMAppService` to register the per-user LaunchAgent, so the Xcode aggregate embeds the
+CLI, nested broker app, AskPass helper, and launch-agent plist in `SAFA.app`. Build every component
+with the same configured Apple Developer Team:
 
 ```bash
 xcodebuild -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
-  -configuration Debug SAFA_DEVELOPMENT_TEAM=YOUR_TEAM_ID build
+  -configuration Debug -derivedDataPath build/SAFADev \
+  SAFA_DEVELOPMENT_TEAM=YOUR_TEAM_ID build
 ```
 
-This proves native target assembly, not installation. Broker activation and signed runtime packaging
-remain an open delivery task. The broker rejects clients whose Developer Team, signing identifier,
-effective user, or audit session does not match.
+Run the CLI from the resulting app container, then activate only its bundled per-user broker:
+
+```bash
+SAFA_APP_PATH="build/SAFADev/Build/Products/Debug/SAFA.app"
+"$SAFA_APP_PATH/Contents/MacOS/safa" setup status --json
+"$SAFA_APP_PATH/Contents/MacOS/safa" setup activate --json
+"$SAFA_APP_PATH/Contents/MacOS/safa" doctor --json
+"$SAFA_APP_PATH/Contents/MacOS/safa" resource list --json
+```
+
+`doctor` must report both broker and vault as ready. Registration is per user and idempotent. If
+macOS reports `requires_approval`, enable SAFA in Login Items before retrying. The broker rejects
+clients whose Developer Team, signing identifier, effective user, or audit session does not match.
+Use `setup deactivate` only as a local human lifecycle or uninstall operation; the Skill must not
+call it automatically.
 
 ## 4. Validate resource lifecycle through tests
 
@@ -103,7 +118,8 @@ event. A changed host identity or unsupported command fails closed.
 
 ## MVP boundary
 
-This checkpoint does not yet enable credential/host-identity onboarding for a draft, broker
-activation, sudo, shell programs, arbitrary remote mutations, approval grants, recovery, notarized
-distribution, or the final packaged Skill. Those remain separate Spec Kit phases; do not bypass the
-diagnostic allowlist to simulate them.
+This checkpoint enables signed per-user broker activation and reviewed setup of an existing direct
+OpenSSH identity or agent route with prior `known_hosts` trust. It does not yet enable password or
+new private-key enrollment, first-use host confirmation, sudo, shell programs, arbitrary remote
+mutations, approval grants, recovery, notarized distribution, or the final packaged Skill. Those
+remain separate Spec Kit phases; do not bypass the diagnostic allowlist to simulate them.

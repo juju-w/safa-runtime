@@ -163,30 +163,6 @@ struct DoctorCommand: AsyncParsableCommand, JSONCommand {
     }
 }
 
-struct SetupCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "setup",
-        subcommands: [SetupStatusCommand.self]
-    )
-}
-
-struct SetupStatusCommand: AsyncParsableCommand, JSONCommand {
-    static let configuration = CommandConfiguration(commandName: "status")
-    @Flag var json = false
-
-    func run() async throws {
-        do {
-            try emit(
-                command: "setup.status",
-                reply: try await XPCBrokerAgentClient().send(.runtimeStatus))
-        } catch let exit as ExitCode {
-            throw exit
-        } catch {
-            try brokerFailure(command: "setup.status")
-        }
-    }
-}
-
 struct ExecCommand: AsyncParsableCommand, JSONCommand {
     static let configuration = CommandConfiguration(commandName: "exec")
     @Argument var alias: String

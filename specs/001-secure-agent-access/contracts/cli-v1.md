@@ -16,6 +16,8 @@
 safa version --json
 safa doctor --json
 safa setup status --json
+safa setup activate --json
+safa setup deactivate --json
 
 safa resource list|ls --json [--state active]
 safa resource show ALIAS --json
@@ -33,6 +35,10 @@ safa exec ALIAS --json \
   --intent TEXT [--expected-effect TEXT] [--rollback TEXT] \
   [--timeout SECONDS] [--output-limit BYTES] -- ARG...
 ```
+
+`setup activate` is safe for an Agent to call when status reports that the bundled broker is not
+registered. macOS may require the local user to approve the background item. `setup deactivate` is
+a human lifecycle or uninstall operation and MUST NOT be invoked automatically by the Skill.
 
 This is the complete command surface of the diagnostic preview. Shell, sudo, request, grant,
 approval, and audit commands are not advertised until their broker workflows exist. Endpoint,

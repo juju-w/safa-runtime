@@ -39,6 +39,8 @@ struct ResourceCLIContractTests {
                 is ResourceRemoveCommand
         )
         #expect(try SAFACommand.parseAsRoot(["setup", "status"]) is SetupStatusCommand)
+        #expect(try SAFACommand.parseAsRoot(["setup", "activate"]) is SetupActivateCommand)
+        #expect(try SAFACommand.parseAsRoot(["setup", "deactivate"]) is SetupDeactivateCommand)
 
         for forbiddenSecretInput in [
             ["resource", "add", "nas.home", "--password", "secret"],
