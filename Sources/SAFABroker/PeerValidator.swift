@@ -6,7 +6,7 @@ import Security
 
 public enum PeerRole: String, Sendable {
     case agent
-    case trustedApp
+    case trustedLocal
     case askPass
 }
 
@@ -34,7 +34,7 @@ public struct PeerValidationPolicy: Sendable {
     public let auditSessionID: UInt32
     public let teamIdentifier: String
     public let agentSigningIdentifiers: Set<String>
-    public let trustedAppSigningIdentifier: String
+    public let trustedLocalSigningIdentifier: String
     public let askPassSigningIdentifier: String
 
     public init(
@@ -42,14 +42,14 @@ public struct PeerValidationPolicy: Sendable {
         auditSessionID: UInt32,
         teamIdentifier: String,
         agentSigningIdentifiers: Set<String>,
-        trustedAppSigningIdentifier: String,
+        trustedLocalSigningIdentifier: String,
         askPassSigningIdentifier: String = "dev.safa.askpass"
     ) {
         self.brokerUserID = brokerUserID
         self.auditSessionID = auditSessionID
         self.teamIdentifier = teamIdentifier
         self.agentSigningIdentifiers = agentSigningIdentifiers
-        self.trustedAppSigningIdentifier = trustedAppSigningIdentifier
+        self.trustedLocalSigningIdentifier = trustedLocalSigningIdentifier
         self.askPassSigningIdentifier = askPassSigningIdentifier
     }
 }
@@ -94,8 +94,8 @@ public struct PeerValidator: Sendable {
             guard policy.agentSigningIdentifiers.contains(signingIdentifier) else {
                 throw PeerValidationError.unauthorizedComponent
             }
-        case .trustedApp:
-            guard signingIdentifier == policy.trustedAppSigningIdentifier else {
+        case .trustedLocal:
+            guard signingIdentifier == policy.trustedLocalSigningIdentifier else {
                 throw PeerValidationError.unauthorizedComponent
             }
         case .askPass:
@@ -116,7 +116,7 @@ public struct PeerValidator: Sendable {
         let identifiers: Set<String>
         switch role {
         case .agent: identifiers = policy.agentSigningIdentifiers
-        case .trustedApp: identifiers = [policy.trustedAppSigningIdentifier]
+        case .trustedLocal: identifiers = [policy.trustedLocalSigningIdentifier]
         case .askPass: identifiers = [policy.askPassSigningIdentifier]
         }
         return try CodeSigningRequirement.requirement(

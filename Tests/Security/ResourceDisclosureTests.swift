@@ -19,11 +19,38 @@ struct ResourceDisclosureTests {
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
         _ = await service.handle(
-            request(action: .show, alias: "hm-105"),
+            request(action: .show, alias: "gpu.lab"),
             caller: .syntheticAgent,
             now: Date(timeIntervalSince1970: 1_700_000_001)
         )
 
+        #expect(await authorizer.reasons.isEmpty)
+    }
+
+    @Test("query actions reject fields owned by a different query shape")
+    func invalidQueryShapeFailsClosed() async throws {
+        let authorizer = RecordingUserPresenceAuthorizer(result: true)
+        let service = makeService(authorizer: authorizer)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let listReply = await service.handle(
+            request(action: .list, alias: "gpu.lab"),
+            caller: .syntheticAgent,
+            now: now
+        )
+        let showReply = await service.handle(
+            ResourceDirectoryRequestV1(
+                header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+                action: .show,
+                alias: try ResourceAlias("gpu.lab"),
+                state: .active
+            ),
+            caller: .syntheticAgent,
+            now: now
+        )
+
+        #expect(listReply.error?.code == "resource_query_invalid")
+        #expect(showReply.error?.code == "resource_query_invalid")
         #expect(await authorizer.reasons.isEmpty)
     }
 
@@ -33,7 +60,7 @@ struct ResourceDisclosureTests {
         let service = makeService(authorizer: authorizer)
 
         let reply = await service.handle(
-            request(action: .inspect, alias: "hm-105"),
+            request(action: .inspect, alias: "gpu.lab"),
             caller: .syntheticAgent,
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -61,7 +88,7 @@ struct ResourceDisclosureTests {
         )
 
         #expect(reply.status == .completed)
-        #expect(reply.details?.alias == "hm-105")
+        #expect(reply.details?.alias == "gpu.lab")
         #expect(reply.details?.endpoint?.host == "203.0.113.105")
         #expect(reply.details?.metadata.contains { $0.key == "host.kernel.release" } == true)
         #expect(reply.details?.metadata.contains { $0.key == "database.replica-count" } == true)
@@ -71,7 +98,7 @@ struct ResourceDisclosureTests {
         #expect(reply.details?.metadata.contains { $0.key == "service.transport-status" } == true)
         #expect(reply.details?.metadata.contains { $0.key == "service.process-status" } == true)
         #expect(reply.details?.metadata.contains { $0.key == "service.artifact-digest" } == true)
-        #expect(await authorizer.reasons == ["Inspect details for resource hm-105"])
+        #expect(await authorizer.reasons == ["Inspect details for resource gpu.lab"])
         let text = try #require(
             String(data: CanonicalCodec.encode(reply), encoding: .utf8)
         )
@@ -125,12 +152,12 @@ struct ResourceDisclosureTests {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
         _ = await service.handle(
-            request(action: .inspect, alias: "hm-105"),
+            request(action: .inspect, alias: "gpu.lab"),
             caller: .syntheticAgent,
             now: now
         )
         let second = await service.handle(
-            request(action: .inspect, alias: "hm-105"),
+            request(action: .inspect, alias: "gpu.lab"),
             caller: .syntheticAgent,
             now: now.addingTimeInterval(1)
         )
@@ -146,7 +173,7 @@ struct ResourceDisclosureTests {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let resource = Resource(
             id: UUID(uuidString: "10000000-0000-4000-8000-000000000001")!,
-            alias: try! ResourceAlias("hm-105"),
+            alias: try! ResourceAlias("gpu.lab"),
             resourceType: .hostLinux,
             alternateAliases: [try! ResourceAlias("gpu-worker")],
             accessMethods: [.ssh],
@@ -405,7 +432,7 @@ struct ResourceDisclosureTests {
     }
 
     private func request(
-        action: ResourceDirectoryActionV1,
+        action: ResourceQueryActionV1,
         alias: String? = nil
     ) -> ResourceDirectoryRequestV1 {
         let now = Date(timeIntervalSince1970: 1_700_000_000)

@@ -18,15 +18,15 @@ public protocol AgentOperationHandling: Sendable {
     ) async -> BrokerReply
 }
 
-public protocol TrustedAppOperationHandling: Sendable {
+public protocol TrustedLocalOperationHandling: Sendable {
     func handle(
-        _ operation: TrustedAppOperation,
+        _ operation: TrustedLocalOperation,
         caller: CallerIdentity,
         messageID: UUID
     ) async -> BrokerReply
 }
 
-public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedAppOperationHandling {
+public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedLocalOperationHandling {
     public init() {}
 
     public func handle(
@@ -47,7 +47,7 @@ public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedAppOperati
     }
 
     public func handle(
-        _ operation: TrustedAppOperation,
+        _ operation: TrustedLocalOperation,
         caller: CallerIdentity,
         messageID: UUID
     ) -> BrokerReply {
@@ -60,7 +60,7 @@ public actor UnavailableBrokerHandler: AgentOperationHandling, TrustedAppOperati
             status: .userActionRequired,
             error: SAFAErrorPayload(
                 code: "trusted_setup_required",
-                message: "Complete setup in the trusted SAFA app.",
+                message: "Complete setup through a trusted local, system-authenticated workflow.",
                 retryable: false
             )
         )
@@ -72,19 +72,22 @@ public actor BrokerRequestDispatcher {
     public static let maximumClockSkew: TimeInterval = 300
 
     private let agentHandler: any AgentOperationHandling
-    private let trustedHandler: any TrustedAppOperationHandling
+    private let trustedHandler: any TrustedLocalOperationHandling
     private let resourceDirectoryHandler: any ResourceDirectoryHandling
+    private let resourceMutationHandler: any ResourceMutationHandling
     private let log: SecurityLog
 
     public init(
         agentHandler: any AgentOperationHandling,
-        trustedHandler: any TrustedAppOperationHandling,
+        trustedHandler: any TrustedLocalOperationHandling,
         resourceDirectoryHandler: any ResourceDirectoryHandling,
+        resourceMutationHandler: any ResourceMutationHandling,
         log: SecurityLog = SecurityLog()
     ) {
         self.agentHandler = agentHandler
         self.trustedHandler = trustedHandler
         self.resourceDirectoryHandler = resourceDirectoryHandler
+        self.resourceMutationHandler = resourceMutationHandler
         self.log = log
     }
 
@@ -113,14 +116,14 @@ public actor BrokerRequestDispatcher {
         }
     }
 
-    public func dispatchTrustedApp(
+    public func dispatchTrustedLocal(
         _ request: Data,
         caller: CallerIdentity,
         now: Date = Date()
     ) async -> Data {
         do {
             let message = try CanonicalCodec.decode(
-                TrustedAppMessage.self,
+                TrustedLocalMessage.self,
                 from: request,
                 maxBytes: Self.maximumMessageBytes
             )
@@ -133,7 +136,7 @@ public actor BrokerRequestDispatcher {
                 )
             )
         } catch {
-            log.invalidMessage(role: .trustedApp, code: "invalid_message")
+            log.invalidMessage(role: .trustedLocal, code: "invalid_message")
             return failureReply(messageID: UUID(), error: error)
         }
     }
@@ -169,6 +172,44 @@ public actor BrokerRequestDispatcher {
                 error: SAFAErrorPayload(
                     code: code,
                     message: "The broker rejected the resource directory request.",
+                    retryable: false
+                )
+            )
+            return (try? CanonicalCodec.encode(reply)) ?? Data()
+        }
+    }
+
+    public func dispatchResourceMutation(
+        _ request: Data,
+        caller: CallerIdentity,
+        now: Date = Date()
+    ) async -> Data {
+        do {
+            let message = try CanonicalCodec.decode(
+                ResourceMutationRequestV1.self,
+                from: request,
+                maxBytes: Self.maximumMessageBytes
+            )
+            try validate(message.header, now: now)
+            return try CanonicalCodec.encode(
+                await resourceMutationHandler.handle(message, caller: caller, now: now)
+            )
+        } catch {
+            log.invalidMessage(role: .agent, code: "invalid_resource_mutation_message")
+            let code: String
+            if case ProtocolCodecError.inputTooLarge = error {
+                code = "message_too_large"
+            } else if error as? BrokerDispatchError == .expired {
+                code = "message_expired"
+            } else {
+                code = "invalid_message"
+            }
+            let reply = ResourceMutationReplyV1(
+                messageID: UUID(),
+                status: .failed,
+                error: SAFAErrorPayload(
+                    code: code,
+                    message: "The broker rejected the resource mutation request.",
                     retryable: false
                 )
             )
@@ -241,9 +282,18 @@ private final class AgentXPCExport: NSObject, SAFAAgentBrokerXPC, @unchecked Sen
             replyBox.value(await dispatcher.dispatchResourceDirectory(request, caller: caller))
         }
     }
+
+    func mutateResource(_ request: Data, reply: @escaping (Data) -> Void) {
+        let replyBox = ReplyBox(reply)
+        Task {
+            replyBox.value(await dispatcher.dispatchResourceMutation(request, caller: caller))
+        }
+    }
 }
 
-private final class TrustedAppXPCExport: NSObject, SAFATrustedAppBrokerXPC, @unchecked Sendable {
+private final class TrustedLocalXPCExport:
+    NSObject, SAFATrustedLocalBrokerXPC, @unchecked Sendable
+{
     let dispatcher: BrokerRequestDispatcher
     let caller: CallerIdentity
 
@@ -252,10 +302,10 @@ private final class TrustedAppXPCExport: NSObject, SAFATrustedAppBrokerXPC, @unc
         self.caller = caller
     }
 
-    func sendTrustedAppMessage(_ request: Data, reply: @escaping (Data) -> Void) {
+    func sendTrustedLocalMessage(_ request: Data, reply: @escaping (Data) -> Void) {
         let replyBox = ReplyBox(reply)
         Task {
-            replyBox.value(await dispatcher.dispatchTrustedApp(request, caller: caller))
+            replyBox.value(await dispatcher.dispatchTrustedLocal(request, caller: caller))
         }
     }
 }
@@ -359,9 +409,14 @@ public final class BrokerListenerDelegate: NSObject, NSXPCListenerDelegate, @unc
         case .agent:
             connection.exportedInterface = NSXPCInterface(with: (any SAFAAgentBrokerXPC).self)
             connection.exportedObject = AgentXPCExport(dispatcher: dispatcher, caller: caller)
-        case .trustedApp:
-            connection.exportedInterface = NSXPCInterface(with: (any SAFATrustedAppBrokerXPC).self)
-            connection.exportedObject = TrustedAppXPCExport(dispatcher: dispatcher, caller: caller)
+        case .trustedLocal:
+            connection.exportedInterface = NSXPCInterface(
+                with: (any SAFATrustedLocalBrokerXPC).self
+            )
+            connection.exportedObject = TrustedLocalXPCExport(
+                dispatcher: dispatcher,
+                caller: caller
+            )
         case .askPass:
             connection.exportedInterface = NSXPCInterface(with: (any SAFAAskPassBrokerXPC).self)
             connection.exportedObject = AskPassXPCExport(
@@ -388,7 +443,7 @@ public final class BrokerService: @unchecked Sendable {
         bindingStore: ChildCredentialBindingStore
     ) throws {
         agentListener = NSXPCListener(machServiceName: BrokerServiceNames.agent)
-        trustedListener = NSXPCListener(machServiceName: BrokerServiceNames.trustedApp)
+        trustedListener = NSXPCListener(machServiceName: BrokerServiceNames.trustedLocal)
         askPassListener = NSXPCListener(machServiceName: BrokerServiceNames.askPass)
         agentDelegate = BrokerListenerDelegate(
             role: .agent,
@@ -397,7 +452,7 @@ public final class BrokerService: @unchecked Sendable {
             bindingStore: bindingStore
         )
         trustedDelegate = BrokerListenerDelegate(
-            role: .trustedApp,
+            role: .trustedLocal,
             validator: validator,
             dispatcher: dispatcher,
             bindingStore: bindingStore
@@ -415,24 +470,30 @@ public final class BrokerService: @unchecked Sendable {
             try validator.codeSigningRequirement(for: .agent)
         )
         trustedListener.setConnectionCodeSigningRequirement(
-            try validator.codeSigningRequirement(for: .trustedApp)
+            try validator.codeSigningRequirement(for: .trustedLocal)
         )
         askPassListener.setConnectionCodeSigningRequirement(
             try validator.codeSigningRequirement(for: .askPass)
         )
     }
 
-    public func run() -> Never {
+    public func run() async -> Never {
         agentListener.resume()
         trustedListener.resume()
         askPassListener.resume()
-        RunLoop.current.run()
-        Foundation.exit(70)
+        while true {
+            do {
+                try await Task.sleep(for: .seconds(3_600))
+            } catch {
+                Foundation.exit(0)
+            }
+        }
     }
 }
 
 public enum BrokerRuntime {
     public static func main() async -> Never {
+        BrokerProcessEnvironment.apply()
         let teamIdentifier: String
         do {
             teamIdentifier = try CodeSigningRequirement.currentTeamIdentifier()
@@ -448,7 +509,7 @@ public enum BrokerRuntime {
             auditSessionID: currentAuditSessionID(),
             teamIdentifier: teamIdentifier,
             agentSigningIdentifiers: ["dev.safa.cli"],
-            trustedAppSigningIdentifier: "dev.safa.app"
+            trustedLocalSigningIdentifier: "dev.safa.trusted-local"
         )
         let bindingStore = ChildCredentialBindingStore()
         let keychain = DataProtectionKeychainStore()
@@ -483,14 +544,17 @@ public enum BrokerRuntime {
         } catch {
             Foundation.exit(42)
         }
-        let executableDirectory =
-            Bundle.main.executableURL?
-            .deletingLastPathComponent() ?? URL(fileURLWithPath: "/usr/local/libexec")
+        let askPassExecutable = BrokerRuntimePaths.askPassExecutable(
+            bundleURL: Bundle.main.bundleURL,
+            executableURL: Bundle.main.executableURL
+        )
+        let resourceStore = ResourceService(vault: vault, passwordStore: keychain)
         let handler = MVPBrokerHandler(
             vault: vault,
             passwordStore: keychain,
             bindingStore: bindingStore,
-            askPassExecutable: executableDirectory.appendingPathComponent("safa-askpass"),
+            resourceService: resourceStore,
+            askPassExecutable: askPassExecutable,
             workingDirectory: applicationSupport.appendingPathComponent(
                 "runtime", isDirectory: true)
         )
@@ -500,13 +564,29 @@ public enum BrokerRuntime {
                 userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
             )
         )
+        let resourceMutation = ResourceMutationService(
+            lifecycle: ResourceLifecycleService(
+                resources: resourceStore,
+                setup: OpenSSHResourceSetupService(
+                    resources: resourceStore,
+                    verifier: OpenSSHSetupVerifier(
+                        workingDirectory: applicationSupport.appendingPathComponent(
+                            "runtime",
+                            isDirectory: true
+                        )
+                    )
+                ),
+                userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
+            )
+        )
         let dispatcher = BrokerRequestDispatcher(
             agentHandler: handler,
             trustedHandler: handler,
-            resourceDirectoryHandler: resourceDirectory
+            resourceDirectoryHandler: resourceDirectory,
+            resourceMutationHandler: resourceMutation
         )
         do {
-            try BrokerService(
+            try await BrokerService(
                 validator: PeerValidator(policy: policy),
                 dispatcher: dispatcher,
                 bindingStore: bindingStore

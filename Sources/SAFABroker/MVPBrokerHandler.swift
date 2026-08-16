@@ -6,7 +6,7 @@ import SAFAProtocol
 import SAFASSH
 import SAFATransport
 
-public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandling {
+public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHandling {
     private let vault: any VaultDocumentStoring
     private let passwordStore: any PasswordSecretStoring
     private let resourceService: ResourceService
@@ -22,6 +22,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
         vault: any VaultDocumentStoring,
         passwordStore: any PasswordSecretStoring,
         bindingStore: ChildCredentialBindingStore,
+        resourceService: ResourceService? = nil,
         transport: SSHTransport = SSHTransport(),
         diagnosticPolicy: DiagnosticCommandPolicy = DiagnosticCommandPolicy(),
         audit: AuditService = AuditService(),
@@ -30,7 +31,9 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
     ) {
         self.vault = vault
         self.passwordStore = passwordStore
-        resourceService = ResourceService(vault: vault, passwordStore: passwordStore)
+        self.resourceService =
+            resourceService
+            ?? ResourceService(vault: vault, passwordStore: passwordStore)
         self.bindingStore = bindingStore
         self.transport = transport
         self.diagnosticPolicy = diagnosticPolicy
@@ -81,15 +84,6 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
                     caller: caller,
                     messageID: messageID
                 )
-            case let .openTrustedSetup(resourceAlias):
-                return BrokerReply(
-                    messageID: messageID,
-                    status: .userActionRequired,
-                    data: [
-                        "resource": resourceAlias.map { .string($0.rawValue) } ?? .null,
-                        "trusted_app": .string("SAFA"),
-                    ]
-                )
             case .getRequest, .waitRequest, .cancelRequest, .listGrants, .revokeGrant,
                 .listAudit, .verifyAudit:
                 return unsupported(messageID: messageID)
@@ -111,7 +105,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
     }
 
     public func handle(
-        _ operation: TrustedAppOperation,
+        _ operation: TrustedLocalOperation,
         caller: CallerIdentity,
         messageID: UUID
     ) async -> BrokerReply {
@@ -233,12 +227,54 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
         guard resource.state == .active,
             resource.hostIdentity?.status == .trusted,
             let credentialID = resource.authRef,
-            let secret = try await passwordStore.readSecret(id: credentialID)
+            let reference = document.credentialReferences.first(where: { $0.id == credentialID })
         else {
             return failure(
                 messageID: messageID,
                 code: "resource_not_ready",
                 message: "The resource needs trusted setup or repair."
+            )
+        }
+
+        let requestID = UUID()
+        let credential: SSHCredentialContext
+        let redactionSecret: Data?
+        let binding: String?
+        switch reference.kind {
+        case .sshPassword:
+            guard let secret = try await passwordStore.readSecret(id: credentialID) else {
+                return failure(
+                    messageID: messageID,
+                    code: "resource_not_ready",
+                    message: "The resource needs trusted setup or repair."
+                )
+            }
+            let token = bindingStore.issue(
+                secret: secret,
+                requestID: requestID,
+                childProcessID: 0,
+                expiresAt: Date().addingTimeInterval(60)
+            )
+            credential = .password(
+                childBinding: token,
+                askPassExecutable: askPassExecutable
+            )
+            redactionSecret = secret
+            binding = token
+        case .sshOpenSSH:
+            let locator = try CanonicalCodec.decode(
+                OpenSSHCredentialLocatorV1.self,
+                from: reference.storageLocator,
+                maxBytes: 32 * 1_024
+            )
+            credential = try locator.credentialContext()
+            redactionSecret = nil
+            binding = nil
+        default:
+            return failure(
+                messageID: messageID,
+                code: "resource_not_ready",
+                message: "The resource authentication adapter is not available."
             )
         }
 
@@ -251,40 +287,36 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
                 privilege: privilege
             )
         )
-        let requestID = UUID()
         await audit.recordRequest(alias: alias, fingerprint: fingerprint)
         await audit.recordDecision(
             alias: alias,
             fingerprint: fingerprint,
             decision: "allowed_read_only"
         )
-        let binding = bindingStore.issue(
-            secret: secret,
-            requestID: requestID,
-            childProcessID: 0,
-            expiresAt: Date().addingTimeInterval(60)
-        )
+        let launchHandler: (@Sendable (Int32) -> Void)?
+        if let binding {
+            launchHandler = { [bindingStore] childProcessID in
+                try? bindingStore.bind(
+                    token: binding,
+                    childProcessID: childProcessID
+                )
+            }
+        } else {
+            launchHandler = nil
+        }
         let result: ProcessExecutionResult
         do {
             result = try await transport.execute(
                 resource: resource,
                 command: command,
-                credential: .password(
-                    childBinding: binding,
-                    askPassExecutable: askPassExecutable
-                ),
+                credential: credential,
                 workingRoot:
                     workingDirectory
                     .appendingPathComponent(requestID.uuidString, isDirectory: true),
-                didLaunch: { [bindingStore] childProcessID in
-                    try? bindingStore.bind(
-                        token: binding,
-                        childProcessID: childProcessID
-                    )
-                }
+                didLaunch: launchHandler
             )
         } catch {
-            bindingStore.revoke(requestID: requestID)
+            if binding != nil { bindingStore.revoke(requestID: requestID) }
             await audit.recordExecution(
                 alias: alias,
                 fingerprint: fingerprint,
@@ -296,10 +328,10 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
                 message: "The resource could not be reached securely."
             )
         }
-        bindingStore.revoke(requestID: requestID)
+        if binding != nil { bindingStore.revoke(requestID: requestID) }
 
-        let stdout = Self.redact(secret, from: result.stdout)
-        let stderr = Self.redact(secret, from: result.stderr)
+        let stdout = redactionSecret.map { Self.redact($0, from: result.stdout) } ?? result.stdout
+        let stderr = redactionSecret.map { Self.redact($0, from: result.stderr) } ?? result.stderr
         let outcome = result.exitCode == 0 ? "completed" : "remote_failure"
         await audit.recordExecution(alias: alias, fingerprint: fingerprint, outcome: outcome)
         return BrokerReply(

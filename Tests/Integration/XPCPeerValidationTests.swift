@@ -8,7 +8,7 @@ struct XPCPeerValidationTests {
         auditSessionID: 77,
         teamIdentifier: "TESTTEAM1",
         agentSigningIdentifiers: ["dev.safa.cli", "dev.safa.askpass"],
-        trustedAppSigningIdentifier: "dev.safa.app"
+        trustedLocalSigningIdentifier: "dev.safa.trusted-local"
     )
 
     @Test("the exact signed same-user Agent peer is accepted")
@@ -55,7 +55,7 @@ struct XPCPeerValidationTests {
             PeerIdentityEvidence(
                 effectiveUserID: 501,
                 auditSessionID: 77,
-                signingIdentifier: "dev.safa.app",
+                signingIdentifier: "dev.safa.trusted-local",
                 teamIdentifier: "TESTTEAM1"
             ),
         ]
@@ -66,8 +66,8 @@ struct XPCPeerValidationTests {
         }
     }
 
-    @Test("the trusted app cannot be substituted with the Agent CLI")
-    func separatesTrustedAppAuthority() {
+    @Test("the trusted local peer cannot be substituted with the Agent CLI")
+    func separatesTrustedLocalAuthority() {
         let evidence = PeerIdentityEvidence(
             effectiveUserID: 501,
             auditSessionID: 77,
@@ -75,7 +75,7 @@ struct XPCPeerValidationTests {
             teamIdentifier: "TESTTEAM1"
         )
         #expect(throws: PeerValidationError.self) {
-            try PeerValidator(policy: policy).validate(evidence, as: .trustedApp)
+            try PeerValidator(policy: policy).validate(evidence, as: .trustedLocal)
         }
     }
 }

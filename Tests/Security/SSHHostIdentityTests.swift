@@ -50,6 +50,33 @@ struct SSHHostIdentityTests {
             )
         }
     }
+
+    @Test("OpenSSH setup uses only private config files and a pinned agent route")
+    func openSSHCredentialConfiguration() throws {
+        let resource = SyntheticSSHResource.make(status: .trusted)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("safa-openssh-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let prepared = try SSHConfigurationBuilder().prepare(
+            resource: resource,
+            command: CommandSpec.exec(arguments: ["hostname"]),
+            credential: .openSSH(
+                identityFiles: [URL(fileURLWithPath: "/synthetic/id with space")],
+                identityAgent: URL(fileURLWithPath: "/synthetic/agent.sock")
+            ),
+            rootDirectory: root,
+            randomBytes: Data(repeating: 5, count: 20)
+        )
+        let config = try String(contentsOf: prepared.configURL, encoding: .utf8)
+        let argv = prepared.invocation.arguments.joined(separator: " ")
+
+        #expect(config.contains("IdentityFile \"/synthetic/id with space\""))
+        #expect(config.contains("IdentityAgent \"/synthetic/agent.sock\""))
+        #expect(config.contains("UseKeychain yes"))
+        #expect(!argv.contains("id with space"))
+        #expect(!argv.contains("agent.sock"))
+    }
 }
 
 enum SyntheticSSHResource {

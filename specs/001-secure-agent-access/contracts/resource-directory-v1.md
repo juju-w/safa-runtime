@@ -112,15 +112,26 @@ relationship is rejected with the referencing alias so a trusted setup flow can 
 retarget that dependency. Removal never leaves a live resource pointing at a deleted target and
 never silently rewrites another resource's topology.
 
-## Query contract
+## Query and mutation contracts
 
-The Agent XPC surface uses the explicit `ResourceDirectoryRequestV1` and
-`ResourceDirectoryReplyV1` DTOs instead of the legacy dynamic broker map.
+The Agent XPC surface uses separate explicit DTOs instead of the legacy dynamic broker map:
+`ResourceDirectoryRequestV1`/`ReplyV1` for queries and
+`ResourceMutationRequestV1`/`ReplyV1` for mutations.
 
 - `list`: safe summaries, optionally filtered by lifecycle state; never prompts.
 - `show`: one safe summary by canonical or alternate alias; never prompts.
 - `inspect`: resolves the canonical resource, rate-limits prompts, and asks macOS for device-owner
   authentication. Only an approved request receives `ResourceDetailsV1`.
+- `add` / `edit`: require device-owner authentication and accept only logical aliases and an
+  optional supported host type. The broker resolves private connection fields locally;
+  imports stay `draft/needs_setup`, trusted resources cannot be silently retargeted, and only
+  `host.linux`, `host.macos`, or `host.nas` is accepted by this adapter.
+- `setup`: requires device-owner authentication, resolves the same explicit OpenSSH alias, imports
+  prior `known_hosts` trust plus an available existing identity-file/agent locator, and runs bounded
+  direct-route verification. It commits `active` only when the draft revision remains unchanged.
+  `ProxyJump` and `ProxyCommand` routes fail closed pending reviewed route snapshot support.
+- `disable` / `remove`: require device-owner authentication and use revisioned broker transactions;
+  removal refuses to break a live relationship.
 
 Denied, rate-limited, malformed, and unknown-resource replies contain no protected detail object.
 No resource-directory reply includes a credential ID, Keychain locator, password, token, access

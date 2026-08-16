@@ -7,25 +7,26 @@ envelope. Remote output is nested under `data.execution` and is never a control 
 
 ```text
 safa doctor --json
-safa setup status|open --json
-safa resource list --json [--state STATE]
+safa setup status --json
+safa resource list|ls --json [--state STATE]
 safa resource show|inspect ALIAS --json
-safa resource add|edit|disable|remove ALIAS --json
+safa resource add|edit ALIAS --json [--from-ssh-config SSH_ALIAS]
+  [--type RESOURCE_TYPE]
+safa resource setup ALIAS --json [--from-ssh-config SSH_ALIAS]
+safa resource disable|enable|remove ALIAS --json
 safa exec ALIAS --json --intent TEXT [--expected-effect TEXT] [--rollback TEXT]
-  [--sudo] [--timeout SECONDS] [--output-limit BYTES] -- ARG...
-safa shell ALIAS --json --intent TEXT --expected-effect TEXT [--rollback TEXT]
-  [--sudo] [--timeout SECONDS] [--output-limit BYTES] --command PROGRAM
-safa request get|wait|cancel REQUEST_ID --json
-safa grant list --json
-safa grant revoke GRANT_ID --json
-safa grant revoke-all --json [--resource ALIAS]
-safa audit list --json [--after CURSOR] [--limit COUNT]
-safa audit verify --json
+  [--timeout SECONDS] [--output-limit BYTES] -- ARG...
 ```
 
-Sensitive resource setup occurs in a local, system-authenticated workflow. There are no endpoint,
-password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval flags in
-the Agent-facing CLI.
+Resource lifecycle occurs in a local, system-authenticated workflow. There are no endpoint,
+username, password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval
+flags in the Agent-facing CLI. Add/edit resolve a logical alias through the broker's local OpenSSH
+configuration and create or refresh a draft. Setup imports a prior `known_hosts` trust entry and an
+available existing OpenSSH identity-file/agent route, verifies the direct route, and atomically marks
+the draft active. It does not accept password, key-path, host-key, or approval input. `ProxyJump` and
+`ProxyCommand` routes require later reviewed route support. The adapter accepts `host.linux`,
+`host.macos`, and `host.nas` only. Setup/disable/enable/remove are available only with macOS user
+presence. Enable restores only a disabled resource; it does not recreate a removed resource.
 
 `resource list` and `show` expose only a safe summary. `resource inspect` is a protected read and
 requires a macOS Touch ID/login prompt; denial returns no protected detail. It may return non-secret
@@ -39,7 +40,7 @@ tokens, access keys, private/public key material, or host fingerprints.
 | 0 | Completed successfully |
 | 10 | Remote command completed nonzero; inspect `remote_exit_code` |
 | 20 | Accepted/pending; follow safe request status action |
-| 21 | Trusted approval required |
+| 21 | Trusted approval required (reserved for a later phase) |
 | 22 | Private user setup/repair required |
 | 30 | Denied |
 | 31 | Cancelled |

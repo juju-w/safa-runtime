@@ -6,7 +6,8 @@
 - Agent callers MUST pass `--json`; the Skill always does so.
 - Human-readable output is optional and MUST be derived from the same response object.
 - Secrets and encrypted infrastructure metadata are never accepted as ordinary command arguments.
-- Sensitive setup commands open or hand off to the trusted app; they do not prompt through stdin.
+- Private setup is never accepted through stdin. Resource lifecycle imports only logical aliases;
+  host identity and local authentication sources are resolved inside the broker.
 - `--` terminates SAFA options before remote argument vectors.
 
 ## Command surface
@@ -15,39 +16,36 @@
 safa version --json
 safa doctor --json
 safa setup status --json
-safa setup open --json
+safa setup activate --json
+safa setup deactivate --json
 
-safa resource list --json [--state active]
+safa resource list|ls --json [--state active]
 safa resource show ALIAS --json
 safa resource inspect ALIAS --json
-safa resource add ALIAS --json
-safa resource edit ALIAS --json
+safa resource add ALIAS --json [--from-ssh-config SSH_ALIAS]
+  [--type RESOURCE_TYPE]
+safa resource edit ALIAS --json [--from-ssh-config SSH_ALIAS]
+  [--type RESOURCE_TYPE]
+safa resource setup ALIAS --json [--from-ssh-config SSH_ALIAS]
 safa resource disable ALIAS --json
+safa resource enable ALIAS --json
 safa resource remove ALIAS --json
 
 safa exec ALIAS --json \
   --intent TEXT [--expected-effect TEXT] [--rollback TEXT] \
-  [--sudo] [--timeout SECONDS] [--output-limit BYTES] -- ARG...
-
-safa shell ALIAS --json \
-  --intent TEXT --expected-effect TEXT [--rollback TEXT] \
-  [--sudo] [--timeout SECONDS] [--output-limit BYTES] --command PROGRAM
-
-safa request get REQUEST_ID --json
-safa request wait REQUEST_ID --json [--timeout SECONDS]
-safa request cancel REQUEST_ID --json
-
-safa grant list --json
-safa grant revoke GRANT_ID --json
-safa grant revoke-all --json [--resource ALIAS]
-
-safa audit list --json [--after CURSOR] [--limit COUNT]
-safa audit verify --json
+  [--timeout SECONDS] [--output-limit BYTES] -- ARG...
 ```
 
-`resource add/edit` returns `user_action_required` and opens the trusted setup application when
-possible. Endpoint, username, password, sudo password, private key, host-key approval, and recovery
-material have no Agent-facing flags.
+`setup activate` is safe for an Agent to call when status reports that the bundled broker is not
+registered. macOS may require the local user to approve the background item. `setup deactivate` is
+a human lifecycle or uninstall operation and MUST NOT be invoked automatically by the Skill.
+
+This is the complete command surface of the diagnostic preview. Shell, sudo, request, grant,
+approval, and audit commands are not advertised until their broker workflows exist. Endpoint,
+username, password, sudo password, private key, host-key approval, and recovery material have no
+Agent-facing flags. Add/edit use the resource alias as the SSH config alias when
+`--from-ssh-config` is omitted. Setup does the same and supports only a pre-existing direct
+OpenSSH identity-file/agent route whose host identity is already in `known_hosts`.
 
 ## Response envelope
 
@@ -141,7 +139,24 @@ prompt and, only after approval, may return non-secret endpoint and inventory de
 rate-limit response contains no resource detail object. Inspect never returns a password, token,
 private/public key, host fingerprint, credential identifier, or Keychain locator.
 
-## Approval-required response
+`resource add/edit/setup/disable/enable/remove` are protected mutations and each triggers a
+macOS-owned Touch ID/login prompt. Add/edit send only logical aliases and resource type to the
+broker. The broker resolves OpenSSH connection settings locally. A new import is always
+`draft/needs_setup`; it contains no credential or trusted host identity. Editing cannot retarget a
+resource that already carries either one. Setup imports a prior `known_hosts` trust entry plus an
+available existing OpenSSH identity/agent locator, verifies `hostname` and the expected `id -un`,
+and commits `active` only if the draft revision is unchanged. `ProxyJump` and `ProxyCommand` return
+`user_action_required` until
+their route can be reviewed and snapshotted. Disable/enable/remove use the same serialized revisioned
+resource transaction. Enable accepts only a disabled resource; removal is rejected while another
+live resource references the target.
+The SSH config adapter accepts only `host.linux`, `host.macos`, and `host.nas`; other resource
+profiles wait for their own typed adapter.
+
+## Reserved approval-required response
+
+The schema reserves this response for the M2 authorization phase; the current command surface does
+not expose an Agent-callable approval operation.
 
 ```json
 {
@@ -218,8 +233,8 @@ Failures put a stable object in `data.error`:
   "retryable": false,
   "details": {"resource": "nas.home"},
   "remediation": {
-    "kind": "trusted_setup",
-    "command": ["safa", "resource", "edit", "nas.home", "--json"]
+    "kind": "complete_local_setup",
+    "command": []
   }
 }
 ```

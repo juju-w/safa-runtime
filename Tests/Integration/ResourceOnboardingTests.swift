@@ -7,6 +7,59 @@ import Testing
 
 @Suite("Private resource onboarding")
 struct ResourceOnboardingTests {
+    @Test("SSH config import creates a real draft without inventing trust or credentials")
+    func sshConfigDraftImport() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let service = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let resource = try await service.addDiscoveredResource(
+            DiscoveredResourceDraft(
+                alias: ResourceAlias("nas.home"),
+                resourceType: .hostNAS,
+                displayName: "Home NAS",
+                endpoint: ResourceEndpoint(scheme: "ssh", host: "nas.internal", port: 2222),
+                username: "operator",
+                securityDomain: "local-ssh-config"
+            ),
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        #expect(resource.state == .draft)
+        #expect(resource.hostIdentity == nil)
+        #expect(resource.authRef == nil)
+        #expect(resource.endpoint?.host == "nas.internal")
+        #expect(resource.username == "operator")
+        #expect(await vault.readDocument().credentialReferences.isEmpty)
+        #expect(SafeResourceProjection(resource: resource).health == .needsSetup)
+    }
+
+    @Test("SSH config refresh cannot silently retarget a trusted resource")
+    func discoveredEditRejectsTrustedRetargeting() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let service = ResourceService(vault: vault, passwordStore: credentials)
+        _ = try await service.addPasswordResource(
+            PrivateResourceDraft.synthetic(alias: "nas.home"),
+            password: Data("synthetic-password".utf8)
+        )
+
+        await #expect(throws: ResourceServiceError.unsafeConnectionChange) {
+            try await service.editDiscoveredResource(
+                alias: ResourceAlias("nas.home"),
+                draft: DiscoveredResourceDraft(
+                    alias: ResourceAlias("nas.home"),
+                    resourceType: .hostNAS,
+                    displayName: "Retargeted NAS",
+                    endpoint: ResourceEndpoint(host: "other.internal", port: 22),
+                    username: "operator",
+                    securityDomain: "local-ssh-config"
+                )
+            )
+        }
+    }
+
     @Test("the trusted service commits metadata and a separate opaque password reference")
     func privatePasswordOnboarding() async throws {
         let vault = InMemoryVaultDocumentStore()

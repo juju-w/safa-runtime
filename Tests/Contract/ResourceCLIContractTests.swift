@@ -3,8 +3,59 @@ import SAFADomain
 import SAFAProtocol
 import Testing
 
+@testable import SAFACLI
+
 @Suite("Safe resource CLI projection")
 struct ResourceCLIContractTests {
+    @Test("resource CLI exposes the complete lifecycle and an ls alias")
+    func cliFirstCommandSurface() throws {
+        #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
+        #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
+        #expect(
+            try SAFACommand.parseAsRoot([
+                "resource", "add", "nas.home", "--from-ssh-config", "home-nas",
+            ]) is ResourceAddCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--from-ssh-config", "home-nas",
+            ]) is ResourceEditCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot([
+                "resource", "setup", "nas.home", "--from-ssh-config", "home-nas",
+            ]) is ResourceSetupCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot(["resource", "disable", "nas.home"])
+                is ResourceDisableCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot(["resource", "enable", "nas.home"])
+                is ResourceEnableCommand
+        )
+        #expect(
+            try SAFACommand.parseAsRoot(["resource", "remove", "nas.home"])
+                is ResourceRemoveCommand
+        )
+        #expect(try SAFACommand.parseAsRoot(["setup", "status"]) is SetupStatusCommand)
+        #expect(try SAFACommand.parseAsRoot(["setup", "activate"]) is SetupActivateCommand)
+        #expect(try SAFACommand.parseAsRoot(["setup", "deactivate"]) is SetupDeactivateCommand)
+
+        for forbiddenSecretInput in [
+            ["resource", "add", "nas.home", "--password", "secret"],
+            ["resource", "add", "nas.home", "--host", "10.0.0.7"],
+            ["resource", "add", "nas.home", "--username", "root"],
+            ["resource", "edit", "nas.home", "--private-key", "/tmp/id"],
+            ["resource", "edit", "nas.home", "--sudo-password", "secret"],
+            ["resource", "add", "nas.home", "--display-name", "Private name"],
+            ["setup", "open"],
+            ["exec", "nas.home", "--intent", "check", "--sudo", "--", "uptime"],
+        ] {
+            #expect(commandParsingFails(forbiddenSecretInput))
+        }
+    }
+
     @Test("resource list exposes only logical operational metadata")
     func safeProjection() throws {
         let resource = TestResourceFactory.active(
@@ -39,6 +90,15 @@ struct ResourceCLIContractTests {
         #expect(throws: ResourceRegistryError.notFound(alias: "missing.host")) {
             try registry.resource(alias: ResourceAlias("missing.host"))
         }
+    }
+}
+
+private func commandParsingFails(_ arguments: [String]) -> Bool {
+    do {
+        _ = try SAFACommand.parseAsRoot(arguments)
+        return false
+    } catch {
+        return true
     }
 }
 

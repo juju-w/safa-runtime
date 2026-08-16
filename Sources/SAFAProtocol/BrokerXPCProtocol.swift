@@ -3,7 +3,7 @@ import SAFADomain
 
 public enum BrokerServiceNames {
     public static let agent = "dev.safa.broker.agent"
-    public static let trustedApp = "dev.safa.broker.trusted-app"
+    public static let trustedLocal = "dev.safa.broker.trusted-local"
     public static let askPass = "dev.safa.broker.askpass"
 }
 
@@ -11,11 +11,12 @@ public enum BrokerServiceNames {
 public protocol SAFAAgentBrokerXPC {
     func sendAgentMessage(_ request: Data, reply: @escaping (Data) -> Void)
     func queryResourceDirectory(_ request: Data, reply: @escaping (Data) -> Void)
+    func mutateResource(_ request: Data, reply: @escaping (Data) -> Void)
 }
 
-@objc(SAFATrustedAppBrokerXPC)
-public protocol SAFATrustedAppBrokerXPC {
-    func sendTrustedAppMessage(_ request: Data, reply: @escaping (Data) -> Void)
+@objc(SAFATrustedLocalBrokerXPC)
+public protocol SAFATrustedLocalBrokerXPC {
+    func sendTrustedLocalMessage(_ request: Data, reply: @escaping (Data) -> Void)
 }
 
 @objc(SAFAAskPassBrokerXPC)
@@ -94,10 +95,9 @@ public enum AgentClientOperation: Codable, Equatable, Sendable {
     case revokeGrant(id: UUID)
     case listAudit(after: String?, limit: UInt)
     case verifyAudit
-    case openTrustedSetup(resourceAlias: ResourceAlias?)
 }
 
-public enum TrustedAppOperation: Codable, Equatable, Sendable {
+public enum TrustedLocalOperation: Codable, Equatable, Sendable {
     case beginPrivateSetup(resourceAlias: ResourceAlias)
     case commitPrivateSetup(sessionID: UUID, protectedPayload: Data)
     case getApprovalPresentation(requestID: UUID)
@@ -118,11 +118,11 @@ public struct AgentClientMessage: Codable, Equatable, Sendable {
     }
 }
 
-public struct TrustedAppMessage: Codable, Equatable, Sendable {
+public struct TrustedLocalMessage: Codable, Equatable, Sendable {
     public let header: IPCHeader
-    public let operation: TrustedAppOperation
+    public let operation: TrustedLocalOperation
 
-    public init(header: IPCHeader, operation: TrustedAppOperation) {
+    public init(header: IPCHeader, operation: TrustedLocalOperation) {
         self.header = header
         self.operation = operation
     }

@@ -26,12 +26,10 @@ useful, but it is deliberately later than:
 4. broker-owned execution with human-friendly system approval;
 5. safe operational workflows such as scoped sudo and atomic user creation.
 
-Delivery is CLI-first. The existing `SAFA.app` target is retained as a deferred prototype and build
-compatibility surface, but the parity phase adds no new window, menu-bar feature, dashboard, custom
-approval UI, or SwiftUI workflow. System-provided Touch ID, Keychain, LocalAuthentication, and
-Authorization Services prompts are security controls rather than product GUI. If a safe operation
-cannot yet be completed through those controls, SAFA returns `user_action_required` instead of
-accepting a secret or approval through the Agent-facing CLI.
+Delivery is CLI-first and the current product has no custom GUI target. System-provided Touch ID,
+Keychain, LocalAuthentication, and Authorization Services prompts are security controls rather than
+product UI. If a safe operation cannot yet be completed through those controls, SAFA returns
+`user_action_required` instead of accepting a secret or approval through the Agent-facing CLI.
 
 Release and Skill-package publication remain frozen until the repository owner explicitly enables
 them.
@@ -43,8 +41,8 @@ them.
 2. **The broker owns authority.** It resolves encrypted resource metadata, enforces policy, obtains
    credentials, launches transports, and returns bounded results.
 3. **macOS owns human presence.** During the CLI-first phase, privileged credential use and human
-   confirmation rely on system-provided Keychain and LocalAuthentication interaction. The existing
-   app is deferred; its authority never moves into the Agent-facing CLI.
+   confirmation rely on system-provided Keychain and LocalAuthentication interaction. That
+   authority never moves into the Agent-facing CLI.
 4. **Use macOS primitives directly.** Prefer Data Protection Keychain, Secure Enclave,
    LocalAuthentication, signed XPC peers, and `SMAppService` over a custom password store or daemon
    installer.
@@ -70,7 +68,6 @@ flowchart LR
     CLI -->|Agent XPC\nsigned peer check| Broker["Per-user SAFA broker\nauthority boundary"]
     Human["Local human"] -->|Touch ID / system prompt| Native["macOS Security UI\nno custom product GUI"]
     Native -->|user presence result| Broker
-    App["Deferred SAFA.app prototype"] -.->|future trusted XPC only| Broker
     Broker --> Policy["Deterministic policy\nand use cases"]
     Broker --> Vault["Encrypted resource vault"]
     Broker --> Keychain["Data Protection Keychain"]
@@ -93,8 +90,8 @@ flowchart LR
   session. The broker derives peer identity from the connection, not message fields.
 - The Agent-facing CLI cannot submit a secret or approval. A system-authenticated local workflow may
   confirm a broker-computed request but cannot rewrite its target, command, or policy result.
-- The deferred app target is not part of current feature delivery. If it is reactivated later, it
-  retains a separate signing identity and trusted XPC contract.
+- A future trusted local-interaction process, if specified, must retain a separate signing identity
+  and XPC contract. No such product UI ships in the current phase.
 - The broker writes a per-request SSH config and pinned `known_hosts`, disables ambient forwarding,
   and does not inherit the user's mutable SSH configuration during execution.
 - Remote output is untrusted data. It is bounded before returning to the Agent and must never be
@@ -117,13 +114,11 @@ vended library product.
 | `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, product presentation |
 | `SAFACLI` | ArgumentParser commands, typed request mapping, JSON/human presentation | Secrets, policy, direct SSH, approval |
 | `SAFAAskPass` | One-shot child-bound credential response | Resource lookup or general Keychain queries |
-| `SAFA.app` | Deferred prototype and future trusted local interaction host | New parity-phase GUI, remote execution, Agent-facing approval commands |
 
 The intended dependency shape is:
 
 ```text
 SAFACLI ───────────────► SAFAProtocol
-SAFA.app ──────────────► SAFAProtocol
 SAFABroker ────────────► SAFAProtocol + SAFADomain + SAFAPolicy + SAFACrypto + SAFASSH
 SAFASSH ───────────────► SAFADomain + SAFATransport
 SAFACrypto ────────────► SAFADomain
@@ -149,7 +144,7 @@ Sources/
 │   └── Authorization/
 ├── SAFAProtocol/
 │   ├── Agent/
-│   ├── TrustedApp/
+│   ├── TrustedLocal/
 │   ├── AskPass/
 │   └── CLI/
 ├── SAFABroker/
@@ -179,7 +174,7 @@ Guidelines:
   connection.
 - Mutable security state is actor-isolated. `@unchecked Sendable` is limited to small Foundation/XPC
   bridges with their synchronization visible in the same file.
-- Composition happens only in the executable/app runtime roots. Do not create global service
+- Composition happens only in executable runtime roots. Do not create global service
   locators or singletons for credentials.
 
 ## 6. Swift CLI conventions
@@ -218,6 +213,27 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 5. Canonical and alternate aliases occupy one collision namespace and resolve to the same stable
    resource identity for inspection and execution.
 
+### Manage resource lifecycle from the CLI
+
+1. `safa resource add ALIAS --from-ssh-config SSH_ALIAS` and `resource edit` carry only logical
+   aliases and one of the supported host resource types across the mutation XPC method.
+2. The broker asks macOS for device-owner authentication, then runs bounded `ssh -G SSH_ALIAS`
+   locally and persists the resolved endpoint and username inside the encrypted vault. Private
+   connection values never become CLI arguments or mutation DTO fields.
+3. Imports are `draft/needs_setup`: discovery alone does not create a credential or trusted host
+   identity. `resource setup` separately authenticates the local user, imports a previously trusted
+   `known_hosts` identity and an available existing OpenSSH identity/agent route, then verifies
+   `hostname` and the exact remote username before committing `active`.
+4. Setup currently accepts direct routes, including a local Core Tunnel listener expressed as the
+   resolved endpoint. `ProxyJump` and `ProxyCommand` fail with `user_action_required` until SAFA can
+   review and snapshot their complete route rather than inherit mutable SSH configuration.
+5. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
+   identity is rejected so a mutable SSH config cannot silently redirect trusted access.
+6. `resource disable`, `resource enable`, and `resource remove` also require macOS user presence.
+   Enable accepts only a disabled resource and preserves its trusted route. All resource writes pass
+   through one serialized broker transaction gate. Removal preserves relationship integrity and
+   deletes an unshared credential reference through the same transaction.
+
 ### Resource directory extension model
 
 - Types are open validated identifiers such as `host.linux`, `host.nas`, `database.mysql`,
@@ -238,22 +254,24 @@ The normative schema and initial host keys are defined in
 
 ### Import an existing SSH host
 
-1. A local human selects an existing alias; the broker resolves it through a read-only
-   `ssh -G <alias>` adapter without importing a private key or password value.
-2. The CLI shows a sanitized route summary: route type, jump requirement, and tunnel health. Private
-   endpoints remain inside the broker boundary.
-3. The broker probes host keys and returns readable SHA-256 fingerprints. The human verifies one
-   through a trusted channel and confirms it through system user presence; raw base64 entry is not a
-   normal flow.
-4. The user chooses an authentication mode:
-   - existing macOS OpenSSH agent/`UseKeychain` identity for parity;
-   - a new device-bound Secure Enclave key for managed hosts;
-   - explicit legacy password onboarding when no key route exists.
-5. The broker runs a non-destructive `hostname; id -un` verification and the CLI reports a bounded,
-   non-secret result.
+1. A local human adds an explicitly declared OpenSSH `Host` alias. The broker resolves it through a
+   bounded read-only `ssh -G <alias>` adapter without importing private-key or password bytes.
+2. A separate `resource setup` authorization imports an existing entry from the user's configured
+   `known_hosts` files. Absence is not silently accepted: the command returns
+   `host_identity_setup_required`.
+3. Setup references only existing readable identity-file paths or an existing SSH-agent socket. The
+   path/socket locator remains encrypted in the broker vault and is never returned by list, show, or
+   inspect. Private-key bytes do not enter SAFA storage.
+4. The broker constructs an isolated, pinned OpenSSH configuration and runs non-destructive
+   `hostname` and `id -un` checks. Authentication as a username other than the imported username
+   fails setup.
+5. Only after successful verification does a revision-checked transaction add the OpenSSH
+   credential reference and mark the resource active.
 
-The execution-time route is snapshotted and host-pinned in the encrypted vault. SAFA does not blindly
-trust later edits to `~/.ssh/config`.
+Execution snapshots the direct endpoint, remote username, trusted host key, and approved local
+OpenSSH credential locator. Later retargeting through `~/.ssh/config` is rejected. Managed Secure
+Enclave onboarding, password entry, first-use host confirmation, and `ProxyJump`/`ProxyCommand`
+snapshotting remain later work.
 
 ### Add sudo capability
 
@@ -270,8 +288,8 @@ trust later edits to `~/.ssh/config`.
 
 ```text
 safa host list --json
-safa host check hm-106 --json
-safa exec hm-106 --json -- systemctl status docker
+safa host check app.prod --json
+safa exec app.prod --json -- systemctl status docker
 ```
 
 The Agent sees aliases, capabilities, health, stable errors, and bounded output. If Core Tunnel is
@@ -282,10 +300,10 @@ down, the response directs the user to start it instead of asking for an IP or p
 | Existing workflow capability | Current SAFA state | Native target state | Priority |
 |---|---|---|---|
 | Business-name/alias resolution | Canonical and alternate alias resolution implemented | Search and import UX over the encrypted directory | P0 |
-| `ssh -G` route inspection | Missing | Trusted-app import adapter with reviewed snapshot | P0 |
-| Core Tunnel listener preflight | Missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
-| Public-key `BatchMode=yes` SSH | Not wired end-to-end | Existing OpenSSH identity plus managed Secure Enclave identity | P0 |
-| Strict host-key checking | Implemented, manual UX | Fingerprint probe/confirmation and rotation flow | P0 |
+| `ssh -G` route inspection | Explicit-host import implemented for direct routes | Reviewed `ProxyJump`/`ProxyCommand` snapshot | P0 |
+| Core Tunnel listener preflight | Direct local-listener routes execute; dedicated health check missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
+| Public-key `BatchMode=yes` SSH | Existing identity-file/agent route wired end-to-end | Managed Secure Enclave identity | P0 |
+| Strict host-key checking | Existing `known_hosts` import and pinned execution implemented | First-use confirmation and rotation flow | P0 |
 | Read-only diagnosis | Narrow allowlist exists | Argument-aware policy that excludes secret-dumping forms | P0 |
 | Per-host sudo in Keychain | Model only | Separate credential, system approval, protected stdin | P1 |
 | One scoped sudo command | Missing | Broker-owned sudo adapter and exact approval | P1 |
@@ -321,8 +339,8 @@ No new authorization or audit feature starts until the architecture remediation 
 3. correct advertised capabilities and README claims;
 4. remove secret-dumping command forms from the automatic diagnostic policy;
 5. add SSH-config import, tunnel preflight, and public-key execution contract tests;
-6. validate the signed broker/CLI/AskPass boundaries and keep the deferred app target buildable
-   without adding GUI work or publishing artifacts.
+6. validate the signed broker/CLI/AskPass boundaries without adding GUI work or publishing
+   artifacts.
 
 After every slice: format, build, test, unsigned Xcode assembly, Draft PR, CI, squash merge. No tag,
 GitHub Release, notarized artifact, or Skill package is created while the publication hold is active.

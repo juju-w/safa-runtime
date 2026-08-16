@@ -10,8 +10,8 @@ Build SAFA as a macOS-only Agent Skill backed by a signed native CLI and compani
 keeps the encrypted resource registry and credentials outside the Agent process, evaluates scoped
 execution policy, obtains trusted local approval for elevated operations, invokes the system SSH
 client, and returns a compact versioned JSON envelope. Arbitrary command and shell execution remain
-available; authority is constrained by target, caller, command fingerprint or scope, privilege, and
-expiry rather than by removing operational capability.
+a target capability for M2; the current diagnostic MVP exposes only bounded non-sudo argument
+execution.
 
 The MVP supports one local macOS user and SSH-accessible servers/NAS devices. The underlying resource
 directory is adapter-independent so later database, object-storage, cache, and service profiles do
@@ -40,7 +40,7 @@ tests, shell contract tests for packaged Skill/CLI, and synthetic SSH fixtures o
 on Apple silicon or supported T2/Touch ID Macs with an explicit Keychain fallback where unavailable
 
 **Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper + Agent
-Skill package; the existing app target is a deferred prototype and build-compatibility surface
+Skill package; no custom GUI target in the current product phase
 
 **Performance Goals**: `resource list` and policy decisions under 100 ms p95 after unlock; broker
 cold activation under 2 s; under 100 MB steady-state broker memory; stream command output without
@@ -61,7 +61,7 @@ events before rotation, and at most 100 active/pending grants in the MVP
 |---|---|---|
 | Secrets never cross the Agent boundary | PASS | Agent contracts expose opaque references only; broker owns Keychain and SSH credential injection |
 | Useful command execution with scoped authority | PASS | Both argument-based `exec` and explicit `shell` are defined; approval grants bind caller/resource/scope/privilege/expiry |
-| macOS-native trust boundary | PASS | Signed app, broker and CLI communicate through peer-validated XPC; Keychain, Secure Enclave and LocalAuthentication are first-class |
+| macOS-native trust boundary | PASS | Signed broker, CLI and AskPass components use peer-validated XPC; Keychain, Secure Enclave and LocalAuthentication are first-class |
 | Open design, encrypted user state | PASS | Per-install AES-GCM vault, non-synchronizing Keychain keys, synthetic fixtures, MIT-compatible dependencies |
 | Deterministic contracts and auditability | PASS | Versioned JSON/IPC contracts, bounded outputs, explicit states, hash-linked sanitized audit events |
 
@@ -106,17 +106,16 @@ Sources/
 Apps/
 └── SAFA/
     ├── SAFA.xcodeproj/
-    ├── App/                   # onboarding, menu-bar state, approvals and audit UI
+    ├── Targets/               # broker, CLI and one-shot AskPass executable roots
     ├── BrokerLaunchAgent/     # launchd plist and broker packaging
-    ├── Config/                # entitlements, Info.plist and signing settings
-    └── Resources/
+    └── Config/                # entitlements, Info.plist and signing settings
 Skills/
 └── safa/
     ├── SKILL.md
     ├── agents/openai.yaml
     ├── scripts/safa           # thin runtime resolver; never handles secrets
     ├── references/cli.md
-    └── assets/                # release assembly inserts signed SAFA.app here
+    └── assets/                # release assembly inserts signed runtime components here
 Scripts/
 ├── build-release.sh
 ├── package-skill.sh
@@ -127,12 +126,11 @@ Tests/
 ├── Contract/
 ├── Integration/
 ├── Security/
-├── UI/
 └── Fixtures/                  # synthetic identities, hosts, transcripts and corrupt vaults
 ```
 
 **Structure Decision**: Keep security-sensitive logic in small SwiftPM library targets with one-way
-dependencies, then assemble them into the signed Xcode app, broker, askpass helper, and CLI. The
+dependencies, then assemble them into signed broker, AskPass, and CLI runtime components. The
 published Skill remains minimal and calls the embedded signed runtime through a thin launcher. This
 allows most policy, cryptography-envelope, state-machine, and contract tests to run without a GUI
 while reserving Keychain, signing, XPC, and user-presence tests for signed integration targets.
@@ -147,8 +145,9 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
 3. **Broker boundary**: owns vault decryption, policy, request/grant state, credential injection,
    transport processes, redaction, and audit. Incoming XPC peers must satisfy code-signing and user
    session requirements.
-4. **Approval-app boundary**: displays the immutable request and proves local user presence. It can
-   approve/reject a request but cannot alter its target or command fingerprint.
+4. **Trusted local-interaction boundary (future M2)**: a separately signed, system-authenticated
+   process may present the immutable request and prove local user presence. No such custom UI ships
+   in the current phase, and it cannot alter the target or command fingerprint.
 5. **Remote boundary**: is untrusted even after authentication. Output is data, host identity is
    pinned, commands are bounded, and remote compromise confers no credential for another host.
 
@@ -156,15 +155,17 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
 
 - **M0 foundation**: protocol/domain packages, deterministic mock broker, Skill skeleton, contract
   fixtures, threat-model tests.
-- **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, private onboarding,
-  managed Secure Enclave key or password SSH, strict host identity, read-only execution and audit.
+- **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, trusted no-GUI
+  registration, managed Secure Enclave key or password SSH, strict host identity, read-only
+  execution and audit. Existing direct OpenSSH identity/agent registration is implemented in the
+  current preview; managed Secure Enclave/password enrollment and proxy-route setup remain open.
 - **M2 command authority**: arbitrary `exec`/`shell`, policy classifier, trusted approval, sudo,
   scoped grants, revocation, bounded streaming and redaction.
-- **M3 distribution hardening**: universal signed/notarized app, Skill packaging, package verification,
+- **M3 distribution hardening**: universal signed/notarized runtime, Skill packaging, package verification,
   recovery workflow, adversarial suite and independent Skill forward-test.
 
 ## Complexity Tracking
 
 No constitution violations require justification. Multiple executable targets are security
-boundaries rather than organizational layering: removing the broker/app separation would allow the
-Agent-facing process to access secrets or manufacture approval.
+boundaries rather than organizational layering: collapsing the broker into the Agent-facing process
+would allow it to access secrets or manufacture approval.

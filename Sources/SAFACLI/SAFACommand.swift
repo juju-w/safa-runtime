@@ -67,8 +67,8 @@ extension JSONCommand {
             data: data,
             nextAction: status == .userActionRequired
                 ? NextAction(
-                    kind: "trusted_setup",
-                    command: ["open", "-a", "SAFA"],
+                    kind: "complete_local_setup",
+                    command: [],
                     safeForAgent: false
                 )
                 : nil
@@ -95,15 +95,27 @@ extension JSONCommand {
         throw ExitCode(SAFAProcessExit.runtimeFailure.rawValue)
     }
 
+    func invalidInvocation(command: String, message: String) throws -> Never {
+        let error = SAFAErrorPayload(
+            code: "invalid_invocation",
+            message: message,
+            retryable: false
+        )
+        try emit(
+            CLIEnvelope(
+                command: command,
+                status: .failed,
+                data: ["error": .object(error.jsonObject)]
+            ),
+            humanMessage: message
+        )
+        throw ExitCode(SAFAProcessExit.invalidInvocation.rawValue)
+    }
+
     private func exitCode(_ reply: BrokerReply) -> SAFAProcessExit {
         if reply.status == .userActionRequired { return .userActionRequired }
         guard reply.status != .failed else {
-            switch reply.error?.code {
-            case "resource_not_found": return .notFound
-            case "resource_not_ready", "host_identity_changed": return .securityFailure
-            case "transport_failure": return .transportFailure
-            default: return .runtimeFailure
-            }
+            return SAFAProcessExit.map(errorCode: reply.error?.code)
         }
         if case let .object(execution)? = reply.data["execution"],
             case let .integer(remoteExit)? = execution["remote_exit_code"],
@@ -151,55 +163,12 @@ struct DoctorCommand: AsyncParsableCommand, JSONCommand {
     }
 }
 
-struct SetupCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "setup",
-        subcommands: [SetupStatusCommand.self, SetupOpenCommand.self]
-    )
-}
-
-struct SetupStatusCommand: AsyncParsableCommand, JSONCommand {
-    static let configuration = CommandConfiguration(commandName: "status")
-    @Flag var json = false
-
-    func run() async throws {
-        do {
-            try emit(
-                command: "setup.status",
-                reply: try await XPCBrokerAgentClient().send(.runtimeStatus))
-        } catch let exit as ExitCode {
-            throw exit
-        } catch {
-            try brokerFailure(command: "setup.status")
-        }
-    }
-}
-
-struct SetupOpenCommand: AsyncParsableCommand, JSONCommand {
-    static let configuration = CommandConfiguration(commandName: "open")
-    @Flag var json = false
-
-    func run() async throws {
-        do {
-            try emit(
-                command: "setup.open",
-                reply: try await XPCBrokerAgentClient().send(.openTrustedSetup(resourceAlias: nil))
-            )
-        } catch let exit as ExitCode {
-            throw exit
-        } catch {
-            try brokerFailure(command: "setup.open")
-        }
-    }
-}
-
 struct ExecCommand: AsyncParsableCommand, JSONCommand {
     static let configuration = CommandConfiguration(commandName: "exec")
     @Argument var alias: String
     @Option var intent: String
     @Option(name: .customLong("expected-effect")) var expectedEffect: String?
     @Option var rollback: String?
-    @Flag var sudo = false
     @Option var timeout: UInt = 60
     @Option(name: .customLong("output-limit")) var outputLimit: UInt = 1_048_576
     @Flag var json = false
@@ -219,7 +188,7 @@ struct ExecCommand: AsyncParsableCommand, JSONCommand {
                     .submitExecution(
                         resourceAlias: target,
                         command: command,
-                        privilege: sudo ? .sudo : .user,
+                        privilege: .user,
                         intent: intent,
                         expectedEffect: expectedEffect,
                         rollback: rollback

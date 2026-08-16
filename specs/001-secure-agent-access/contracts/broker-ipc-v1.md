@@ -2,8 +2,9 @@
 
 ## Boundary
 
-The CLI and approval app communicate with the per-user broker over a named XPC/Mach service. The
-broker exposes no TCP listener and no general-purpose secret API.
+The CLI and separately signed trusted local processes communicate with the per-user broker over
+named XPC/Mach services. The broker exposes no TCP listener and no general-purpose secret API. The
+current preview ships no custom trusted-interaction UI client.
 
 Before accepting a message, each side validates the peer's code-signing requirement. The broker also
 checks effective user and audit session. Distribution builds accept only the expected Developer Team,
@@ -18,6 +19,7 @@ be enabled in a release build.
 runtimeStatus() -> RuntimeStatus
 listResources(ResourceQuery) -> ResourcePage
 queryResourceDirectory(ResourceDirectoryRequestV1) -> ResourceDirectoryReplyV1
+mutateResource(ResourceMutationRequestV1) -> ResourceMutationReplyV1
 submitExecution(ExecutionSubmission) -> RequestSnapshot
 getRequest(RequestID) -> RequestSnapshot
 waitRequest(RequestID, deadline) -> RequestSnapshot
@@ -26,7 +28,6 @@ listGrants(GrantQuery) -> GrantPage
 revokeGrant(GrantID) -> GrantSnapshot
 listAudit(AuditQuery) -> AuditPage
 verifyAudit() -> AuditIntegrityResult
-openTrustedSetup(SetupIntent) -> UserActionSnapshot
 ```
 
 `queryResourceDirectory` is the typed v1 path for `list`, `show`, and protected `inspect`. Public
@@ -34,10 +35,16 @@ queries return only safe summaries. Inspect is broker-authorized with macOS user
 returns credential references, Keychain locators, passwords, tokens, private/public keys, or host
 fingerprints. New resource-directory work must not add fields to the legacy dynamic broker reply.
 
+`mutateResource` is a separate typed method for `add`, `edit`, `setup`, `disable`, and `remove`.
+Every mutation requires macOS user presence. The request may carry logical aliases and a supported
+resource type, but no endpoint, username, credential locator, key path, host key, or approval value.
+This separation prevents a future query-only client from gaining mutations merely by selecting a
+different action on the query DTO.
+
 This interface accepts no endpoint, username, password, private key, host key, sudo password,
 Keychain identifier, approval decision, or raw grant capability.
 
-### Trusted app interface
+### Reserved trusted local interface
 
 ```text
 beginPrivateSetup(PrivateSetupDraft) -> SetupSession
@@ -50,9 +57,10 @@ exportRecovery(RecoveryOptions, AuthenticationContextProof) -> RecoveryResult
 importRecovery(RecoveryPackage, AuthenticationContextProof) -> RecoveryResult
 ```
 
-The broker accepts approval only from the separately identified app peer. The app may choose among
-broker-proposed scopes but cannot replace the command, target, risk findings, or privilege ceiling in
-an existing request.
+The broker will accept future approval only from a separately identified trusted local peer. That
+peer may choose among broker-proposed scopes but cannot replace the command, target, risk findings,
+or privilege ceiling in an existing request. The trusted-local role is a reserved protocol boundary,
+not evidence that a GUI is part of the current product.
 
 ## Message properties
 
