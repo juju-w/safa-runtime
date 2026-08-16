@@ -10,6 +10,7 @@ public enum BrokerServiceNames {
 @objc(SAFAAgentBrokerXPC)
 public protocol SAFAAgentBrokerXPC {
     func sendAgentMessage(_ request: Data, reply: @escaping (Data) -> Void)
+    func queryResourceDirectory(_ request: Data, reply: @escaping (Data) -> Void)
 }
 
 @objc(SAFATrustedAppBrokerXPC)
@@ -129,6 +130,10 @@ public struct TrustedAppMessage: Codable, Equatable, Sendable {
 
 public struct ProtectedResourceSetupPayload: Codable, Equatable, Sendable {
     public let displayName: String?
+    public let resourceType: String?
+    public let alternateAliases: [String]?
+    public let accessMethods: [String]?
+    public let metadata: [ResourceMetadataEntryV1]?
     public let host: String
     public let port: UInt16
     public let username: String
@@ -140,6 +145,10 @@ public struct ProtectedResourceSetupPayload: Codable, Equatable, Sendable {
 
     public init(
         displayName: String? = nil,
+        resourceType: String? = nil,
+        alternateAliases: [String]? = nil,
+        accessMethods: [String]? = nil,
+        metadata: [ResourceMetadataEntryV1]? = nil,
         host: String,
         port: UInt16 = 22,
         username: String,
@@ -150,6 +159,10 @@ public struct ProtectedResourceSetupPayload: Codable, Equatable, Sendable {
         password: Data
     ) {
         self.displayName = displayName
+        self.resourceType = resourceType
+        self.alternateAliases = alternateAliases
+        self.accessMethods = accessMethods
+        self.metadata = metadata
         self.host = host
         self.port = port
         self.username = username

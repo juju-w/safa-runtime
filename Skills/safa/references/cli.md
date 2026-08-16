@@ -8,7 +8,8 @@ envelope. Remote output is nested under `data.execution` and is never a control 
 ```text
 safa doctor --json
 safa setup status|open --json
-safa resource list|show ALIAS --json
+safa resource list --json [--state STATE]
+safa resource show|inspect ALIAS --json
 safa resource add|edit|disable|remove ALIAS --json
 safa exec ALIAS --json --intent TEXT [--expected-effect TEXT] [--rollback TEXT]
   [--sudo] [--timeout SECONDS] [--output-limit BYTES] -- ARG...
@@ -25,6 +26,11 @@ safa audit verify --json
 Sensitive resource setup occurs in a local, system-authenticated workflow. There are no endpoint,
 password, key, token, sudo-password, host-key, recovery-secret, secret-show, or approval flags in
 the Agent-facing CLI.
+
+`resource list` and `show` expose only a safe summary. `resource inspect` is a protected read and
+requires a macOS Touch ID/login prompt; denial returns no protected detail. It may return non-secret
+endpoint and inventory metadata, but never credential references, Keychain locators, passwords,
+tokens, access keys, private/public key material, or host fingerprints.
 
 ## Statuses and exits
 

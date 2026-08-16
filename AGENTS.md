@@ -132,6 +132,11 @@ swift build -c release
   or CLI command. Architecture changes must update that document in the same pull request.
 - New Agent/XPC wire operations use explicit versioned DTOs; do not add a new dynamic
   `[String: JSONValue]` contract or depend on synthesized enum encoding for a stable external schema.
+- Extend the generic resource directory for hosts, databases, object storage, caches, and services;
+  do not create transport-specific inventories. New resource types, access methods, credential
+  kinds, roles, relationships, and metadata keys use validated identifiers and typed values.
+  Credentials and Keychain locators are never metadata. Unknown metadata defaults private, and only
+  source-code-reviewed keys may enter a non-interactive summary.
 - Keep CLI command parsing, broker use cases, platform adapters, and presentation separate. Do not
   add behavior to the existing target-wide monolith files when the architecture document assigns it
   to a feature directory.

@@ -2,6 +2,9 @@ import Foundation
 
 public enum ResourceRegistryError: Error, Equatable, Sendable {
     case duplicateAlias(alias: String)
+    case duplicateResourceID(UUID)
+    case duplicateMetadataKey(resourceAlias: String, key: String)
+    case invalidRelationship(resourceAlias: String, targetResourceID: UUID)
     case notFound(alias: String)
 }
 
@@ -13,17 +16,26 @@ public enum ResourceHealth: String, Codable, Sendable {
 
 public struct SafeResourceProjection: Codable, Equatable, Sendable {
     public let alias: ResourceAlias
-    public let transport: TransportKind
+    public let displayName: String?
+    public let resourceType: ResourceTypeIdentifier
+    public let transport: TransportKind?
     public let state: ResourceState
     public let capabilities: [String]
     public let health: ResourceHealth
+    public let summaryMetadata: [ResourceMetadataEntry]
 
     public init(resource: Resource) {
         alias = resource.alias
+        // Display names remain encrypted detail unless a separate disclosure policy is introduced.
+        displayName = nil
+        resourceType = resource.resolvedResourceType
         transport = resource.transport
         state = resource.state
-        var values = ["exec"]
-        if resource.sudoRef != nil { values.append("sudo") }
+        var values: [String] = []
+        if resource.resolvedAccessMethods.contains(.ssh) {
+            values.append("exec")
+            if resource.sudoRef != nil { values.append("sudo") }
+        }
         capabilities = values
         if resource.state == .disabled || resource.state == .deleted {
             health = .disabled
@@ -35,6 +47,7 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
         } else {
             health = .needsSetup
         }
+        summaryMetadata = ResourceSummaryDisclosure.publicEntries(from: resource.resolvedMetadata)
     }
 }
 
@@ -42,17 +55,51 @@ public struct ResourceRegistry: Sendable {
     private let resourcesByAlias: [ResourceAlias: Resource]
 
     public init(resources: [Resource]) throws {
+        let liveResources = resources.filter { $0.state != .deleted }
+        var resourcesByID: [UUID: Resource] = [:]
+        for resource in liveResources {
+            guard resourcesByID.updateValue(resource, forKey: resource.id) == nil else {
+                throw ResourceRegistryError.duplicateResourceID(resource.id)
+            }
+        }
         var index: [ResourceAlias: Resource] = [:]
-        for resource in resources where resource.state != .deleted {
-            guard index.updateValue(resource, forKey: resource.alias) == nil else {
-                throw ResourceRegistryError.duplicateAlias(alias: resource.alias.rawValue)
+        for resource in liveResources {
+            var metadataKeys: Set<ResourceMetadataKey> = []
+            for entry in resource.resolvedMetadata {
+                guard metadataKeys.insert(entry.key).inserted else {
+                    throw ResourceRegistryError.duplicateMetadataKey(
+                        resourceAlias: resource.alias.rawValue,
+                        key: entry.key.rawValue
+                    )
+                }
+            }
+            for alias in [resource.alias] + resource.resolvedAlternateAliases {
+                guard index.updateValue(resource, forKey: alias) == nil else {
+                    throw ResourceRegistryError.duplicateAlias(alias: alias.rawValue)
+                }
+            }
+            var relationships: Set<String> = []
+            for relationship in resource.resolvedRelationships {
+                let relationshipKey =
+                    "\(relationship.kind.rawValue):\(relationship.targetResourceID.uuidString)"
+                guard relationship.targetResourceID != resource.id,
+                    resourcesByID[relationship.targetResourceID] != nil,
+                    relationships.insert(relationshipKey).inserted
+                else {
+                    throw ResourceRegistryError.invalidRelationship(
+                        resourceAlias: resource.alias.rawValue,
+                        targetResourceID: relationship.targetResourceID
+                    )
+                }
             }
         }
         resourcesByAlias = index
     }
 
     public func list(state: ResourceState? = nil) -> [SafeResourceProjection] {
-        resourcesByAlias.values
+        resourcesByAlias.values.reduce(into: [UUID: Resource]()) { unique, resource in
+            unique[resource.id] = resource
+        }.values
             .filter { state == nil || $0.state == state }
             .sorted { $0.alias.rawValue < $1.alias.rawValue }
             .map(SafeResourceProjection.init)

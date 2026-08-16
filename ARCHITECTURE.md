@@ -10,8 +10,11 @@ to perform it.
 
 ## 1. Product goal and current priority
 
-SAFA is a macOS-native security boundary that lets an Agent operate registered infrastructure
-without receiving reusable credentials or private connection metadata.
+SAFA is a macOS-native security boundary that lets an Agent discover and operate registered
+resources without receiving reusable credentials. Its core is a generic encrypted resource
+directory; SSH hosts are the first executable profile, not the limit of the model. Database,
+object-storage, cache, and service adapters can reuse the same alias, metadata, relationship,
+credential-reference, authorization, and policy boundaries.
 
 The immediate goal is functional parity with the existing local `ssh-hosts` workflow while moving
 its sensitive operations behind native macOS controls. Persistent tamper-evident audit history is
@@ -55,6 +58,9 @@ them.
    host verification.
 8. **Claims follow evidence.** README capability claims require an executable contract or
    integration test.
+9. **Profiles extend the directory; they do not fork it.** Resource kinds, access methods,
+   credential roles, and metadata keys are validated namespaced identifiers. New adapters do not
+   add arbitrary JSON to the vault or put credentials in metadata.
 
 ## 3. System context and trust boundaries
 
@@ -69,7 +75,8 @@ flowchart LR
     Broker --> Vault["Encrypted resource vault"]
     Broker --> Keychain["Data Protection Keychain"]
     Broker --> Enclave["Secure Enclave keys"]
-    Broker --> SSH["Isolated OpenSSH adapter"]
+    Broker --> Adapters["Typed resource adapters\nSSH first; DB/S3/cache/service later"]
+    Adapters --> SSH["Isolated OpenSSH adapter"]
     SSH --> Remote["Untrusted SSH host"]
     SSH --> AskPass["One-shot signed AskPass helper"]
     AskPass -->|child-bound XPC| Broker
@@ -78,7 +85,10 @@ flowchart LR
 ### Boundary rules
 
 - Agent/CLI data may choose a resource alias and command, but cannot provide an endpoint,
-  credential reference, approval decision, or trusted identity.
+  credential reference, approval decision, or trusted identity. `resource inspect` is the one
+  read-only disclosure path: after a macOS-owned user-presence prompt, it may return non-secret
+  connection and inventory metadata. It never returns a credential reference, Keychain locator,
+  private/public key material, host fingerprint, password, or token.
 - XPC listeners require the expected signing identifier, Developer Team, effective user, and audit
   session. The broker derives peer identity from the connection, not message fields.
 - The Agent-facing CLI cannot submit a secret or approval. A system-authenticated local workflow may
@@ -98,7 +108,7 @@ vended library product.
 
 | Module | Owns | Must not own |
 |---|---|---|
-| `SAFADomain` | Value types, invariants, state transitions | Keychain, XPC, files, process launch, CLI formatting |
+| `SAFADomain` | Generic resource directory, typed metadata, value types, invariants, state transitions | Keychain, XPC, files, process launch, CLI formatting |
 | `SAFAProtocol` | Explicit versioned CLI/XPC DTOs and stable error codes | Vault models, policy logic, Security-framework helpers |
 | `SAFACrypto` | Keychain, encrypted vault, Secure Enclave adapters | Resource workflows, SSH command construction |
 | `SAFAPolicy` | Pure command classification and grant matching | UI, clocks without injection, credential access |
@@ -148,7 +158,7 @@ Sources/
 │   ├── Resources/
 │   └── Runtime/
 ├── SAFACLI/
-│   ├── Commands/Host/
+│   ├── Commands/Resource/
 │   ├── Commands/Exec/
 │   ├── Commands/Credential/
 │   └── Presentation/
@@ -193,6 +203,38 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
   inferred by concatenating arguments.
 
 ## 7. Human-friendly CLI-first flows
+
+### Discover and inspect a resource
+
+1. `safa resource list --json` and `resource show ALIAS --json` return a safe summary: canonical
+   alias, resource type, state, health, capabilities, and only source-code-allowlisted metadata.
+2. Unknown or newly imported metadata keys fail closed as private. A configuration file cannot mark
+   its own field public.
+3. `safa resource inspect ALIAS --json` asks macOS to verify the local user with Touch ID or login
+   credentials. Denial and prompt-rate-limiting return no detail object.
+4. An approved inspection may return alternate aliases, access methods, endpoint, username,
+   security domain, non-secret typed metadata, relationships by alias, and identity status. It never
+   returns secrets or credential/key locators.
+5. Canonical and alternate aliases occupy one collision namespace and resolve to the same stable
+   resource identity for inspection and execution.
+
+### Resource directory extension model
+
+- Types are open validated identifiers such as `host.linux`, `host.nas`, `database.mysql`,
+  `database.postgresql`, `object-storage.s3`, `cache.redis`, and `service.http`.
+- Access methods are independent identifiers such as `ssh`, `database.mysql`, `object-storage.s3`,
+  `cache.redis`, and `http`. Supporting an identifier in storage does not claim its adapter is
+  implemented.
+- Metadata is an ordered set of typed key/value entries (`text`, `integer`, `boolean`, `byte_count`,
+  or `text_list`). Passwords, API tokens, private keys, access keys, and Keychain locators are never
+  metadata.
+- Resource relationships such as `hosted-on`, `depends-on`, and `backed-by` form the later service
+  topology without copying endpoints into dependent records.
+- Credential kinds and roles are also extensible identifiers, while secret material stays in
+  Keychain/Secure Enclave and the encrypted directory keeps only opaque references.
+
+The normative schema and initial host keys are defined in
+`specs/001-secure-agent-access/contracts/resource-directory-v1.md`.
 
 ### Import an existing SSH host
 
@@ -239,7 +281,7 @@ down, the response directs the user to start it instead of asking for an IP or p
 
 | Existing workflow capability | Current SAFA state | Native target state | Priority |
 |---|---|---|---|
-| Business-name/alias resolution | Exact alias only | Searchable aliases and safe display names from encrypted registry | P0 |
+| Business-name/alias resolution | Canonical and alternate alias resolution implemented | Search and import UX over the encrypted directory | P0 |
 | `ssh -G` route inspection | Missing | Trusted-app import adapter with reviewed snapshot | P0 |
 | Core Tunnel listener preflight | Missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
 | Public-key `BatchMode=yes` SSH | Not wired end-to-end | Existing OpenSSH identity plus managed Secure Enclave identity | P0 |
@@ -248,7 +290,7 @@ down, the response directs the user to start it instead of asking for an IP or p
 | Per-host sudo in Keychain | Model only | Separate credential, system approval, protected stdin | P1 |
 | One scoped sudo command | Missing | Broker-owned sudo adapter and exact approval | P1 |
 | Atomic user creation | Missing | Reviewed operational recipe over scoped sudo | P1 |
-| Service credential status/injection | Missing | Typed service profiles and least-privilege client adapters | P2 |
+| Service credential status/injection | Generic resource/credential schema implemented; adapters missing | Typed service profiles and least-privilege client adapters | P2 |
 | Credential discovery/import | External Python tooling | Explicit local migration assistant; never background scanning | P2 |
 | Core Tunnel inventory refresh | External Python tooling | Read-only optional import adapter | P2 |
 | Persistent tamper-evident audit UI | In-memory event sketch | Deferred until core operations are useful and safe | Later |

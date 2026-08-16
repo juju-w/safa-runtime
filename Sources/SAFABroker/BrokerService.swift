@@ -73,15 +73,18 @@ public actor BrokerRequestDispatcher {
 
     private let agentHandler: any AgentOperationHandling
     private let trustedHandler: any TrustedAppOperationHandling
+    private let resourceDirectoryHandler: any ResourceDirectoryHandling
     private let log: SecurityLog
 
     public init(
         agentHandler: any AgentOperationHandling,
         trustedHandler: any TrustedAppOperationHandling,
+        resourceDirectoryHandler: any ResourceDirectoryHandling,
         log: SecurityLog = SecurityLog()
     ) {
         self.agentHandler = agentHandler
         self.trustedHandler = trustedHandler
+        self.resourceDirectoryHandler = resourceDirectoryHandler
         self.log = log
     }
 
@@ -132,6 +135,44 @@ public actor BrokerRequestDispatcher {
         } catch {
             log.invalidMessage(role: .trustedApp, code: "invalid_message")
             return failureReply(messageID: UUID(), error: error)
+        }
+    }
+
+    public func dispatchResourceDirectory(
+        _ request: Data,
+        caller: CallerIdentity,
+        now: Date = Date()
+    ) async -> Data {
+        do {
+            let message = try CanonicalCodec.decode(
+                ResourceDirectoryRequestV1.self,
+                from: request,
+                maxBytes: Self.maximumMessageBytes
+            )
+            try validate(message.header, now: now)
+            return try CanonicalCodec.encode(
+                await resourceDirectoryHandler.handle(message, caller: caller, now: now)
+            )
+        } catch {
+            log.invalidMessage(role: .agent, code: "invalid_resource_directory_message")
+            let code: String
+            if case ProtocolCodecError.inputTooLarge = error {
+                code = "message_too_large"
+            } else if error as? BrokerDispatchError == .expired {
+                code = "message_expired"
+            } else {
+                code = "invalid_message"
+            }
+            let reply = ResourceDirectoryReplyV1(
+                messageID: UUID(),
+                status: .failed,
+                error: SAFAErrorPayload(
+                    code: code,
+                    message: "The broker rejected the resource directory request.",
+                    retryable: false
+                )
+            )
+            return (try? CanonicalCodec.encode(reply)) ?? Data()
         }
     }
 
@@ -191,6 +232,13 @@ private final class AgentXPCExport: NSObject, SAFAAgentBrokerXPC, @unchecked Sen
         let replyBox = ReplyBox(reply)
         Task {
             replyBox.value(await dispatcher.dispatchAgent(request, caller: caller))
+        }
+    }
+
+    func queryResourceDirectory(_ request: Data, reply: @escaping (Data) -> Void) {
+        let replyBox = ReplyBox(reply)
+        Task {
+            replyBox.value(await dispatcher.dispatchResourceDirectory(request, caller: caller))
         }
     }
 }
@@ -446,9 +494,16 @@ public enum BrokerRuntime {
             workingDirectory: applicationSupport.appendingPathComponent(
                 "runtime", isDirectory: true)
         )
+        let resourceDirectory = ResourceDirectoryService(
+            vault: vault,
+            disclosureAuthorizer: ResourceDisclosureAuthorizationService(
+                userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
+            )
+        )
         let dispatcher = BrokerRequestDispatcher(
             agentHandler: handler,
-            trustedHandler: handler
+            trustedHandler: handler,
+            resourceDirectoryHandler: resourceDirectory
         )
         do {
             try BrokerService(

@@ -13,11 +13,14 @@ client, and returns a compact versioned JSON envelope. Arbitrary command and she
 available; authority is constrained by target, caller, command fingerprint or scope, privilege, and
 expiry rather than by removing operational capability.
 
-The MVP supports one local macOS user and SSH-accessible servers/NAS devices. Delivery first covers
+The MVP supports one local macOS user and SSH-accessible servers/NAS devices. The underlying resource
+directory is adapter-independent so later database, object-storage, cache, and service profiles do
+not fork the security architecture. Delivery first covers
 SSH-config import, tunnel preflight, public-key execution, strict host identity, read-only
 diagnostics, Keychain-backed sudo migration, encrypted inventory, and compact CLI contracts.
-Arbitrary mutation, general authorization/audit, team vaults, non-SSH transports, and custom GUI are
-deferred until parity and security gates are complete.
+Arbitrary mutation, general execution authorization/audit, team vaults, non-SSH execution adapters,
+and custom GUI are deferred until parity and security gates are complete. A narrowly scoped macOS
+user-presence gate for protected resource inspection is included.
 
 ## Technical Context
 

@@ -154,6 +154,12 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
                 }
                 let draft = PrivateResourceDraft(
                     alias: alias,
+                    resourceType: try payload.resourceType.map(ResourceTypeIdentifier.init)
+                        ?? .hostLinux,
+                    alternateAliases: try (payload.alternateAliases ?? []).map(ResourceAlias.init),
+                    accessMethods: try (payload.accessMethods ?? ["ssh"])
+                        .map(AccessMethodIdentifier.init),
+                    metadata: try (payload.metadata ?? []).map(Self.domainMetadata),
                     displayName: payload.displayName,
                     endpoint: ResourceEndpoint(host: payload.host, port: payload.port),
                     username: payload.username,
@@ -334,10 +340,32 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedAppOperationHandli
         return result
     }
 
+    private static func domainMetadata(
+        _ entry: ResourceMetadataEntryV1
+    ) throws -> ResourceMetadataEntry {
+        ResourceMetadataEntry(
+            key: try ResourceMetadataKey(entry.key),
+            value: domainMetadataValue(entry.value),
+            observedAt: entry.observedAt
+        )
+    }
+
+    private static func domainMetadataValue(
+        _ value: ResourceMetadataValueV1
+    ) -> ResourceMetadataValue {
+        switch value {
+        case let .text(value): .text(value)
+        case let .integer(value): .integer(value)
+        case let .boolean(value): .boolean(value)
+        case let .byteCount(value): .byteCount(value)
+        case let .textList(value): .textList(value)
+        }
+    }
+
     private static func jsonProjection(_ resource: SafeResourceProjection) -> JSONValue {
         .object([
             "alias": .string(resource.alias.rawValue),
-            "transport": .string(resource.transport.rawValue),
+            "transport": resource.transport.map { .string($0.rawValue) } ?? .null,
             "state": .string(resource.state.rawValue),
             "capabilities": .array(resource.capabilities.map(JSONValue.string)),
             "health": .string(resource.health.rawValue),

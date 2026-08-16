@@ -52,4 +52,42 @@ struct VaultEnvelopeTests {
             _ = try await vault.load()
         }
     }
+
+    @Test("resource inventory details exist only inside authenticated ciphertext")
+    func inventoryDetailsAreEncrypted() async throws {
+        let harness = try VaultHarness()
+        let vault = EncryptedVault(fileURL: harness.vaultURL, keyStore: harness.keyStore)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let resource = Resource(
+            id: UUID(),
+            alias: try ResourceAlias("hm-105"),
+            resourceType: .hostLinux,
+            alternateAliases: [try ResourceAlias("gpu-worker")],
+            accessMethods: [.ssh],
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "host.kernel.release", value: .text("6.8.0-private")),
+                try ResourceMetadataEntry(
+                    key: "host.memory.total-bytes", value: .byteCount(274_877_906_944)),
+            ],
+            endpoint: ResourceEndpoint(host: "203.0.113.105", port: 8105),
+            username: "private-operator",
+            securityDomain: "production",
+            createdAt: now,
+            updatedAt: now
+        )
+
+        _ = try await vault.initialize(
+            document: VaultDocument(schemaVersion: 1, resources: [resource])
+        )
+        let rawFile = try String(decoding: Data(contentsOf: harness.vaultURL), as: UTF8.self)
+        for secretMetadata in [
+            "203.0.113.105", "private-operator", "6.8.0-private", "gpu-worker",
+        ] {
+            #expect(!rawFile.contains(secretMetadata))
+        }
+
+        let loaded = try await vault.load()
+        #expect(loaded.resources == [resource])
+    }
 }

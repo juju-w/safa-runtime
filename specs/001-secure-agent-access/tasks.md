@@ -88,6 +88,9 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
 - [X] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
 - [X] T043 [P] [US1] Implement `doctor`, `setup`, and `resource` CLI commands in `Sources/SAFACLI/SAFACommand.swift`
+- [X] T043a [US1] Implement the generic encrypted resource directory, alternate-alias collision
+  checks, typed metadata, open credential kinds, typed `list/show/inspect` XPC DTOs, and macOS
+  user-presence protection for detailed inspection
 - [X] T044 [US1] Implement argument-based `exec` submission and result rendering in `Sources/SAFACLI/SAFACommand.swift`
 - [X] T045 [US1] Add request/decision/execution audit emission for the MVP path in `Sources/SAFABroker/AuditService.swift`
 - [X] T046 [US1] Complete the synthetic end-to-end MVP and leakage assertions in `Tests/Integration/ReadOnlySSHJourneyTests.swift`

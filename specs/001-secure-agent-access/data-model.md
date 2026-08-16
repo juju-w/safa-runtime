@@ -7,16 +7,23 @@ unless stated otherwise.
 
 ## Resource
 
-Represents a logical server or NAS target.
+Represents any logical resource. SSH hosts and NAS devices are the first executable profile;
+databases, object storage, caches, and services reuse the same aggregate as adapters are added.
 
 | Field | Type | Rules |
 |---|---|---|
 | `id` | UUID | Stable, never reused |
 | `alias` | String | 1-64 chars; lowercase letters, digits, dots and hyphens; unique |
-| `displayName` | String? | Human-only label; encrypted |
-| `transport` | Enum | MVP value: `ssh` |
-| `endpoint` | Host + port | Encrypted; never Agent-visible |
-| `username` | String | Encrypted; never Agent-visible |
+| `alternateAliases` | String list | Shares the canonical collision namespace; encrypted |
+| `resourceType` | Namespaced identifier | Examples: `host.linux`, `database.mysql`, `object-storage.s3` |
+| `displayName` | String? | Protected detail; encrypted and not in the default summary |
+| `accessMethods` | Identifier list | Stored profile; an adapter must still implement execution |
+| `transport` | Enum? | Legacy/MVP compatibility value: `ssh`; non-SSH profiles leave it absent |
+| `endpoint` | Scheme + host + port + path | Encrypted; disclosed only by authorized inspect |
+| `username` | String | Encrypted; disclosed only by authorized inspect |
+| `metadata` | Typed entry list | Non-secret profile data; unknown keys default private |
+| `relationships` | Kind + target ID list | Encrypted topology; exposed by target alias only after authorization |
+| `credentialBindings` | Role + CredentialReference ID list | Encrypted; never Agent-visible |
 | `jumpRoute` | Resource ID list | Acyclic; each item must be an SSH resource |
 | `securityDomain` | String | Used to detect credential reuse/blast radius |
 | `hostIdentity` | Host-key record | Required before normal execution |
@@ -39,6 +46,15 @@ draft/active/disabled -> deleted
 Deleting a resource immediately invalidates its pending requests and grants. Alias reuse requires a
 new UUID and cannot reactivate old grants.
 
+### Metadata disclosure
+
+Metadata values are explicitly typed as text, integer, boolean, byte count, or text list. The
+non-interactive summary uses a source-code allowlist; configuration and imported plugins cannot
+declare their own keys public. The initial safe keys are `host.os.family`,
+`host.docker.available`, `database.engine`, `object-storage.provider`, `cache.engine`, and
+`service.protocol`. IP addresses, kernel releases, CPU/memory/disk details, Docker versions, routes,
+and all unknown keys require `resource inspect` user presence.
+
 ## CredentialReference
 
 Opaque metadata pointing to protected material held by Keychain or Secure Enclave.
@@ -46,7 +62,7 @@ Opaque metadata pointing to protected material held by Keychain or Secure Enclav
 | Field | Type | Rules |
 |---|---|---|
 | `id` | UUID | Random; also used as opaque Keychain account identifier |
-| `kind` | Enum | `sshSecureEnclaveKey`, `sshPassword`, `sudoPassword` |
+| `kind` | Validated identifier | SSH kinds today; DB passwords, object-store keys and API tokens can be added without a vault shape change |
 | `storageLocator` | Opaque bytes/string | Encrypted; never an endpoint or human label |
 | `publicMaterial` | String? | Public SSH key only; safe for explicit human export |
 | `securityDomains` | Set<String> | Used for reuse warnings |

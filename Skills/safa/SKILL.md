@@ -1,6 +1,6 @@
 ---
 name: safa
-description: Securely discover and operate registered SSH servers, NAS devices, and internal macOS-managed infrastructure through the SAFA companion CLI without exposing endpoints or credentials to the Agent. Use when a user asks to inspect service health, view logs or resources, diagnose a remote host, execute SSH or shell commands, use sudo, review access, or revoke an Agent grant. Never use it to request, reveal, paste, export, or store raw passwords, private keys, sudo passwords, tokens, host endpoints, or recovery secrets in conversation.
+description: Securely discover and operate registered infrastructure resources through the SAFA macOS companion CLI without exposing reusable credentials to the Agent. The encrypted directory supports host profiles now and is designed for database, object-storage, cache, and service profiles. Use when a user asks to inspect resource metadata, diagnose a remote host, execute a bounded operation, review access, or revoke a grant. Never request, reveal, paste, export, or store raw passwords, private keys, sudo passwords, tokens, access keys, or recovery secrets in conversation.
 ---
 
 # SAFA
@@ -32,6 +32,12 @@ Use only an alias returned by SAFA. Do not ask the user for an IP address, port,
 password, private key, sudo password, or token. If the desired alias is absent, run
 `safa resource add ALIAS --json` and follow only the returned local, system-authenticated setup
 action. Do not collect private details in the Agent-facing CLI.
+
+Use `safa resource show ALIAS --json` for a non-interactive safe summary. Run
+`safa resource inspect ALIAS --json` only when the user explicitly asks for protected inventory or
+connection details. Inspect must rely on the macOS-owned user-presence prompt; never script around,
+repeat-spam, or reinterpret a denial. Even after authorization, never ask SAFA for or infer a
+credential value.
 
 ## Execute work
 

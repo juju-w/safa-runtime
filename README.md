@@ -4,8 +4,10 @@
 
 # SAFA
 
-**Secure Access for Agents on macOS.** Let an AI agent diagnose registered SSH resources by logical
-name while endpoints and credentials remain inside the local macOS security boundary.
+**Secure Access for Agents on macOS.** Let an AI agent discover registered resources by logical name
+and run bounded operations while reusable credentials remain inside the local macOS security
+boundary. SSH hosts are the first working adapter; the encrypted directory is designed to add
+database, object-storage, cache, and service profiles without creating a second secret workflow.
 
 [![CI](https://github.com/juju-w/safa-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-mac/actions/workflows/ci.yml)
 [![GitHub stars](https://img.shields.io/github/stars/juju-w/safa-mac?style=flat)](https://github.com/juju-w/safa-mac/stargazers)
@@ -33,8 +35,9 @@ That puts infrastructure inventory and reusable credentials into chat history, p
 or model-visible tools.
 
 With SAFA, the user first imports `report.prod` through a local, system-authenticated setup flow.
-The endpoint, username, pinned host identity and password remain behind the broker's encrypted vault
-and macOS Keychain boundary. The Agent receives only the safe alias and invokes the signed CLI:
+The endpoint, username, pinned host identity and password are stored behind the broker's encrypted
+vault and macOS Keychain boundary. The Agent normally receives only the safe alias and invokes the
+signed CLI:
 
 ```bash
 safa exec report.prod --json \
@@ -42,14 +45,19 @@ safa exec report.prod --json \
   systemctl is-active report-api
 ```
 
-The Agent can inspect the bounded, redacted result, but cannot retrieve the plaintext password or the
-private endpoint. If SAFA is unavailable or the host key changes, it fails closed instead of asking
-the user for a credential or falling back to raw SSH.
+The Agent can inspect the bounded, redacted result but cannot retrieve the plaintext password.
+Protected inventory—including an endpoint—requires an explicit `resource inspect` operation and a
+macOS user-presence prompt. If SAFA is unavailable or the host key changes, it fails closed instead
+of asking the user for a credential or falling back to raw SSH.
 
 ## What SAFA protects
 
-- **Private resource inventory** — hosts, ports, usernames and routes live in an authenticated,
-  encrypted local vault rather than in Agent prompts.
+- **Extensible private resource directory** — hosts, databases, object stores, caches, and services
+  share typed aliases, metadata, relationships, and opaque credential references. Hosts, ports,
+  usernames and routes live in an authenticated encrypted vault rather than in Agent prompts.
+- **Two-level discovery** — list/show exposes only source-code-allowlisted summary metadata;
+  protected inspect requires a macOS Touch ID/login prompt and still never returns credentials or
+  key material.
 - **macOS-backed credentials** — passwords use the data-protection Keychain; device-bound P-256 key
   primitives use Secure Enclave where supported.
 - **Signed local boundary** — the app, per-user broker, CLI and AskPass helper authenticate peers by

@@ -25,12 +25,21 @@ public enum TransportKind: String, Codable, Sendable {
 }
 
 public struct ResourceEndpoint: Codable, Equatable, Sendable {
+    public let scheme: String?
     public let host: String
     public let port: UInt16
+    public let path: String?
 
-    public init(host: String, port: UInt16 = 22) {
+    public init(
+        scheme: String? = nil,
+        host: String,
+        port: UInt16 = 22,
+        path: String? = nil
+    ) {
+        self.scheme = scheme
         self.host = host
         self.port = port
+        self.path = path
     }
 }
 
@@ -89,10 +98,41 @@ public struct HostIdentity: Codable, Equatable, Sendable {
     }
 }
 
-public enum CredentialKind: String, Codable, Sendable {
-    case sshSecureEnclaveKey = "ssh_secure_enclave_key"
-    case sshPassword = "ssh_password"
-    case sudoPassword = "sudo_password"
+public struct CredentialKind: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(_ rawValue: String) throws {
+        let isLegacyIdentifier =
+            rawValue.range(
+                of: "^[a-z][a-z0-9_]{0,63}$",
+                options: .regularExpression
+            ) != nil
+        guard NamespacedIdentifier.validate(rawValue, maximumLength: 64) || isLegacyIdentifier
+        else {
+            throw ResourceDirectoryValidationError.invalidIdentifier(rawValue)
+        }
+        self.rawValue = rawValue
+    }
+
+    public init?(rawValue: String) {
+        try? self.init(rawValue)
+    }
+
+    public init(from decoder: any Decoder) throws {
+        try self.init(decoder.singleValueContainer().decode(String.self))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    public static let sshSecureEnclaveKey = try! Self("ssh_secure_enclave_key")
+    public static let sshPassword = try! Self("ssh_password")
+    public static let sudoPassword = try! Self("sudo_password")
+    public static let databasePassword = try! Self("database.password")
+    public static let objectStorageAccessKey = try! Self("object-storage.access-key")
+    public static let apiToken = try! Self("service.api-token")
 }
 
 public enum CredentialAccessClass: String, Codable, Sendable {
@@ -145,10 +185,13 @@ public struct CredentialReference: Codable, Equatable, Sendable {
 public struct Resource: Codable, Equatable, Sendable {
     public let id: UUID
     public let alias: ResourceAlias
+    /// Optional on disk so vault documents created before the resource-directory
+    /// upgrade continue to decode through legacy SSH-host defaults.
+    public var profile: ResourceProfile?
     public var displayName: String?
-    public let transport: TransportKind
-    public var endpoint: ResourceEndpoint
-    public var username: String
+    public let transport: TransportKind?
+    public var endpoint: ResourceEndpoint?
+    public var username: String?
     public var jumpRoute: [UUID]
     public var securityDomain: String
     public var hostIdentity: HostIdentity?
@@ -163,10 +206,16 @@ public struct Resource: Codable, Equatable, Sendable {
     public init(
         id: UUID,
         alias: ResourceAlias,
+        resourceType: ResourceTypeIdentifier = .hostLinux,
+        alternateAliases: [ResourceAlias] = [],
+        accessMethods: [AccessMethodIdentifier] = [.ssh],
+        metadata: [ResourceMetadataEntry] = [],
+        relationships: [ResourceRelationship] = [],
+        credentialBindings: [ResourceCredentialBinding] = [],
         displayName: String? = nil,
-        transport: TransportKind = .ssh,
-        endpoint: ResourceEndpoint,
-        username: String,
+        transport: TransportKind? = .ssh,
+        endpoint: ResourceEndpoint? = nil,
+        username: String? = nil,
         jumpRoute: [UUID] = [],
         securityDomain: String,
         hostIdentity: HostIdentity? = nil,
@@ -180,6 +229,14 @@ public struct Resource: Codable, Equatable, Sendable {
     ) {
         self.id = id
         self.alias = alias
+        self.profile = ResourceProfile(
+            resourceType: resourceType,
+            alternateAliases: alternateAliases,
+            accessMethods: accessMethods,
+            metadata: metadata,
+            relationships: relationships,
+            credentialBindings: credentialBindings
+        )
         self.displayName = displayName
         self.transport = transport
         self.endpoint = endpoint
@@ -194,6 +251,30 @@ public struct Resource: Codable, Equatable, Sendable {
         self.state = state
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    public var resolvedResourceType: ResourceTypeIdentifier {
+        profile?.resourceType ?? .hostLinux
+    }
+
+    public var resolvedAlternateAliases: [ResourceAlias] {
+        profile?.alternateAliases ?? []
+    }
+
+    public var resolvedAccessMethods: [AccessMethodIdentifier] {
+        profile?.accessMethods ?? [AccessMethodIdentifier.ssh]
+    }
+
+    public var resolvedMetadata: [ResourceMetadataEntry] {
+        profile?.metadata ?? []
+    }
+
+    public var resolvedRelationships: [ResourceRelationship] {
+        profile?.relationships ?? []
+    }
+
+    public var resolvedCredentialBindings: [ResourceCredentialBinding] {
+        profile?.credentialBindings ?? []
     }
 }
 
