@@ -1,0 +1,26 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+
+# Local development state and credentials must never enter the repository.
+.env
+.env.*
+!.env.example
+.agents/private/
+.agents/cache/
+*.key
+*.pem
+*.p12
+*.mobileprovision
+*.vault
+*.vault.*
+audit*.jsonl
+
+# Release artifacts are generated from signed CI inputs.
+Skills/safa/assets/SAFA.app/
+Skills/safa/assets/SAFA.app.zip
+Skills/safa/assets/manifest.json
