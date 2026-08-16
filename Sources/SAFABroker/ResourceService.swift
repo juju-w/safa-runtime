@@ -182,7 +182,7 @@ public actor ResourceService {
             try ResourceMetadataPolicy.validateForPersistence(metadata)
         } catch let error as ResourceMetadataPolicyError {
             switch error {
-            case .credentialLikeKey(let key), .invalidPublicSummaryValue(let key):
+            case .sensitiveOrInvalidValue(let key):
                 throw ResourceServiceError.invalidMetadata(key)
             }
         }
