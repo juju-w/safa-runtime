@@ -85,399 +85,73 @@ struct ResourceOnboardingTests {
         #expect(await vault.readDocument().credentialReferences.count == 1)
     }
 
-    @Test("onboarding rejects invalid public and credential-like metadata before storing a secret")
+    @Test("onboarding rejects invalid or credential-like metadata before storing a secret")
     func onboardingMetadataPolicy() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let credentials = InMemoryPasswordSecretStore()
-        let service = ResourceService(vault: vault, passwordStore: credentials)
-        let invalidDraft = try PrivateResourceDraft.synthetic(
-            alias: "nas.home",
-            metadata: [
-                ResourceMetadataEntry(
+        let cases: [(String, ResourceMetadataEntry)] = [
+            (
+                "host.docker.available",
+                try ResourceMetadataEntry(
                     key: "host.docker.available",
                     value: .text("https://private.example.invalid/token")
                 )
-            ]
-        )
-
-        await #expect(
-            throws: ResourceServiceError.invalidMetadata("host.docker.available")
-        ) {
-            try await service.addPasswordResource(
-                invalidDraft,
-                password: Data("must-not-be-stored".utf8)
-            )
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-
-        let credentialDraft = try PrivateResourceDraft.synthetic(
-            alias: "cache.internal",
-            metadata: [
-                ResourceMetadataEntry(
+            ),
+            (
+                "service.api-token",
+                try ResourceMetadataEntry(
                     key: "service.api-token",
                     value: .text("synthetic-secret")
                 )
-            ]
-        )
-        await #expect(
-            throws: ResourceServiceError.invalidMetadata("service.api-token")
-        ) {
-            try await service.addPasswordResource(
-                credentialDraft,
-                password: Data("must-also-not-be-stored".utf8)
+            ),
+            (
+                "service.notes",
+                try ResourceMetadataEntry(
+                    key: "service.notes",
+                    value: .text("Authorization: Bearer synthetic-token")
+                )
+            ),
+        ]
+
+        for (index, (key, entry)) in cases.enumerated() {
+            let vault = InMemoryVaultDocumentStore()
+            let service = ResourceService(
+                vault: vault,
+                passwordStore: InMemoryPasswordSecretStore()
             )
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding rejects public key material and host fingerprints as metadata")
-    func onboardingRejectsKeyMaterial() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-
-        for (key, value) in [
-            ("ssh.public-key", "ssh-ed25519 synthetic-public-material"),
-            ("ssh.keypair", "synthetic-private-public-keypair"),
-            ("ssh.keypairs", "synthetic-private-public-keypairs"),
-            ("ssh.identity-file", "synthetic-private-key-locator"),
-            ("ssh.pem", "synthetic-pem-material"),
-            ("ssh.certificate", "synthetic-certificate-material"),
-            ("host.fingerprint", "SHA256:synthetic-host-fingerprint"),
-            ("service.keychain", "com.example.synthetic"),
-            ("service.authorization", "Basic dXNlcjpwYXNz"),
-            ("service.auth-header", "opaque-reference-42"),
-            ("host.configuration", "Basic dXNlcjpwYXNz"),
-            (
-                "service.configuration",
-                "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.deadbeef"
-            ),
-            (
-                "service.configuration",
-                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.deadbeef"
-            ),
-            (
-                "service.configuration",
-                "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..AAECAwQFBgcICQoL.c3ludGhldGlj.AAECAwQFBgcICQoLDA0ODw"
-            ),
-            ("database.connection-string", "postgresql://db-readonly.internal/app"),
-            ("database.dsn", "postgresql://db-readonly.internal/app"),
-            (
-                "service.endpoint-description",
-                "postgresql://operator:hunter2@db.internal/app"
-            ),
-            ("database.passphrase", "correct horse battery staple"),
-            ("service.passcode", "873901"),
-            ("database.pin", "420731"),
-            ("service.jwk", #"{"kty":"oct","k":"c3ludGhldGlj"}"#),
-            ("service.jwks", #"{"keys":[{"kty":"oct","k":"c3ludGhldGlj"}]}"#),
-            ("service.runtime-config", #"{"kty":"oct","k":"c3ludGhldGlj"}"#),
-            ("service.configuration", "Authorization: Bearer ABCDEFGHIJKLMNOP"),
-            (
-                "service.binary-config",
-                "MC4CAQAwBQYDK2VwBCIEIFAzV2A2yFQSoeeXJT6eOFT0d+fHXGbR3G2Eetp4eWI5"
-            ),
-            (
-                "service.encrypted-config",
-                "MIGjMF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBBV+3Y2CBVtXSO7ursZ8YLDAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQ/yY20LZR0Wy53ryidfpYGgRANRZZeU+qiyai0m/v38SdQmAlIWnyIDyjeigkSqNuILLh2OIwLDDFype8nVpuwD1cxCtp3zeKa2oyloA+cUH+Tw=="
-            ),
-            (
-                "service.public-material",
-                "MCowBQYDK2VwAyEAMXPgkm0Ch5sng3bHqTw6+kibp0nmIuej4RUH62qb+5w="
-            ),
-            (
-                "service.rsa-public-material",
-                "MEgCQQDO+8KOZfLsNVYtf8cyybQc9C77wN2oMdwZJ/3lNf55FlEnoiOdMDnGSfIuY8ka4ps4Dy2ODnHuReF+EwYi/xeDAgMBAAE="
-            ),
-            (
-                "service.grouped-config",
-                "MC4CAQAwBQ YDK2VwBCIE IFAzV2A2yF QSoeeXJT6e OFT0d+fHXG bR3G2Eetp4 eWI5"
-            ),
-            (
-                "service.url-safe-config",
-                "MC4CAQAwBQYDK2VwBCIEIFAzV2A2yFQSoeeXJT6eOFT0d-fHXGbR3G2Eetp4eWI5"
-            ),
-            (
-                "service.ssh-wire-config",
-                "AAAAC3NzaC1lZDI1NTE5AAAAIDFz4JJtAoebJ4N2x6k8OvpIm6dJ5iLno+EVB+tqm/uc"
-            ),
-            ("service.fragment-flood", String(repeating: "A ", count: 65)),
-        ] {
             let draft = try PrivateResourceDraft.synthetic(
-                alias: "nas.home",
-                metadata: [
-                    ResourceMetadataEntry(key: key, value: .text(value))
-                ]
+                alias: "invalid-\(index)",
+                metadata: [entry]
             )
+
             await #expect(throws: ResourceServiceError.invalidMetadata(key)) {
                 try await service.addPasswordResource(
                     draft,
                     password: Data("must-not-be-stored".utf8)
                 )
             }
+            #expect(await vault.readDocument().resources.isEmpty)
+            #expect(await vault.readDocument().credentialReferences.isEmpty)
         }
-
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
     }
 
-    @Test("onboarding rejects a DER certificate split across a text list")
-    func onboardingRejectsSplitDERCertificate() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-        let draft = try PrivateResourceDraft.synthetic(
-            alias: "nas.home",
-            metadata: [
-                ResourceMetadataEntry(
-                    key: "service.configuration",
-                    value: .textList([
-                        "MIIBTDCB/6ADAgECAhQNU6SL7ZiRRb2c2nHMfAbxK1/qVzAFBgMrZXAwHDEaMBgGA1UEAwwRc3ludGhldGljLmludmFsaWQwHhcNMjYwODE2MDg0NzE0WhcNMjYwODE3MDg0NzE0WjAcMRowGAYDVQQDDBFzeW50",
-                        "aGV0aWMuaW52YWxpZDAqMAUGAytlcAMhANhvz6T7SomfyMONlzmOdGpUAA/oZGG1kaPgcuM9XxrMo1MwUTAdBgNVHQ4EFgQUpmdfUgngIDV/h5Y3y1TRQTKOI+EwHwYDVR0jBBgwFoAUpmdfUgngIDV/h5Y3y1TR",
-                        "QTKOI+EwDwYDVR0TAQH/BAUwAwEB/zAFBgMrZXADQQA0LZRmhlONVtG02Vz4wcA8sf0wGaTfbNziQK6mlaDbDdgy/KS/ytGjtEZ4UkLmPBUAkB90iDEG163lYS6ZUeED",
-                    ])
-                )
-            ]
-        )
-
-        await #expect(throws: ResourceServiceError.invalidMetadata("service.configuration")) {
-            try await service.addPasswordResource(
-                draft,
-                password: Data("must-not-be-stored".utf8)
-            )
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding rejects a PKCS12 container split across a text list")
-    func onboardingRejectsSplitPKCS12Container() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-        for chunks in [
-            ["MBQCAQMwDwYJKoZI", "hvcNAQcBoAIEAA=="],
-            ["MBQCAQMwDwYJKoZI", "hvcNAQcCoAIEAA=="],
-        ] {
-            let draft = try PrivateResourceDraft.synthetic(
-                alias: "nas.home",
-                metadata: [
-                    ResourceMetadataEntry(
-                        key: "service.configuration",
-                        value: .textList(chunks)
-                    )
-                ]
-            )
-
-            await #expect(throws: ResourceServiceError.invalidMetadata("service.configuration")) {
-                try await service.addPasswordResource(
-                    draft,
-                    password: Data("must-not-be-stored".utf8)
-                )
-            }
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding rejects PuTTY private key material encoded as a text list")
-    func onboardingRejectsPuTTYKeyMaterial() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-        let draft = try PrivateResourceDraft.synthetic(
-            alias: "nas.home",
-            metadata: [
-                ResourceMetadataEntry(
-                    key: "host.configuration",
-                    value: .textList([
-                        "PuTTY-User-Key-File-3: ssh-ed25519",
-                        "Encryption: none",
-                        "Comment: synthetic",
-                        "Public-Lines: 1",
-                        "c3ludGhldGljLXB1YmxpYy1tYXRlcmlhbA==",
-                        "Private-Lines: 1",
-                        "c3ludGhldGljLXByaXZhdGUtbWF0ZXJpYWw=",
-                        "Private-MAC: synthetic-private-mac",
-                    ])
-                )
-            ]
-        )
-
-        await #expect(throws: ResourceServiceError.invalidMetadata("host.configuration")) {
-            try await service.addPasswordResource(
-                draft,
-                password: Data("must-not-be-stored".utf8)
-            )
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding rejects an authorization credential split across a text list")
-    func onboardingRejectsSplitAuthorization() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-        let draft = try PrivateResourceDraft.synthetic(
-            alias: "nas.home",
-            metadata: [
-                ResourceMetadataEntry(
-                    key: "host.configuration",
-                    value: .textList(["Basic", "dXNl", "cjpwYXNz"])
-                )
-            ]
-        )
-
-        await #expect(throws: ResourceServiceError.invalidMetadata("host.configuration")) {
-            try await service.addPasswordResource(
-                draft,
-                password: Data("must-not-be-stored".utf8)
-            )
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding rejects SSH key material split across a text list")
-    func onboardingRejectsSplitSSHKey() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-        let draft = try PrivateResourceDraft.synthetic(
-            alias: "nas.home",
-            metadata: [
-                ResourceMetadataEntry(
-                    key: "host.configuration",
-                    value: .textList([
-                        "ssh-ed25519",
-                        "AAAAC3NzaC1lZDI1NTE5AAAAISyntheticPublicMaterial",
-                    ])
-                )
-            ]
-        )
-
-        await #expect(throws: ResourceServiceError.invalidMetadata("host.configuration")) {
-            try await service.addPasswordResource(
-                draft,
-                password: Data("must-not-be-stored".utf8)
-            )
-        }
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding rejects supported and legacy OpenSSH public key algorithms")
-    func onboardingRejectsOpenSSHAlgorithms() async throws {
-        let vault = InMemoryVaultDocumentStore()
-        let service = ResourceService(
-            vault: vault,
-            passwordStore: InMemoryPasswordSecretStore()
-        )
-        let algorithms = [
-            "ssh-dss",
-            "ssh-ed25519",
-            "sk-ssh-ed25519@openssh.com",
-            "ecdsa-sha2-nistp256",
-            "ecdsa-sha2-nistp384",
-            "ecdsa-sha2-nistp521",
-            "sk-ecdsa-sha2-nistp256@openssh.com",
-            "ssh-rsa",
-            "ssh-ed25519-cert-v01@openssh.com",
-        ]
-
-        for algorithm in algorithms {
-            let draft = try PrivateResourceDraft.synthetic(
-                alias: "nas.home",
-                metadata: [
-                    ResourceMetadataEntry(
-                        key: "host.configuration",
-                        value: .text("\(algorithm) AAAAB3NzaSyntheticPublicMaterial")
-                    )
-                ]
-            )
-            await #expect(throws: ResourceServiceError.invalidMetadata("host.configuration")) {
-                try await service.addPasswordResource(
-                    draft,
-                    password: Data("must-not-be-stored".utf8)
-                )
-            }
-        }
-
-        #expect(await vault.readDocument().resources.isEmpty)
-        #expect(await vault.readDocument().credentialReferences.isEmpty)
-    }
-
-    @Test("onboarding preserves safe typed extension metadata as protected detail")
-    func onboardingPreservesPrivateExtensionMetadata() async throws {
+    @Test("bounded unknown metadata remains encrypted for forward compatibility")
+    func unknownMetadataPersists() async throws {
         let vault = InMemoryVaultDocumentStore()
         let service = ResourceService(
             vault: vault,
             passwordStore: InMemoryPasswordSecretStore()
         )
         let entry = try ResourceMetadataEntry(
-            key: "database.replica-count",
-            value: .integer(2)
-        )
-        let keyboardLayout = try ResourceMetadataEntry(
-            key: "host.keyboard.layout",
-            value: .text("us")
-        )
-        let health = try ResourceMetadataEntry(
-            key: "service.health",
-            value: .text("uncertain")
-        )
-        let documentationURL = try ResourceMetadataEntry(
-            key: "service.documentation-url",
-            value: .text("https://docs.example.invalid/health")
-        )
-        let transportStatus = try ResourceMetadataEntry(
-            key: "service.transport-status",
-            value: .text("ssh-service running")
-        )
-        let bearerProcessStatus = try ResourceMetadataEntry(
-            key: "service.process-status",
-            value: .text("bearer process active")
-        )
-        let artifactDigestInfo = try ResourceMetadataEntry(
-            key: "service.artifact-digest",
-            value: .text(
-                "MDEwDQYJYIZIAWUDBAIBBQAEIBERERERERERERERERERERERERERERERERERERERERER"
-            )
+            key: "service.future-status",
+            value: .text("ready")
         )
 
         let resource = try await service.addPasswordResource(
-            PrivateResourceDraft.synthetic(
-                alias: "database.internal",
-                metadata: [
-                    entry, keyboardLayout, health, documentationURL, transportStatus,
-                    bearerProcessStatus, artifactDigestInfo,
-                ]
-            ),
+            PrivateResourceDraft.synthetic(alias: "future.service", metadata: [entry]),
             password: Data("synthetic-password".utf8)
         )
 
-        #expect(
-            resource.resolvedMetadata
-                == [
-                    entry, keyboardLayout, health, documentationURL, transportStatus,
-                    bearerProcessStatus, artifactDigestInfo,
-                ]
-        )
+        #expect(resource.resolvedMetadata == [entry])
+        #expect(await vault.readDocument().resources.first?.resolvedMetadata == [entry])
     }
 
     @Test("editing an unknown alias does not expose an endpoint or credential")

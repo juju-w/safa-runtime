@@ -184,7 +184,9 @@ then confirm that the user can reconstruct the sequence without finding credenti
   credential roles without accepting arbitrary JSON or embedded secrets.
 - **FR-002b**: List/show MUST expose only source-code-allowlisted summary fields. Protected inspect
   MUST require macOS device-owner authentication, rate-limit prompts, return no details when denied,
-  and never disclose credentials, credential locators, key material, or host fingerprints.
+  and never disclose credentials, credential locators, key material, or host fingerprints. Unknown
+  metadata MAY remain encrypted for forward compatibility but MUST stay out of Agent-facing
+  projections until its key, type, and value rules are registered in trusted source code.
 - **FR-003**: The system MUST collect and update endpoints, usernames, routes, passwords, private-key
   references, sudo credentials, and recovery material through a trusted flow outside Agent-visible
   input and output.
