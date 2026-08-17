@@ -4,7 +4,7 @@ import SAFADomain
 struct ResourceListCommand: AsyncParsableCommand, ResourceDirectoryCommand {
     static let configuration = CommandConfiguration(commandName: "list", aliases: ["ls"])
     @Flag var json = false
-    @Option var state: String?
+    @Option(completion: ResourceCLICompletion.resourceStates) var state: String?
 
     func run() async throws {
         let parsedState: ResourceState?
@@ -41,7 +41,7 @@ struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
         commandName: "show",
         abstract: "Show a safe summary; pass --details for authorized inventory."
     )
-    @Argument var alias: String
+    @Argument(completion: ResourceCLICompletion.resourceAliases) var alias: String
     @Flag(
         name: .customLong("details"),
         help: "Show protected connection and probed inventory after macOS authorization."
@@ -75,7 +75,7 @@ struct ResourceInspectCommand: AsyncParsableCommand, ResourceDirectoryCommand {
         abstract: "Compatibility alias for resource show --details.",
         shouldDisplay: false
     )
-    @Argument var alias: String
+    @Argument(completion: ResourceCLICompletion.resourceAliases) var alias: String
     @Flag var json = false
 
     func run() async throws {

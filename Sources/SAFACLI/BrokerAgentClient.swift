@@ -149,7 +149,29 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
         alias: ResourceAlias? = nil,
         state: ResourceState? = nil
     ) async throws -> ResourceDirectoryReplyV1 {
-        let replyTimeout = XPCReplyTimeout.interval(for: action)
+        try await queryResourceDirectory(
+            action: action,
+            alias: alias,
+            state: state,
+            replyTimeout: XPCReplyTimeout.interval(for: action)
+        )
+    }
+
+    func queryResourceDirectoryForCompletion() async throws -> ResourceDirectoryReplyV1 {
+        try await queryResourceDirectory(
+            action: .list,
+            alias: nil,
+            state: nil,
+            replyTimeout: 0.75
+        )
+    }
+
+    private func queryResourceDirectory(
+        action: ResourceQueryActionV1,
+        alias: ResourceAlias?,
+        state: ResourceState?,
+        replyTimeout: TimeInterval
+    ) async throws -> ResourceDirectoryReplyV1 {
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
             teamIdentifier: team,

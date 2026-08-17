@@ -165,7 +165,7 @@ struct DoctorCommand: AsyncParsableCommand, JSONCommand {
 
 struct ExecCommand: AsyncParsableCommand, JSONCommand {
     static let configuration = CommandConfiguration(commandName: "exec")
-    @Argument var alias: String
+    @Argument(completion: ResourceCLICompletion.resourceAliases) var alias: String
     @Option var intent: String
     @Option(name: .customLong("expected-effect")) var expectedEffect: String?
     @Option var rollback: String?

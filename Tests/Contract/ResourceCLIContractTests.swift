@@ -7,6 +7,16 @@ import Testing
 
 @Suite("Safe resource CLI projection")
 struct ResourceCLIContractTests {
+    @Test("resource alias completion is sorted, prefix filtered, and duplicate free")
+    func resourceAliasCompletion() {
+        #expect(
+            ResourceCLICompletion.filterAliases(
+                ["hm-105", "home-nec-win", "hm-104", "hm-105"],
+                prefix: "hm-"
+            ) == ["hm-104", "hm-105"]
+        )
+    }
+
     @Test("resource CLI exposes the complete lifecycle and an ls alias")
     func cliFirstCommandSurface() throws {
         #expect(ResourceShowCommand.configuration.abstract.contains("--details"))

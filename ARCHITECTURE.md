@@ -232,6 +232,9 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
   switches.
 - Version information comes from generated build metadata, never a literal repeated across CLI and
   Xcode settings.
+- The CLI generates native `zsh`, `bash`, and `fish` completion scripts. Dynamic resource
+  completion reads only the non-interactive safe-summary directory, never requests authorization,
+  and fails closed to no candidates when the Broker is unavailable.
 - `--` remains the boundary before a remote argument vector. Shell programs are explicit and never
   inferred by concatenating arguments.
 

@@ -21,6 +21,7 @@ safa doctor --json
 safa setup status --json
 safa setup activate --json
 safa setup deactivate --json
+safa --generate-completion-script zsh|bash|fish
 
 safa resource list|ls --json [--state active]
 safa resource show ALIAS --json [--details]
@@ -37,6 +38,12 @@ safa exec ALIAS --json \
   --intent TEXT [--expected-effect TEXT] [--rollback TEXT] \
   [--timeout SECONDS] [--output-limit BYTES] -- ARG...
 ```
+
+Shell completion is a human-facing local convenience, not an Agent JSON operation. Generated
+scripts provide static command and option candidates. Dynamic resource candidates contain only
+aliases returned by the non-interactive safe `resource list` projection; completion never requests
+authorization or returns endpoints, accounts, inventory details, or credentials. If the signed
+Broker cannot answer within its short completion deadline, the candidate list is empty.
 
 `setup activate` is safe for an Agent to call when status reports that the bundled broker is not
 registered. macOS may require the local user to approve the background item. `setup deactivate` is

@@ -81,13 +81,15 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     ) var fromSSHConfig: String?
     @Option(
         name: .customLong("type"),
-        help: "Host platform: host.linux, host.macos, or host.windows."
+        help: "Host platform: host.linux, host.macos, or host.windows.",
+        completion: ResourceCLICompletion.hostTypes
     )
     var importedResourceType: String?
     @Option(
         name: .customLong("template"),
         help:
-            "Template: ssh, mysql, postgresql, sqlserver, mongodb, s3, minio, oss, redis, kafka, rabbitmq, elasticsearch, neo4j, or http."
+            "Template: ssh, mysql, postgresql, sqlserver, mongodb, s3, minio, oss, redis, kafka, rabbitmq, elasticsearch, neo4j, or http.",
+        completion: ResourceCLICompletion.templates
     )
     var template: String?
     @Flag var json = false
@@ -104,19 +106,24 @@ struct ResourceEditCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         commandName: "edit",
         abstract: "Refresh a resource from a local SSH config alias."
     )
-    @Argument(help: "Existing logical resource alias.") var alias: String
+    @Argument(
+        help: "Existing logical resource alias.",
+        completion: ResourceCLICompletion.resourceAliases
+    ) var alias: String
     @Option(
         name: .customLong("from-ssh-config"),
         help: "Logical OpenSSH Host alias; defaults to the resource alias."
     ) var fromSSHConfig: String?
     @Option(
         name: .customLong("type"),
-        help: "New host type; omitted preserves the current type."
+        help: "New host type; omitted preserves the current type.",
+        completion: ResourceCLICompletion.hostTypes
     )
     var resourceType: String?
     @Option(
         name: .customLong("template"),
-        help: "Existing resource template; SSH is inferred when omitted."
+        help: "Existing resource template; SSH is inferred when omitted.",
+        completion: ResourceCLICompletion.templates
     )
     var template: String?
     @Flag var json = false
@@ -131,7 +138,10 @@ struct ResourceSetupCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         commandName: "setup",
         abstract: "Activate a draft through a trusted local OpenSSH setup."
     )
-    @Argument(help: "Draft resource alias to set up.") var alias: String
+    @Argument(
+        help: "Draft resource alias to set up.",
+        completion: ResourceCLICompletion.resourceAliases
+    ) var alias: String
     @Option(
         name: .customLong("from-ssh-config"),
         help: "Logical OpenSSH Host alias; defaults to the resource alias."
@@ -176,7 +186,10 @@ struct ResourceDisableCommand: AsyncParsableCommand, AliasMutationCommand {
         commandName: "disable",
         abstract: "Disable a resource after macOS user authorization."
     )
-    @Argument(help: "Logical resource alias to disable.") var alias: String
+    @Argument(
+        help: "Logical resource alias to disable.",
+        completion: ResourceCLICompletion.resourceAliases
+    ) var alias: String
     @Flag var json = false
 
     func run() async throws {
@@ -189,7 +202,10 @@ struct ResourceEnableCommand: AsyncParsableCommand, AliasMutationCommand {
         commandName: "enable",
         abstract: "Re-enable a disabled resource after macOS user authorization."
     )
-    @Argument(help: "Logical resource alias to enable.") var alias: String
+    @Argument(
+        help: "Logical resource alias to enable.",
+        completion: ResourceCLICompletion.resourceAliases
+    ) var alias: String
     @Flag var json = false
 
     func run() async throws {
@@ -202,7 +218,10 @@ struct ResourceRemoveCommand: AsyncParsableCommand, AliasMutationCommand {
         commandName: "remove",
         abstract: "Remove a resource after macOS user authorization."
     )
-    @Argument(help: "Logical resource alias to remove.") var alias: String
+    @Argument(
+        help: "Logical resource alias to remove.",
+        completion: ResourceCLICompletion.resourceAliases
+    ) var alias: String
     @Flag var json = false
 
     func run() async throws {
