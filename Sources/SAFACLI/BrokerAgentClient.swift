@@ -61,6 +61,7 @@ final class XPCReplyContinuationBox<Reply: Sendable>: @unchecked Sendable {
 
 enum XPCReplyTimeout {
     static let standard: TimeInterval = 10
+    static let userPresence: TimeInterval = 300
     static let commandGrace: UInt = 10
     static let maximumCommand: UInt = 60
     static let maximumWait: UInt = 300
@@ -74,6 +75,14 @@ enum XPCReplyTimeout {
         default:
             standard
         }
+    }
+
+    static func interval(for action: ResourceQueryActionV1) -> TimeInterval {
+        action == .inspect ? userPresence : standard
+    }
+
+    static func interval(for _: ResourceMutationActionV1) -> TimeInterval {
+        userPresence
     }
 }
 
@@ -140,6 +149,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
         alias: ResourceAlias? = nil,
         state: ResourceState? = nil
     ) async throws -> ResourceDirectoryReplyV1 {
+        let replyTimeout = XPCReplyTimeout.interval(for: action)
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
             teamIdentifier: team,
@@ -160,7 +170,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                 connection: connection,
                 continuation: continuation
             )
-            box.scheduleTimeout(after: XPCReplyTimeout.standard)
+            box.scheduleTimeout(after: replyTimeout)
             connection.remoteObjectInterface = NSXPCInterface(
                 with: (any SAFAAgentBrokerXPC).self
             )
@@ -201,6 +211,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
         alias: ResourceAlias,
         mutation: ResourceMutationV1? = nil
     ) async throws -> ResourceMutationReplyV1 {
+        let replyTimeout = XPCReplyTimeout.interval(for: action)
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
             teamIdentifier: team,
@@ -221,7 +232,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                 connection: connection,
                 continuation: continuation
             )
-            box.scheduleTimeout(after: XPCReplyTimeout.standard)
+            box.scheduleTimeout(after: replyTimeout)
             connection.remoteObjectInterface = NSXPCInterface(
                 with: (any SAFAAgentBrokerXPC).self
             )

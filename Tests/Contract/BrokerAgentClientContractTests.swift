@@ -54,4 +54,22 @@ struct BrokerAgentClientContractTests {
         )
         #expect(XPCReplyTimeout.interval(for: .runtimeStatus) == 10)
     }
+
+    @Test("user-present resource operations allow the system prompt to complete")
+    func userPresenceOperationsUseInteractiveDeadline() {
+        #expect(XPCReplyTimeout.interval(for: ResourceQueryActionV1.list) == 10)
+        #expect(XPCReplyTimeout.interval(for: ResourceQueryActionV1.show) == 10)
+        #expect(XPCReplyTimeout.interval(for: ResourceQueryActionV1.inspect) == 300)
+
+        for action in [
+            ResourceMutationActionV1.add,
+            .edit,
+            .setup,
+            .disable,
+            .enable,
+            .remove,
+        ] {
+            #expect(XPCReplyTimeout.interval(for: action) == 300)
+        }
+    }
 }
