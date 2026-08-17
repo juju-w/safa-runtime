@@ -199,9 +199,18 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **FR-002a**: The encrypted resource directory MUST support validated, extensible resource types,
   access methods, typed metadata, alternate aliases, relationships, credential kinds, and
   credential roles without accepting arbitrary JSON or embedded secrets.
-- **FR-002b**: List/show MUST expose only source-code-allowlisted summary fields. Protected inspect
-  MUST require macOS device-owner authentication, rate-limit prompts, return no details when denied,
-  and never disclose credentials, credential locators, key material, or host fingerprints.
+- **FR-002b**: List/default-show MUST expose only source-code-allowlisted summary fields. Protected
+  show MUST require macOS device-owner authentication, rate-limit prompts, return no details when
+  denied, and never disclose credentials, credential locators, key material, or host fingerprints.
+- **FR-002c**: Every resource MUST have an immutable internal identifier and one canonical logical
+  alias. Canonical and alternate aliases MUST be unique across the complete local catalog, not only
+  within one template or resource type. Alias comparison MUST use a documented canonical form so
+  case or Unicode normalization cannot create two visually equivalent selectable resources.
+- **FR-002d**: `add` MUST reserve the canonical alias atomically before collecting protected values.
+  If that alias or any proposed alternate alias already belongs to an active, disabled, or draft
+  resource, the operation MUST return a conflict without overwriting or merging either resource and
+  MUST direct the user to `edit` or explicitly remove the existing resource. Concurrent adds MUST
+  produce at most one successful resource.
 - **FR-003**: The system MUST collect and update endpoints, usernames, routes, passwords, private-key
   references, sudo credentials, and recovery material through a trusted flow outside Agent-visible
   input and output.
@@ -234,13 +243,26 @@ then confirm that the user can reconstruct the sequence without finding credenti
   and enabled/disabled state changes. Updates to an active resource MUST verify the proposed target
   and credential before atomically replacing the previous working revision; failure MUST preserve
   the prior active configuration.
-- **FR-003h**: `show` MUST return a non-interactive safe summary by default and MAY return protected
-  non-secret details only after macOS user authorization. `list` MUST remain a safe summary and MUST
-  NOT trigger user-presence prompts.
+- **FR-003h**: `show` MUST return a non-interactive safe summary by default. Its allowlisted summary
+  MAY include canonical alias, display label, template and version, safe tags, lifecycle and health
+  state, declared capabilities, and last-check time; it MUST exclude endpoints, ports, usernames,
+  routes, database or bucket names, topology, credential references, and secrets. A protected-details
+  option MAY disclose the configured non-secret connection and inventory fields needed for local
+  diagnosis only after macOS device-owner authorization. Denial, cancellation, or prompt rate limits
+  MUST return no protected fields. Even after authorization, `show` MUST never disclose a password,
+  token, private or public key material, recovery value, Keychain locator, or exportable credential.
+  `list` MUST remain a safe summary and MUST NOT trigger user-presence prompts.
 - **FR-003i**: Agent-facing `add` and `edit` inputs MUST contain only logical aliases, template names,
   safe state choices, and other non-secret selections. They MUST NOT accept endpoints, ports,
   usernames, passwords, key paths, tokens, or sudo passwords; those values belong to the trusted
   local configuration flow.
+- **FR-003j**: Agent access to the default `show` summary MUST be read-only and require no disclosure
+  grant. An Agent MAY request protected details only when the user explicitly asks for connection,
+  inventory, or topology details; the Broker MUST independently enforce macOS user presence and MUST
+  NOT treat Agent intent, an audit string, or a previous execution approval as disclosure authority.
+- **FR-003k**: Alias changes through `edit` MUST preserve the immutable resource identifier and its
+  credential bindings, and MUST pass the same atomic catalog-wide collision check as `add`. Display
+  labels MAY repeat because they are descriptive and MUST NOT be accepted as execution selectors.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private
@@ -316,9 +338,11 @@ then confirm that the user can reconstruct the sequence without finding credenti
 
 ### Key Entities
 
-- **Resource**: A logical infrastructure target with canonical/alternate aliases, an extensible type,
-  typed encrypted metadata, access methods, relationships, security-domain membership, opaque
-  credential references, and lifecycle state. Host identity applies to SSH profiles.
+- **Resource**: A logical infrastructure target with an immutable identifier, one catalog-wide unique
+  canonical alias, optional catalog-wide unique alternate aliases, an optional non-unique display
+  label, an extensible type, typed encrypted metadata, access methods, relationships, security-domain
+  membership, opaque credential references, and lifecycle state. Host identity applies to SSH
+  profiles.
 - **Credential Reference**: An opaque link to protected authentication material; it exposes type,
   health, and scope but never its secret value.
 - **Execution Request**: A proposed action containing the caller, resource, command representation,
@@ -372,6 +396,11 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **SC-013**: SSH and SQL Server synthetic templates both complete add, show, edit, state-change,
   and remove journeys through the same five-command resource surface while rejecting fields and
   credential roles that do not belong to the selected template.
+- **SC-014**: Exact, case-variant, normalization-equivalent, alternate-alias, and concurrent duplicate
+  add tests never overwrite a resource and yield exactly one selectable resource for each alias.
+- **SC-015**: Default list/show responses contain zero protected fields without prompting; authorized
+  protected show tests return only allowlisted non-secret details, and denied or cancelled prompts
+  return no partial protected data or reusable authorization.
 
 ### Post-MVP Sync Outcomes
 
