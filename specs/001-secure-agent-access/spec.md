@@ -302,6 +302,37 @@ then confirm that the user can reconstruct the sequence without finding credenti
   ask which protected fields a template contains, collect those values in conversation, or invent a
   secondary setup step. Runtime errors MUST say whether the user should retry `add`, use `edit` for
   an existing alias, or take a trusted local remediation.
+- **FR-003r**: Migration from the predecessor local `ssh-hosts` Skill MUST occur through a trusted
+  local import into the encrypted resource directory. The importer MAY read logical SSH aliases,
+  resolved OpenSSH configuration, non-secret Core Tunnel routing metadata, alternate aliases,
+  resource roles, and the existence and privilege role of matching Keychain items. It MUST NOT read
+  or copy a Keychain value, private key, password, token, source `.env` value, or recovery secret.
+  Real infrastructure inventory and topology MUST NOT be copied into the public Skill, source tree,
+  fixtures, logs, command output, or conversation.
+- **FR-003s**: SSH migration and the built-in `ssh` template MUST preserve the predecessor workflow's
+  useful semantics: direct and loopback-tunnel routes, optional reviewed jump relationships,
+  alternate business aliases, expected existing username, strict host-identity verification,
+  non-interactive key or agent authentication, host role and caution metadata, execution capability,
+  and a separate optional sudo credential role. A route preflight MUST distinguish an unavailable
+  local tunnel from an authentication failure and MUST flag wildcard local binds as potentially
+  LAN-exposed rather than silently treating them as loopback-only.
+- **FR-003t**: Service-resource parity MUST be delivered through typed templates rather than SSH
+  notes. Database templates (`mysql`, `sqlserver`, and `postgresql`) share endpoint, port, optional
+  database or schema, username, route, TLS policy, credential role, and privilege tier. Object-store
+  templates (`s3`, `minio`, and `oss`) share endpoint, region, optional bucket, TLS policy, access-key
+  credential, and privilege tier. `redis`, `elasticsearch`, `neo4j`, and `http` templates MUST define
+  only their protocol-specific additions while reusing the common route, credential, health, and
+  relationship model.
+- **FR-003u**: A service resource MUST be able to reference a host or tunnel resource as its route
+  and MAY have multiple separately scoped credential roles such as read-only and administrator.
+  Selection MUST default to the least-privileged healthy role sufficient for the requested action;
+  an administrator or production-data role requires explicit user intent and policy evaluation.
+  SSH usernames and service usernames MUST never be inferred from one another.
+- **FR-003v**: The Runtime replacement for predecessor helper scripts MUST provide broker-mediated
+  command execution, bounded sudo, direct credential injection into an intended child client,
+  tunnel readiness checks, and sanitized credential-health checks without returning credential
+  values. User creation, credential discovery from source trees, and bulk credential import remain
+  explicit high-risk local workflows and MUST NOT run automatically during ordinary resource add.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private
@@ -446,6 +477,10 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **SC-017**: One successful add produces an active verified resource; one cancelled or failed add
   produces no ambiguous selectable resource, and one failed edit leaves the previously active
   revision executable and unchanged.
+- **SC-018**: Importing a synthetic predecessor inventory recreates every supported alias, alternate
+  alias, route relationship, service relationship, and credential role in the encrypted directory
+  while leakage tests find zero real endpoint, username, credential locator, or secret in repository
+  changes, Agent-visible output, logs, and process arguments.
 
 ### Post-MVP Sync Outcomes
 
