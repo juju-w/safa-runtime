@@ -533,6 +533,129 @@ struct ResourceOnboardingTests {
         )
     }
 
+    @Test("service templates share encrypted add, edit, show, and remove storage semantics")
+    func serviceTemplateCRUD() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let service = ResourceService(vault: vault, passwordStore: credentials)
+        let originalSecret = Data("synthetic-database-password".utf8)
+        let replacementSecret = Data("replacement-database-password".utf8)
+        let draft = PrivateResourceDraft(
+            alias: try ResourceAlias("sqlserver.test"),
+            resourceType: .databaseSQLServer,
+            accessMethods: [.sqlServer],
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "database.name",
+                    value: .text("synthetic")
+                )
+            ],
+            endpoint: ResourceEndpoint(
+                scheme: "sqlserver",
+                host: "database.invalid",
+                port: 1433
+            ),
+            username: "reader",
+            securityDomain: "synthetic",
+            credentialKind: .databasePassword,
+            credentialRole: .readOnly
+        )
+
+        let added = try await service.addProtectedResource(
+            draft,
+            credential: originalSecret
+        )
+        #expect(added.resolvedResourceType == .databaseSQLServer)
+        #expect(added.transport == nil)
+        #expect(added.hostIdentity == nil)
+        #expect(added.resolvedCredentialBindings.first?.role == .readOnly)
+        #expect(SafeResourceProjection(resource: added).capabilities == ["query", "health"])
+        #expect(SafeResourceProjection(resource: added).health == .ready)
+        #expect(await credentials.readSecret(id: added.authRef!) == originalSecret)
+
+        let edited = try await service.edit(
+            alias: added.alias,
+            draft: draft,
+            replacementPassword: replacementSecret
+        )
+        #expect(edited.authRef != added.authRef)
+        #expect(await credentials.readSecret(id: added.authRef!) == nil)
+        #expect(await credentials.readSecret(id: edited.authRef!) == replacementSecret)
+
+        _ = try await service.remove(alias: edited.alias)
+        #expect(await credentials.readSecret(id: edited.authRef!) == nil)
+    }
+
+    @Test("templates with optional authentication can be registered without a fake secret")
+    func unauthenticatedServiceOnboarding() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let service = ResourceService(vault: vault, passwordStore: credentials)
+        let resource = try await service.addProtectedResource(
+            PrivateResourceDraft(
+                alias: try ResourceAlias("health-api"),
+                resourceType: .serviceHTTP,
+                accessMethods: [.http],
+                endpoint: ResourceEndpoint(
+                    scheme: "https",
+                    host: "service.invalid",
+                    port: 443,
+                    path: "/health"
+                ),
+                securityDomain: "synthetic",
+                credentialKind: nil
+            ),
+            credential: nil
+        )
+
+        #expect(resource.authRef == nil)
+        #expect(resource.resolvedCredentialBindings.isEmpty)
+        #expect(SafeResourceProjection(resource: resource).health == .ready)
+        #expect(await vault.readDocument().credentialReferences.isEmpty)
+    }
+
+    @Test("template validation rejects mismatched adapters and credential kinds")
+    func serviceTemplateValidation() async throws {
+        let service = ResourceService(
+            vault: InMemoryVaultDocumentStore(),
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let wrongAdapter = PrivateResourceDraft(
+            alias: try ResourceAlias("sqlserver.test"),
+            resourceType: .databaseSQLServer,
+            accessMethods: [.redis],
+            endpoint: ResourceEndpoint(host: "database.invalid", port: 1433),
+            username: "reader",
+            securityDomain: "synthetic",
+            credentialKind: .databasePassword
+        )
+        await #expect(
+            throws: ResourceServiceError.incompatibleAccessMethod("cache.redis")
+        ) {
+            try await service.addProtectedResource(
+                wrongAdapter,
+                credential: Data("synthetic".utf8)
+            )
+        }
+
+        let wrongCredential = PrivateResourceDraft(
+            alias: try ResourceAlias("redis.test"),
+            resourceType: .cacheRedis,
+            accessMethods: [.redis],
+            endpoint: ResourceEndpoint(host: "cache.invalid", port: 6379),
+            securityDomain: "synthetic",
+            credentialKind: .apiToken
+        )
+        await #expect(
+            throws: ResourceServiceError.incompatibleCredentialKind("service.api-token")
+        ) {
+            try await service.addProtectedResource(
+                wrongCredential,
+                credential: Data("synthetic".utf8)
+            )
+        }
+    }
+
     @Test("editing an unknown alias does not expose an endpoint or credential")
     func unknownEdit() async {
         let service = ResourceService(

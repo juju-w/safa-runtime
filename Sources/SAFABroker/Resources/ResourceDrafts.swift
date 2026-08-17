@@ -10,9 +10,11 @@ public struct PrivateResourceDraft: Equatable, Sendable {
     public let relationships: [ResourceRelationship]
     public let displayName: String?
     public let endpoint: ResourceEndpoint
-    public let username: String
+    public let username: String?
     public let securityDomain: String
-    public let hostIdentity: HostIdentity
+    public let hostIdentity: HostIdentity?
+    public let credentialKind: CredentialKind?
+    public let credentialRole: ResourceCredentialRole
 
     public init(
         alias: ResourceAlias,
@@ -23,9 +25,11 @@ public struct PrivateResourceDraft: Equatable, Sendable {
         relationships: [ResourceRelationship] = [],
         displayName: String? = nil,
         endpoint: ResourceEndpoint,
-        username: String,
+        username: String? = nil,
         securityDomain: String,
-        hostIdentity: HostIdentity
+        hostIdentity: HostIdentity? = nil,
+        credentialKind: CredentialKind? = .sshPassword,
+        credentialRole: ResourceCredentialRole = .primary
     ) {
         self.alias = alias
         self.resourceType = resourceType
@@ -38,6 +42,8 @@ public struct PrivateResourceDraft: Equatable, Sendable {
         self.username = username
         self.securityDomain = securityDomain
         self.hostIdentity = hostIdentity
+        self.credentialKind = credentialKind
+        self.credentialRole = credentialRole
     }
 }
 
@@ -78,5 +84,11 @@ public enum ResourceServiceError: Error, Equatable, Sendable {
     case referencedByResource(alias: String)
     case unsafeConnectionChange
     case unsupportedDiscoveredResourceType(String)
+    case unsupportedTemplate(String)
+    case incompatibleAccessMethod(String)
+    case incompatibleCredentialKind(String)
+    case credentialRequired(String)
+    case unexpectedCredential
+    case templateChangeNotAllowed(from: String, to: String)
     case staleResource
 }

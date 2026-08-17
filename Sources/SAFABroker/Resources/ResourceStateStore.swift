@@ -104,7 +104,7 @@ extension ResourceService {
         }
         try await vault.writeDocument(document)
         if let credentialID,
-            credentialKind == .sshPassword,
+            credentialKind.map(Self.isBrokerStoredSecret) == true,
             !document.credentialReferences.contains(where: { $0.id == credentialID })
         {
             try? await passwordStore.deleteSecret(id: credentialID)

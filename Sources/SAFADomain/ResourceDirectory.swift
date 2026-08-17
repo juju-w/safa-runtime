@@ -33,10 +33,16 @@ public struct ResourceTypeIdentifier: RawRepresentable, Codable, Hashable, Senda
     public static let hostLinux = try! Self("host.linux")
     public static let hostMacOS = try! Self("host.macos")
     public static let hostNAS = try! Self("host.nas")
+    public static let hostWindows = try! Self("host.windows")
     public static let databaseMySQL = try! Self("database.mysql")
     public static let databasePostgreSQL = try! Self("database.postgresql")
+    public static let databaseSQLServer = try! Self("database.sqlserver")
     public static let objectStorageS3 = try! Self("object-storage.s3")
+    public static let objectStorageMinIO = try! Self("object-storage.minio")
+    public static let objectStorageOSS = try! Self("object-storage.oss")
     public static let cacheRedis = try! Self("cache.redis")
+    public static let searchElasticsearch = try! Self("search.elasticsearch")
+    public static let graphNeo4j = try! Self("graph.neo4j")
     public static let serviceHTTP = try! Self("service.http")
 }
 
@@ -59,8 +65,11 @@ public struct AccessMethodIdentifier: RawRepresentable, Codable, Hashable, Senda
     public static let ssh = try! Self("ssh")
     public static let mysql = try! Self("database.mysql")
     public static let postgresql = try! Self("database.postgresql")
+    public static let sqlServer = try! Self("database.sqlserver")
     public static let s3 = try! Self("object-storage.s3")
     public static let redis = try! Self("cache.redis")
+    public static let elasticsearch = try! Self("search.elasticsearch")
+    public static let neo4j = try! Self("graph.neo4j")
     public static let http = try! Self("http")
 }
 

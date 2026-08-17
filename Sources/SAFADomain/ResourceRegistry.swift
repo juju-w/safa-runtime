@@ -31,21 +31,32 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
         resourceType = resource.resolvedResourceType
         transport = resource.transport
         state = resource.state
-        var values: [String] = []
-        if resource.resolvedAccessMethods.contains(.ssh) {
-            values.append("exec")
-            if resource.sudoRef != nil { values.append("sudo") }
+        let template = ResourceTemplateRegistry.builtIn.template(
+            resourceType: resource.resolvedResourceType
+        )
+        var values = template?.capabilities ?? []
+        if resource.resolvedAccessMethods.contains(.ssh), resource.sudoRef != nil {
+            values.append("sudo")
         }
         capabilities = values
         if resource.state == .disabled || resource.state == .deleted {
             health = .disabled
-        } else if resource.state == .active,
-            resource.authRef != nil,
-            resource.hostIdentity?.status == .trusted
-        {
-            health = .ready
         } else {
-            health = .needsSetup
+            let hasCredential =
+                resource.authRef != nil
+                || !resource.resolvedCredentialBindings.isEmpty
+            let credentialReady = !(template?.credentialRequired ?? true) || hasCredential
+            let connectionReady: Bool
+            if resource.resolvedAccessMethods.contains(.ssh) {
+                connectionReady =
+                    resource.endpoint != nil
+                    && resource.hostIdentity?.status == .trusted
+            } else {
+                connectionReady = resource.endpoint != nil
+            }
+            health =
+                resource.state == .active && connectionReady && credentialReady
+                ? .ready : .needsSetup
         }
         summaryMetadata = ResourceSummaryDisclosure.publicEntries(from: resource.resolvedMetadata)
     }

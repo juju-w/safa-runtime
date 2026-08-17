@@ -132,6 +132,7 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
         resourceType == .hostLinux
             || resourceType == .hostMacOS
             || resourceType == .hostNAS
+            || resourceType == .hostWindows
     }
 
     private static func authorizationReason(

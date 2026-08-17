@@ -196,7 +196,7 @@ struct ResourceDirectoryTests {
                 == .sshPassword)
     }
 
-    @Test("non-SSH profiles do not require host connection fields or claim SSH execution")
+    @Test("non-SSH profiles expose only their template capabilities")
     func nonSSHProfile() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let resource = Resource(
@@ -218,8 +218,81 @@ struct ResourceDirectoryTests {
 
         let projection = SafeResourceProjection(resource: resource)
         #expect(projection.resourceType == .databaseMySQL)
-        #expect(projection.capabilities.isEmpty)
+        #expect(projection.capabilities == ["query", "health"])
+        #expect(!projection.capabilities.contains("exec"))
+        #expect(projection.health == .needsSetup)
         #expect(projection.summaryMetadata.map(\.key.rawValue) == ["database.engine"])
+    }
+
+    @Test("built-in templates cover Windows and predecessor service families")
+    func builtInTemplateCoverage() throws {
+        let registry = ResourceTemplateRegistry.builtIn
+        let expectedTemplateIDs = [
+            "elasticsearch", "http", "minio", "mysql", "neo4j", "oss", "postgresql",
+            "redis", "s3", "sqlserver", "ssh",
+        ]
+
+        #expect(registry.templates.map(\.id.rawValue) == expectedTemplateIDs)
+        #expect(registry.template(resourceType: .hostWindows)?.id == .ssh)
+        #expect(registry.template(resourceType: .databaseSQLServer)?.id == .sqlServer)
+        #expect(registry.template(resourceType: .objectStorageMinIO)?.id == .minio)
+        #expect(registry.template(resourceType: .objectStorageOSS)?.id == .oss)
+        #expect(registry.template(resourceType: .searchElasticsearch)?.id == .elasticsearch)
+        #expect(registry.template(resourceType: .graphNeo4j)?.id == .neo4j)
+    }
+
+    @Test("template fields classify protected and secret input")
+    func templateFieldSensitivity() throws {
+        let registry = ResourceTemplateRegistry.builtIn
+        let ssh = try #require(registry.template(id: .ssh))
+        let sqlServer = try #require(registry.template(id: .sqlServer))
+
+        #expect(
+            ssh.fields.first { $0.id.rawValue == "connection.endpoint" }?.sensitivity
+                == .protected
+        )
+        #expect(
+            sqlServer.fields.first { $0.id.rawValue == "credential.password" }?.sensitivity
+                == .secret
+        )
+        #expect(
+            sqlServer.fields.first { $0.id.rawValue == "connection.port" }?.defaultValue
+                == .integer(1433)
+        )
+    }
+
+    @Test("active service readiness follows template credential policy")
+    func serviceReadiness() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let unauthenticatedHTTP = Resource(
+            id: UUID(),
+            alias: try ResourceAlias("health-api"),
+            resourceType: .serviceHTTP,
+            accessMethods: [.http],
+            transport: nil,
+            endpoint: ResourceEndpoint(scheme: "https", host: "service.invalid", port: 443),
+            username: nil,
+            securityDomain: "synthetic",
+            state: .active,
+            createdAt: now,
+            updatedAt: now
+        )
+        let mysqlWithoutCredential = Resource(
+            id: UUID(),
+            alias: try ResourceAlias("mysql.test"),
+            resourceType: .databaseMySQL,
+            accessMethods: [.mysql],
+            transport: nil,
+            endpoint: ResourceEndpoint(host: "mysql.invalid", port: 3306),
+            username: "reader",
+            securityDomain: "synthetic",
+            state: .active,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        #expect(SafeResourceProjection(resource: unauthenticatedHTTP).health == .ready)
+        #expect(SafeResourceProjection(resource: mysqlWithoutCredential).health == .needsSetup)
     }
 }
 

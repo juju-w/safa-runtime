@@ -28,6 +28,7 @@ extension ResourceService {
         resourceType == .hostLinux
             || resourceType == .hostMacOS
             || resourceType == .hostNAS
+            || resourceType == .hostWindows
     }
 
     static func ensureValidMetadata(_ metadata: [ResourceMetadataEntry]) throws {
@@ -43,6 +44,44 @@ extension ResourceService {
                 throw ResourceServiceError.invalidMetadata(key)
             }
         }
+    }
+
+    static func ensureTemplateCompatibility(
+        resourceType: ResourceTypeIdentifier,
+        accessMethods: [AccessMethodIdentifier],
+        credentialKind: CredentialKind?
+    ) throws -> ResourceTemplateDefinition {
+        guard
+            let template = ResourceTemplateRegistry.builtIn.template(
+                resourceType: resourceType
+            )
+        else {
+            throw ResourceServiceError.unsupportedTemplate(resourceType.rawValue)
+        }
+        let allowedMethods = Set(template.accessMethods)
+        guard !accessMethods.isEmpty,
+            accessMethods.allSatisfy(allowedMethods.contains)
+        else {
+            let method =
+                accessMethods.first { !allowedMethods.contains($0) }
+                ?? accessMethods.first
+            throw ResourceServiceError.incompatibleAccessMethod(
+                method?.rawValue ?? "missing"
+            )
+        }
+        if let credentialKind,
+            !template.credentialKinds.contains(credentialKind)
+        {
+            throw ResourceServiceError.incompatibleCredentialKind(credentialKind.rawValue)
+        }
+        guard !template.credentialRequired || credentialKind != nil else {
+            throw ResourceServiceError.credentialRequired(template.id.rawValue)
+        }
+        return template
+    }
+
+    static func isBrokerStoredSecret(_ kind: CredentialKind) -> Bool {
+        kind != .sshOpenSSH && kind != .sshSecureEnclaveKey
     }
 
     static func ensureRelationships(

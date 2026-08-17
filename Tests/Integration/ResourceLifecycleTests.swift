@@ -151,6 +151,44 @@ struct ResourceLifecycleTests {
         #expect(resource.hostIdentity == nil)
     }
 
+    @Test("Windows OpenSSH hosts use the same verified SSH lifecycle")
+    func windowsSSHConfigImport() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let lifecycle = ResourceLifecycleService(
+            resources: ResourceService(
+                vault: vault,
+                passwordStore: InMemoryPasswordSecretStore()
+            ),
+            sshConfigResolver: StaticSSHConfigResolver(
+                value: ResolvedSSHConfig(
+                    endpoint: ResourceEndpoint(
+                        scheme: "ssh",
+                        host: "windows.internal",
+                        port: 22
+                    ),
+                    username: "administrator"
+                )
+            ),
+            userPresenceAuthorizer: LifecyclePresenceAuthorizer(result: true),
+            cooldown: 0
+        )
+
+        let resource = try await lifecycle.mutate(
+            action: .add,
+            alias: ResourceAlias("windows.lab"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: ResourceAlias("windows-lab"),
+                resourceType: .hostWindows
+            ),
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        #expect(resource.resolvedResourceType == .hostWindows)
+        #expect(resource.resolvedAccessMethods == [.ssh])
+        #expect(resource.state == .draft)
+        #expect(SafeResourceProjection(resource: resource).capabilities == ["exec"])
+    }
+
     @Test("edit preserves the existing type unless type is explicitly supplied")
     func editPreservesType() async throws {
         let vault = InMemoryVaultDocumentStore()

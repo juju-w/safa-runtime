@@ -55,7 +55,10 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         name: .customLong("from-ssh-config"),
         help: "Logical OpenSSH Host alias; defaults to the resource alias."
     ) var fromSSHConfig: String?
-    @Option(name: .customLong("type"), help: "Host type: host.linux, host.macos, or host.nas.")
+    @Option(
+        name: .customLong("type"),
+        help: "Host type: host.linux, host.macos, host.nas, or host.windows."
+    )
     var importedResourceType = "host.linux"
     @Flag var json = false
 
