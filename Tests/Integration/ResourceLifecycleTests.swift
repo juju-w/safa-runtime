@@ -418,6 +418,59 @@ struct ResourceLifecycleTests {
         }
     }
 
+    @Test("Windows OpenSSH setup verifies the account with whoami")
+    func windowsSetupVerifier() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let resource = Resource(
+            id: UUID(),
+            alias: try ResourceAlias("windows.lab"),
+            resourceType: .hostWindows,
+            endpoint: ResourceEndpoint(host: "windows.internal", port: 22),
+            username: "operator",
+            securityDomain: "synthetic",
+            hostIdentity: HostIdentity(
+                algorithm: "ssh-ed25519",
+                publicKey: Data(repeating: 7, count: 32),
+                fingerprint: "SHA256:synthetic",
+                verifiedAt: now,
+                verificationMethod: .trustedImport,
+                status: .trusted
+            ),
+            revision: 1,
+            state: .active,
+            createdAt: now,
+            updatedAt: now
+        )
+        let runner = FakeProcessRunner(
+            result: ProcessExecutionResult(
+                termination: .exit,
+                exitCode: 0,
+                stdout: Data("WORKSTATION\\operator\r\n".utf8),
+                stderr: Data(),
+                startedAt: now,
+                finishedAt: now,
+                stdoutTruncated: false,
+                stderrTruncated: false
+            )
+        )
+        let verifier = OpenSSHSetupVerifier(
+            transport: SSHTransport(runner: runner),
+            workingDirectory: FileManager.default.temporaryDirectory
+        )
+
+        try await verifier.verify(
+            resource: resource,
+            locator: OpenSSHCredentialLocatorV1(
+                identityFiles: ["/synthetic/id_ed25519"],
+                identityAgent: nil
+            )
+        )
+        let invocation = try #require(await runner.lastInvocation())
+        let remoteCommand = try #require(invocation.arguments.last)
+        #expect(remoteCommand.contains("whoami"))
+        #expect(!remoteCommand.contains("id -un"))
+    }
+
     @Test("setup activates a draft with trusted known-host and OpenSSH references")
     func setupActivatesDraft() async throws {
         let vault = InMemoryVaultDocumentStore()

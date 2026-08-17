@@ -272,10 +272,17 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
 
     func verify(resource: Resource, locator: OpenSSHCredentialLocatorV1) async throws {
         let credential = try locator.credentialContext()
-        let checks: [([String], @Sendable (String) -> Bool)] = [
-            (["hostname"], { !$0.isEmpty }),
-            (["id", "-un"], { $0 == resource.username }),
-        ]
+        let checks: [([String], @Sendable (String) -> Bool)]
+        if resource.resolvedResourceType == .hostWindows {
+            checks = [
+                (["whoami"], { Self.windowsAccount($0, matches: resource.username) })
+            ]
+        } else {
+            checks = [
+                (["hostname"], { !$0.isEmpty }),
+                (["id", "-un"], { $0 == resource.username }),
+            ]
+        }
         for (arguments, accepts) in checks {
             let result: ProcessExecutionResult
             do {
@@ -303,5 +310,14 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
                 throw ResourceSetupError.verificationFailed
             }
         }
+    }
+
+    private static func windowsAccount(_ output: String, matches expected: String?) -> Bool {
+        guard let expected, !expected.isEmpty else { return false }
+        let account = output.lowercased()
+            .split(whereSeparator: { $0 == "\\" || $0 == "/" })
+            .last
+            .map(String.init)
+        return account == expected.lowercased()
     }
 }
