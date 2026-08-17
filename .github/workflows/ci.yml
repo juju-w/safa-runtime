@@ -22,6 +22,8 @@ jobs:
         run: swift package resolve
       - name: Lint Swift sources
         run: xcrun swift-format lint --recursive --strict Sources Tests Apps/SAFA/Targets Package.swift
+      - name: Validate local Runtime installer syntax
+        run: sh -n Scripts/install-local-runtime.sh
       - name: Build
         run: swift build
       - name: Test

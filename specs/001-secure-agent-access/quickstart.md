@@ -65,6 +65,19 @@ clients whose Developer Team, signing identifier, effective user, or audit sessi
 Use `setup deactivate` only as a local human lifecycle or uninstall operation; the Skill must not
 call it automatically.
 
+For a repeatable local installation, use the repository script instead of copying the app by hand:
+
+```bash
+Scripts/install-local-runtime.sh \
+  --team-id YOUR_TEAM_ID \
+  --allow-provisioning-updates
+```
+
+The script builds and verifies all signed components, installs the exact version under the current
+user's Application Support directory, and writes a local lock containing the architecture, Team ID,
+and Code Directory hashes. Pass `--replace` only when intentionally replacing the same development
+version; the previous Runtime is retained as a backup. This does not notarize or publish an asset.
+
 ## 4. Validate resource lifecycle through tests
 
 The CLI-first preview has no private registration UI. Its signed runtime exposes
