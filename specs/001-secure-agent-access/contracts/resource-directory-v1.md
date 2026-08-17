@@ -189,18 +189,20 @@ The Agent XPC surface uses separate explicit DTOs instead of the legacy dynamic 
 - `show --details`: resolves the canonical resource, rate-limits prompts, and asks macOS for
   device-owner authentication. Only an approved request receives `ResourceDetailsV1`; `inspect`
   remains a hidden preview compatibility alias.
-- `add` / `edit`: require device-owner authentication and accept only logical aliases and an
-  optional supported host type. The broker resolves private connection fields locally;
-  imports stay `draft/needs_setup`, trusted resources cannot be silently retargeted, and only
-  `host.linux`, `host.macos`, or `host.windows` is accepted by this adapter. Windows
-  targets use the same pinned OpenSSH lifecycle rather than a separate password transport.
-- `setup`: requires device-owner authentication, resolves the same explicit OpenSSH alias, imports
-  prior `known_hosts` trust plus an available existing identity-file/agent locator, and runs bounded
-  direct-route verification plus a bounded read-only hardware/system probe. It commits `active`
-  with validated probe metadata only when the draft revision remains unchanged.
-  `ProxyJump` and `ProxyCommand` routes fail closed pending reviewed route snapshot support.
-- `disable` / `remove`: require device-owner authentication and use revisioned broker transactions;
-  removal refuses to break a live relationship.
+- `add` / `edit`: require device-owner authentication and accept only logical aliases, safe
+  template/type choices, and an optional active/disabled state. The broker resolves private
+  connection fields locally. Add creates a private draft, then imports prior `known_hosts` trust
+  plus an available identity-file/agent locator, runs bounded direct-route verification and a
+  bounded read-only hardware/system probe, and commits `active` only when the draft revision remains
+  unchanged. A remediable failure may retain the draft; edit resumes it. Trusted resources cannot
+  be silently retargeted. `edit --state disabled|active` changes access state.
+- `remove`: requires device-owner authentication and a revisioned broker transaction; removal
+  refuses to break a live relationship.
+
+Setup, verification, activation, disabling, and enabling remain internal lifecycle stages rather
+than public resource commands. `ProxyJump` and `ProxyCommand` routes fail closed pending reviewed
+route snapshot support. Windows targets use the same pinned OpenSSH lifecycle rather than a
+separate password transport.
 
 Denied, rate-limited, malformed, and unknown-resource replies contain no protected detail object.
 No resource-directory reply includes a credential ID, Keychain locator, password, token, access

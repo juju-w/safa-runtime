@@ -8,12 +8,8 @@ struct ResourceCommand: AsyncParsableCommand {
         subcommands: [
             ResourceListCommand.self,
             ResourceShowCommand.self,
-            ResourceInspectCommand.self,
             ResourceAddCommand.self,
             ResourceEditCommand.self,
-            ResourceSetupCommand.self,
-            ResourceDisableCommand.self,
-            ResourceEnableCommand.self,
             ResourceRemoveCommand.self,
         ]
     )

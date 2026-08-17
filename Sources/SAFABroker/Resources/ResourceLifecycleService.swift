@@ -67,7 +67,23 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
         switch action {
         case .add, .edit, .setup:
             guard let mutation else { throw ResourceLifecycleError.mutationRequired }
-            if action == .setup, mutation.resourceType != nil {
+            if action != .edit, mutation.desiredState != nil {
+                throw ResourceLifecycleError.invalidRequest
+            }
+            if action == .edit, let desiredState = mutation.desiredState,
+                desiredState != .active && desiredState != .disabled
+            {
+                throw ResourceLifecycleError.invalidRequest
+            }
+            if action == .edit, mutation.desiredState != nil,
+                mutation.resourceType != nil || mutation.templateID != nil
+            {
+                throw ResourceLifecycleError.invalidRequest
+            }
+            if action == .setup,
+                mutation.resourceType != nil || mutation.templateID != nil
+                    || mutation.desiredState != nil
+            {
                 throw ResourceLifecycleError.invalidRequest
             }
             if let templateID = mutation.templateID {
@@ -105,6 +121,14 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
         switch action {
         case .add, .edit:
             guard let mutation else { throw ResourceLifecycleError.mutationRequired }
+            if action == .edit, let desiredState = mutation.desiredState {
+                return try await changeStateThroughEdit(
+                    alias: alias,
+                    desiredState: desiredState,
+                    sourceSSHConfigAlias: mutation.sourceSSHConfigAlias,
+                    now: now
+                )
+            }
             let resolved = try await sshConfigResolver.resolve(
                 alias: mutation.sourceSSHConfigAlias
             )
@@ -117,11 +141,23 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
                 securityDomain: "local-ssh-config"
             )
             if action == .add {
-                return try await resources.addDiscoveredResource(draft, now: now)
+                let added = try await resources.addDiscoveredResource(draft, now: now)
+                guard let setup else { return added }
+                return try await setup.setup(
+                    alias: alias,
+                    sourceSSHConfigAlias: mutation.sourceSSHConfigAlias,
+                    now: now
+                )
             }
-            return try await resources.editDiscoveredResource(
+            let edited = try await resources.editDiscoveredResource(
                 alias: alias,
                 draft: draft,
+                now: now
+            )
+            guard edited.state == .draft, let setup else { return edited }
+            return try await setup.setup(
+                alias: alias,
+                sourceSSHConfigAlias: mutation.sourceSSHConfigAlias,
                 now: now
             )
         case .setup:
@@ -139,6 +175,32 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
             return try await resources.enable(alias: alias, now: now)
         case .remove:
             return try await resources.remove(alias: alias, now: now)
+        }
+    }
+
+    private func changeStateThroughEdit(
+        alias: ResourceAlias,
+        desiredState: ResourceState,
+        sourceSSHConfigAlias: ResourceAlias,
+        now: Date
+    ) async throws -> Resource {
+        let existing = try await resources.resource(alias: alias)
+        switch (existing.state, desiredState) {
+        case (.active, .active), (.disabled, .disabled):
+            return existing
+        case (.active, .disabled):
+            return try await resources.disable(alias: alias, now: now)
+        case (.disabled, .active):
+            return try await resources.enable(alias: alias, now: now)
+        case (.draft, .active):
+            guard let setup else { throw ResourceLifecycleError.unsupportedAction }
+            return try await setup.setup(
+                alias: alias,
+                sourceSSHConfigAlias: sourceSSHConfigAlias,
+                now: now
+            )
+        default:
+            throw ResourceLifecycleError.invalidRequest
         }
     }
 

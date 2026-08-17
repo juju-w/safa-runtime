@@ -6,6 +6,10 @@ enum ResourceCLICompletion {
         "draft", "active", "disabled",
     ])
 
+    static let editableResourceStates = CompletionKind.list([
+        "active", "disabled",
+    ])
+
     static let hostTypes = CompletionKind.list([
         "host.linux", "host.macos", "host.windows",
     ])

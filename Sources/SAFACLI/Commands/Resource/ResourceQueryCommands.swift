@@ -6,34 +6,39 @@ struct ResourceListCommand: AsyncParsableCommand, ResourceDirectoryCommand {
     @Flag var json = false
     @Option(completion: ResourceCLICompletion.resourceStates) var state: String?
 
-    func run() async throws {
-        let parsedState: ResourceState?
-        if let state {
-            guard let value = ResourceState(rawValue: state) else {
-                try invalidInvocation(
-                    command: "resource.list",
-                    message: "The resource state is invalid."
-                )
-            }
-            parsedState = value
-        } else {
-            parsedState = nil
+    func requestedState() throws -> ResourceState? {
+        guard let state else { return nil }
+        guard let value = ResourceState(rawValue: state), value != .deleted else {
+            throw ResourceListInputError.invalidState
         }
+        return value
+    }
+
+    func run() async throws {
         do {
             try emitDirectory(
                 command: "resource.list",
                 reply: try await XPCBrokerAgentClient().queryResourceDirectory(
                     action: .list,
                     alias: nil,
-                    state: parsedState
+                    state: try requestedState()
                 )
             )
         } catch let exit as ExitCode {
             throw exit
+        } catch ResourceListInputError.invalidState {
+            try invalidInvocation(
+                command: "resource.list",
+                message: "Resource state must be draft, active, or disabled."
+            )
         } catch {
             try brokerFailure(command: "resource.list")
         }
     }
+}
+
+enum ResourceListInputError: Error {
+    case invalidState
 }
 
 struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
@@ -65,38 +70,6 @@ struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
                 command: "resource.show", message: "The resource alias is invalid.")
         } catch {
             try brokerFailure(command: "resource.show")
-        }
-    }
-}
-
-struct ResourceInspectCommand: AsyncParsableCommand, ResourceDirectoryCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "inspect",
-        abstract: "Compatibility alias for resource show --details.",
-        shouldDisplay: false
-    )
-    @Argument(completion: ResourceCLICompletion.resourceAliases) var alias: String
-    @Flag var json = false
-
-    func run() async throws {
-        do {
-            try emitDirectory(
-                command: "resource.inspect",
-                reply: try await XPCBrokerAgentClient().queryResourceDirectory(
-                    action: .inspect,
-                    alias: try ResourceAlias(alias),
-                    state: nil
-                )
-            )
-        } catch let exit as ExitCode {
-            throw exit
-        } catch is DomainValidationError {
-            try invalidInvocation(
-                command: "resource.inspect",
-                message: "The resource alias is invalid."
-            )
-        } catch {
-            try brokerFailure(command: "resource.inspect")
         }
     }
 }

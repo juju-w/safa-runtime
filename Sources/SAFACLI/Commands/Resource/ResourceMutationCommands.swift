@@ -7,6 +7,7 @@ protocol SSHConfigMutationCommand: ResourceDirectoryCommand {
     var fromSSHConfig: String? { get }
     var resourceType: String? { get }
     var template: String? { get }
+    var desiredState: String? { get }
 }
 
 extension SSHConfigMutationCommand {
@@ -14,6 +15,20 @@ extension SSHConfigMutationCommand {
         let parsedAlias = try ResourceAlias(alias)
         let sourceAlias = try ResourceAlias(fromSSHConfig ?? alias)
         let templateID = try template.map { try ResourceTemplateIdentifier($0) }
+        let parsedDesiredState: ResourceState?
+        if let desiredState {
+            guard let state = ResourceState(rawValue: desiredState),
+                state == .active || state == .disabled
+            else {
+                throw ResourceMutationInputError.unsupportedDesiredState
+            }
+            guard resourceType == nil, template == nil else {
+                throw ResourceMutationInputError.stateCannotCombineWithConfiguration
+            }
+            parsedDesiredState = state
+        } else {
+            parsedDesiredState = nil
+        }
         let definition = templateID.flatMap { ResourceTemplateRegistry.builtIn.template(id: $0) }
         if templateID != nil, definition == nil {
             throw ResourceMutationInputError.unknownTemplate
@@ -29,7 +44,8 @@ extension SSHConfigMutationCommand {
             ResourceMutationV1(
                 sourceSSHConfigAlias: sourceAlias,
                 resourceType: parsedType,
-                templateID: templateID
+                templateID: templateID,
+                desiredState: parsedDesiredState
             )
         )
     }
@@ -58,6 +74,16 @@ extension SSHConfigMutationCommand {
                 command: command,
                 message: "The resource type does not belong to the selected template."
             )
+        } catch ResourceMutationInputError.unsupportedDesiredState {
+            try invalidInvocation(
+                command: command,
+                message: "Resource state must be active or disabled."
+            )
+        } catch ResourceMutationInputError.stateCannotCombineWithConfiguration {
+            try invalidInvocation(
+                command: command,
+                message: "Change resource state separately from template or type options."
+            )
         } catch {
             try brokerFailure(command: command)
         }
@@ -67,12 +93,14 @@ extension SSHConfigMutationCommand {
 enum ResourceMutationInputError: Error {
     case unknownTemplate
     case typeDoesNotMatchTemplate
+    case unsupportedDesiredState
+    case stateCannotCombineWithConfiguration
 }
 
 struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     static let configuration = CommandConfiguration(
         commandName: "add",
-        abstract: "Import a draft resource from a local SSH config alias."
+        abstract: "Add, verify, and activate a resource through its trusted template workflow."
     )
     @Argument(help: "Logical resource alias to create.") var alias: String
     @Option(
@@ -95,6 +123,7 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     @Flag var json = false
 
     var resourceType: String? { importedResourceType }
+    var desiredState: String? { nil }
 
     func run() async throws {
         try await runMutation(action: .add, command: "resource.add")
@@ -104,7 +133,7 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
 struct ResourceEditCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     static let configuration = CommandConfiguration(
         commandName: "edit",
-        abstract: "Refresh a resource from a local SSH config alias."
+        abstract: "Edit resource configuration or its active/disabled state."
     )
     @Argument(
         help: "Existing logical resource alias.",
@@ -126,33 +155,16 @@ struct ResourceEditCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         completion: ResourceCLICompletion.templates
     )
     var template: String?
+    @Option(
+        name: .customLong("state"),
+        help: "Set resource access state to active or disabled.",
+        completion: ResourceCLICompletion.editableResourceStates
+    )
+    var desiredState: String?
     @Flag var json = false
 
     func run() async throws {
         try await runMutation(action: .edit, command: "resource.edit")
-    }
-}
-
-struct ResourceSetupCommand: AsyncParsableCommand, SSHConfigMutationCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "setup",
-        abstract: "Activate a draft through a trusted local OpenSSH setup."
-    )
-    @Argument(
-        help: "Draft resource alias to set up.",
-        completion: ResourceCLICompletion.resourceAliases
-    ) var alias: String
-    @Option(
-        name: .customLong("from-ssh-config"),
-        help: "Logical OpenSSH Host alias; defaults to the resource alias."
-    ) var fromSSHConfig: String?
-    @Flag var json = false
-
-    var resourceType: String? { nil }
-    var template: String? { nil }
-
-    func run() async throws {
-        try await runMutation(action: .setup, command: "resource.setup")
     }
 }
 
@@ -178,38 +190,6 @@ extension AliasMutationCommand {
         } catch {
             try brokerFailure(command: command)
         }
-    }
-}
-
-struct ResourceDisableCommand: AsyncParsableCommand, AliasMutationCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "disable",
-        abstract: "Disable a resource after macOS user authorization."
-    )
-    @Argument(
-        help: "Logical resource alias to disable.",
-        completion: ResourceCLICompletion.resourceAliases
-    ) var alias: String
-    @Flag var json = false
-
-    func run() async throws {
-        try await runMutation(action: .disable, command: "resource.disable")
-    }
-}
-
-struct ResourceEnableCommand: AsyncParsableCommand, AliasMutationCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "enable",
-        abstract: "Re-enable a disabled resource after macOS user authorization."
-    )
-    @Argument(
-        help: "Logical resource alias to enable.",
-        completion: ResourceCLICompletion.resourceAliases
-    ) var alias: String
-    @Flag var json = false
-
-    func run() async throws {
-        try await runMutation(action: .enable, command: "resource.enable")
     }
 }
 

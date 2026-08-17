@@ -260,22 +260,24 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 ### Manage resource lifecycle from the CLI
 
 1. `safa resource add ALIAS --from-ssh-config SSH_ALIAS` and `resource edit` carry only logical
-   aliases and one of the supported host resource types across the mutation XPC method.
+   aliases, safe template/type choices, and an optional active/disabled state across the mutation
+   XPC method.
 2. The broker asks macOS for device-owner authentication, then runs bounded `ssh -G SSH_ALIAS`
    locally and persists the resolved endpoint and username inside the encrypted vault. Private
    connection values never become CLI arguments or mutation DTO fields.
-3. Imports are `draft/needs_setup`: discovery alone does not create a credential or trusted host
-   identity. `resource setup` separately authenticates the local user, imports a previously trusted
+3. Add creates a private draft, then in the same authorized workflow imports a previously trusted
    `known_hosts` identity and an available existing OpenSSH identity/agent route, verifies the exact
    remote username and registered Linux/macOS/Windows platform, and runs a bounded read-only host
-   inventory probe before atomically committing `active` with the probe metadata.
+   inventory probe before atomically committing `active` with the probe metadata. A remediable
+   failure may retain the draft; `resource edit` resumes it without exposing a separate setup
+   command.
 4. Setup currently accepts direct routes, including a local Core Tunnel listener expressed as the
    resolved endpoint. `ProxyJump` and `ProxyCommand` fail with `user_action_required` until SAFA can
    review and snapshot their complete route rather than inherit mutable SSH configuration.
 5. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
    identity is rejected so a mutable SSH config cannot silently redirect trusted access.
-6. `resource disable`, `resource enable`, and `resource remove` also require macOS user presence.
-   Enable accepts only a disabled resource and preserves its trusted route. All resource writes pass
+6. `resource edit --state disabled|active` changes access state while preserving the trusted route;
+   `resource remove` deletes the resource. Both require macOS user presence. All resource writes pass
    through one serialized broker transaction gate. Removal preserves relationship integrity and
    deletes an unshared credential reference through the same transaction.
 
@@ -311,8 +313,8 @@ The normative schema and initial host keys are defined in
 
 1. A local human adds an explicitly declared OpenSSH `Host` alias. The broker resolves it through a
    bounded read-only `ssh -G <alias>` adapter without importing private-key or password bytes.
-2. A separate `resource setup` authorization imports an existing entry from the user's configured
-   `known_hosts` files. Absence is not silently accepted: the command returns
+2. The add/edit workflow imports an existing entry from the user's configured `known_hosts` files.
+   Absence is not silently accepted: the command returns
    `host_identity_setup_required`.
 3. Setup references only existing readable identity-file paths or an existing SSH-agent socket. The
    path/socket locator remains encrypted in the broker vault and is never returned by list, default

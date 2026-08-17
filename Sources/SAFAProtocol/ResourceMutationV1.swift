@@ -16,21 +16,25 @@ public struct ResourceMutationV1: Codable, Equatable, Sendable {
     public let sourceSSHConfigAlias: ResourceAlias
     public let resourceType: ResourceTypeIdentifier?
     public let templateID: ResourceTemplateIdentifier?
+    public let desiredState: ResourceState?
 
     public init(
         sourceSSHConfigAlias: ResourceAlias,
         resourceType: ResourceTypeIdentifier? = nil,
-        templateID: ResourceTemplateIdentifier? = nil
+        templateID: ResourceTemplateIdentifier? = nil,
+        desiredState: ResourceState? = nil
     ) {
         self.sourceSSHConfigAlias = sourceSSHConfigAlias
         self.resourceType = resourceType
         self.templateID = templateID
+        self.desiredState = desiredState
     }
 
     private enum CodingKeys: String, CodingKey {
         case sourceSSHConfigAlias = "source_ssh_config_alias"
         case resourceType = "resource_type"
         case templateID = "template_id"
+        case desiredState = "desired_state"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -42,6 +46,7 @@ public struct ResourceMutationV1: Codable, Equatable, Sendable {
             .map(ResourceTypeIdentifier.init)
         templateID = try container.decodeIfPresent(String.self, forKey: .templateID)
             .map(ResourceTemplateIdentifier.init)
+        desiredState = try container.decodeIfPresent(ResourceState.self, forKey: .desiredState)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -49,6 +54,7 @@ public struct ResourceMutationV1: Codable, Equatable, Sendable {
         try container.encode(sourceSSHConfigAlias.rawValue, forKey: .sourceSSHConfigAlias)
         try container.encodeIfPresent(resourceType?.rawValue, forKey: .resourceType)
         try container.encodeIfPresent(templateID?.rawValue, forKey: .templateID)
+        try container.encodeIfPresent(desiredState, forKey: .desiredState)
     }
 }
 

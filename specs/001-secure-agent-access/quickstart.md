@@ -27,8 +27,6 @@ swift run safa resource --help
 swift run safa resource ls --help
 swift run safa resource add --help
 swift run safa resource edit --help
-swift run safa resource disable --help
-swift run safa resource enable --help
 swift run safa resource remove --help
 swift run safa exec --help
 ```
@@ -80,25 +78,24 @@ version; the previous Runtime is retained as a backup. This does not notarize or
 
 ## 4. Validate resource lifecycle through tests
 
-The CLI-first preview has no private registration UI. Its signed runtime exposes
-`resource add/edit/setup/disable/enable/remove`; each mutation requires a macOS Touch ID/login
-authorization. Add/edit/setup accept only logical aliases and an optional supported host type:
+The CLI-first preview has no private registration UI. Its signed runtime exposes the five-command
+resource surface; add/edit/remove each require a macOS Touch ID/login authorization. Add/edit accept
+only logical aliases, safe template/type choices, and an optional active/disabled state:
 
 ```bash
 safa resource add nas.home --from-ssh-config home-nas \
   --type host.linux --json
 safa resource edit nas.home --from-ssh-config home-nas --json
-safa resource setup nas.home --from-ssh-config home-nas --json
-safa resource disable nas.home --json
-safa resource enable nas.home --json
+safa resource edit nas.home --state disabled --json
+safa resource edit nas.home --state active --json
 safa resource remove nas.home --json
 ```
 
-The broker resolves endpoint and username locally through `ssh -G`. Add returns
-`draft/needs_setup` and imports no password, private-key bytes, or host identity. Setup separately
-requires an existing `known_hosts` entry and available OpenSSH identity-file/agent route, verifies
-the account and declared platform, writes a bounded read-only hardware/system probe into the
-encrypted directory, and atomically returns `active`. `ProxyJump` and `ProxyCommand` remain unsupported.
+The broker resolves endpoint and username locally through `ssh -G`. Add creates a private draft and
+then, in the same command, uses an existing `known_hosts` entry and available OpenSSH
+identity-file/agent route to verify the account and declared platform, write a bounded read-only
+hardware/system probe into the encrypted directory, and atomically return `active`. A remediable
+failure may retain the draft; edit resumes it. `ProxyJump` and `ProxyCommand` remain unsupported.
 The adapter accepts `host.linux`, `host.macos`, and `host.windows`; a Windows target must
 already expose OpenSSH and follows the same pinned-host verification path. Service templates can be
 selected with `--template` from the built-in registry, including Kafka, RabbitMQ, and MongoDB. Their protected local configuration client

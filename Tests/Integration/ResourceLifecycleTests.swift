@@ -214,6 +214,137 @@ struct ResourceLifecycleTests {
         #expect(resource.hostIdentity == nil)
     }
 
+    @Test("approved add completes SSH setup in the same resource workflow")
+    func approvedAddCompletesSetup() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let resources = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let resolved = ResolvedSSHConfig(
+            endpoint: ResourceEndpoint(host: "nas.internal", port: 2222),
+            username: "operator"
+        )
+        let now = Date(timeIntervalSince1970: 1_700_000_010)
+        let setup = try makeAcceptingOpenSSHSetup(
+            resources: resources,
+            resolved: resolved,
+            now: now
+        )
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let lifecycle = ResourceLifecycleService(
+            resources: resources,
+            sshConfigResolver: StaticSSHConfigResolver(value: resolved),
+            setup: setup,
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0
+        )
+
+        let resource = try await lifecycle.mutate(
+            action: .add,
+            alias: ResourceAlias("nas.home"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: ResourceAlias("home-nas"),
+                resourceType: .hostLinux
+            ),
+            now: now
+        )
+
+        #expect(resource.state == .active)
+        #expect(resource.authRef != nil)
+        #expect(resource.hostIdentity?.status == .trusted)
+        #expect(await authorizer.reasons == ["Add SAFA resource nas.home"])
+    }
+
+    @Test("a remediable add failure retains a resumable private draft")
+    func failedAddRetainsDraft() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let resources = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let lifecycle = ResourceLifecycleService(
+            resources: resources,
+            sshConfigResolver: StaticSSHConfigResolver(
+                value: ResolvedSSHConfig(
+                    endpoint: ResourceEndpoint(host: "nas.internal", port: 2222),
+                    username: "operator"
+                )
+            ),
+            setup: FailingResourceSetup(error: .hostIdentityUnavailable),
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0
+        )
+
+        await #expect(throws: ResourceSetupError.hostIdentityUnavailable) {
+            try await lifecycle.mutate(
+                action: .add,
+                alias: ResourceAlias("nas.home"),
+                mutation: ResourceMutationV1(
+                    sourceSSHConfigAlias: ResourceAlias("home-nas"),
+                    resourceType: .hostLinux
+                ),
+                now: Date(timeIntervalSince1970: 1_700_000_010)
+            )
+        }
+
+        let retained = try await resources.resource(alias: ResourceAlias("nas.home"))
+        #expect(retained.state == .draft)
+        #expect(retained.authRef == nil)
+        #expect(retained.hostIdentity == nil)
+        #expect(await authorizer.reasons == ["Add SAFA resource nas.home"])
+    }
+
+    @Test("edit resumes and activates a retained SSH draft")
+    func editResumesDraftSetup() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let resources = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let resolved = ResolvedSSHConfig(
+            endpoint: ResourceEndpoint(host: "nas.internal", port: 2222),
+            username: "operator"
+        )
+        _ = try await resources.addDiscoveredResource(
+            DiscoveredResourceDraft(
+                alias: ResourceAlias("nas.home"),
+                resourceType: .hostLinux,
+                endpoint: resolved.endpoint,
+                username: resolved.username,
+                securityDomain: "local-ssh-config"
+            )
+        )
+        let now = Date(timeIntervalSince1970: 1_700_000_010)
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let lifecycle = ResourceLifecycleService(
+            resources: resources,
+            sshConfigResolver: StaticSSHConfigResolver(value: resolved),
+            setup: try makeAcceptingOpenSSHSetup(
+                resources: resources,
+                resolved: resolved,
+                now: now
+            ),
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0
+        )
+
+        let resource = try await lifecycle.mutate(
+            action: .edit,
+            alias: ResourceAlias("nas.home"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: ResourceAlias("home-nas"),
+                desiredState: .active
+            ),
+            now: now
+        )
+
+        #expect(resource.state == .active)
+        #expect(resource.authRef != nil)
+        #expect(await authorizer.reasons == ["Edit SAFA resource nas.home"])
+    }
+
     @Test("Windows OpenSSH hosts use the same verified SSH lifecycle")
     func windowsSSHConfigImport() async throws {
         let vault = InMemoryVaultDocumentStore()
@@ -339,6 +470,54 @@ struct ResourceLifecycleTests {
                 "Disable SAFA resource nas.home",
                 "Enable SAFA resource nas.home",
                 "Remove SAFA resource nas.home",
+            ]
+        )
+    }
+
+    @Test("edit owns disabling and re-enabling a resource")
+    func editChangesResourceState() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let resources = ResourceService(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        _ = try await resources.addPasswordResource(
+            PrivateResourceDraft.synthetic(alias: "nas.home"),
+            password: Data("synthetic-password".utf8)
+        )
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let lifecycle = ResourceLifecycleService(
+            resources: resources,
+            sshConfigResolver: FailingSSHConfigResolver(),
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0
+        )
+
+        let disabled = try await lifecycle.mutate(
+            action: .edit,
+            alias: ResourceAlias("nas.home"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: ResourceAlias("nas.home"),
+                desiredState: .disabled
+            ),
+            now: Date(timeIntervalSince1970: 1_700_000_001)
+        )
+        let enabled = try await lifecycle.mutate(
+            action: .edit,
+            alias: ResourceAlias("nas.home"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: ResourceAlias("nas.home"),
+                desiredState: .active
+            ),
+            now: Date(timeIntervalSince1970: 1_700_000_002)
+        )
+
+        #expect(disabled.state == .disabled)
+        #expect(enabled.state == .active)
+        #expect(
+            await authorizer.reasons == [
+                "Edit SAFA resource nas.home",
+                "Edit SAFA resource nas.home",
             ]
         )
     }
@@ -785,6 +964,46 @@ private struct AcceptingSetupVerifier: OpenSSHSetupVerifying {
             ]
         )
     }
+}
+
+private struct FailingResourceSetup: ResourceSetupHandling {
+    let error: ResourceSetupError
+
+    func setup(
+        alias _: ResourceAlias,
+        sourceSSHConfigAlias _: ResourceAlias,
+        now _: Date
+    ) async throws -> Resource {
+        throw error
+    }
+}
+
+private func makeAcceptingOpenSSHSetup(
+    resources: ResourceService,
+    resolved: ResolvedSSHConfig,
+    now: Date
+) throws -> OpenSSHResourceSetupService {
+    OpenSSHResourceSetupService(
+        resources: resources,
+        sshConfigResolver: StaticSSHConfigResolver(value: resolved),
+        knownHostResolver: StaticKnownHostResolver(
+            value: HostIdentity(
+                algorithm: "ssh-ed25519",
+                publicKey: Data(repeating: 7, count: 32),
+                fingerprint: "SHA256:synthetic",
+                verifiedAt: now,
+                verificationMethod: .trustedImport,
+                status: .trusted
+            )
+        ),
+        credentialSourceResolver: StaticCredentialSourceResolver(
+            value: try OpenSSHCredentialLocatorV1(
+                identityFiles: ["/synthetic/id_ed25519"],
+                identityAgent: nil
+            )
+        ),
+        verifier: AcceptingSetupVerifier()
+    )
 }
 
 private struct StaticHostInventoryProbe: OpenSSHHostInventoryProbing {

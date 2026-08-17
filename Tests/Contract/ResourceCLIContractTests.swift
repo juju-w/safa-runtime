@@ -17,11 +17,20 @@ struct ResourceCLIContractTests {
         )
     }
 
-    @Test("resource CLI exposes the complete lifecycle and an ls alias")
+    @Test("resource CLI exposes only the five CRUD commands and an ls alias")
     func cliFirstCommandSurface() throws {
+        let publicCommands = ResourceCommand.configuration.subcommands
+            .compactMap { $0.configuration.commandName }
+        #expect(publicCommands == ["list", "show", "add", "edit", "remove"])
+
         #expect(ResourceShowCommand.configuration.abstract.contains("--details"))
         #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
         #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
+        let activeList = try #require(
+            try SAFACommand.parseAsRoot(["resource", "list", "--state", "active"])
+                as? ResourceListCommand
+        )
+        #expect(try activeList.requestedState() == .active)
         let detailedShow = try #require(
             try SAFACommand.parseAsRoot(["resource", "show", "nas.home", "--details"])
                 as? ResourceShowCommand
@@ -49,27 +58,32 @@ struct ResourceCLIContractTests {
         #expect(throws: ResourceMutationInputError.typeDoesNotMatchTemplate) {
             try mismatchedTemplate.mutationInput()
         }
-        #expect(
+        let edit = try #require(
             try SAFACommand.parseAsRoot([
                 "resource", "edit", "nas.home", "--from-ssh-config", "home-nas",
-            ]) is ResourceEditCommand
+            ]) as? ResourceEditCommand
         )
-        let setupCommand = try #require(
+        let (_, editMutation) = try edit.mutationInput()
+        #expect(editMutation.desiredState == nil)
+
+        let disable = try #require(
             try SAFACommand.parseAsRoot([
-                "resource", "setup", "nas.home", "--from-ssh-config", "home-nas",
-            ]) as? ResourceSetupCommand
+                "resource", "edit", "nas.home", "--state", "disabled",
+            ]) as? ResourceEditCommand
         )
-        let (_, setupMutation) = try setupCommand.mutationInput()
-        #expect(setupMutation.resourceType == nil)
-        #expect(setupMutation.templateID == nil)
-        #expect(
-            try SAFACommand.parseAsRoot(["resource", "disable", "nas.home"])
-                is ResourceDisableCommand
+        let (_, disableMutation) = try disable.mutationInput()
+        #expect(disableMutation.desiredState == .disabled)
+
+        let enable = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--state", "active",
+                "--from-ssh-config", "home-nas",
+            ]) as? ResourceEditCommand
         )
-        #expect(
-            try SAFACommand.parseAsRoot(["resource", "enable", "nas.home"])
-                is ResourceEnableCommand
-        )
+        let (_, enableMutation) = try enable.mutationInput()
+        #expect(enableMutation.desiredState == .active)
+        #expect(enableMutation.sourceSSHConfigAlias.rawValue == "home-nas")
+
         #expect(
             try SAFACommand.parseAsRoot(["resource", "remove", "nas.home"])
                 is ResourceRemoveCommand
@@ -77,6 +91,12 @@ struct ResourceCLIContractTests {
         #expect(try SAFACommand.parseAsRoot(["setup", "status"]) is SetupStatusCommand)
         #expect(try SAFACommand.parseAsRoot(["setup", "activate"]) is SetupActivateCommand)
         #expect(try SAFACommand.parseAsRoot(["setup", "deactivate"]) is SetupDeactivateCommand)
+
+        for retiredLifecycleCommand in ["inspect", "setup", "disable", "enable"] {
+            #expect(
+                commandParsingFails(["resource", retiredLifecycleCommand, "nas.home"])
+            )
+        }
 
         for forbiddenSecretInput in [
             ["resource", "add", "nas.home", "--password", "secret"],
@@ -89,6 +109,41 @@ struct ResourceCLIContractTests {
             ["exec", "nas.home", "--intent", "check", "--sudo", "--", "uptime"],
         ] {
             #expect(commandParsingFails(forbiddenSecretInput))
+        }
+    }
+
+    @Test("resource list rejects unknown and deleted state filters")
+    func listStateValidation() throws {
+        for state in ["unknown", "deleted"] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot(["resource", "list", "--state", state])
+                    as? ResourceListCommand
+            )
+            #expect(throws: ResourceListInputError.invalidState) {
+                try command.requestedState()
+            }
+        }
+    }
+
+    @Test("resource edit rejects unsupported or ambiguous state changes")
+    func editStateValidation() throws {
+        let draft = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--state", "draft",
+            ]) as? ResourceEditCommand
+        )
+        #expect(throws: ResourceMutationInputError.unsupportedDesiredState) {
+            try draft.mutationInput()
+        }
+
+        let combined = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--state", "disabled",
+                "--type", "host.linux",
+            ]) as? ResourceEditCommand
+        )
+        #expect(throws: ResourceMutationInputError.stateCannotCombineWithConfiguration) {
+            try combined.mutationInput()
         }
     }
 
