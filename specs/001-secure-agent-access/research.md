@@ -297,6 +297,10 @@ endpoint, username, Keychain account, or credential is copied into this reposito
 task-specific textual projection for the Agent. Do not choose a tree, Mermaid diagram, screenshot,
 or one fixed serialization as the universal representation.
 
+The product repository owns the
+[canonical bibliography and influence map](https://github.com/juju-w/safa/blob/main/docs/references.md).
+The links below remain beside the Runtime decision record so its evidence is reviewable in place.
+
 The evidence does not support a universal best graph encoding:
 
 - [Talk like a Graph](https://arxiv.org/abs/2310.04560) finds that results vary materially with the

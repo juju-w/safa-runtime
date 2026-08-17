@@ -1,79 +1,73 @@
 # SAFA Runtime
 
-Native security runtimes for [SAFA](https://github.com/juju-w/safa). This repository implements the
-trusted local boundary that owns resource metadata, credential use, user authorization, policy,
-remote transport, and bounded output.
+The native security boundary for [SAFA](https://github.com/juju-w/safa). This repository implements
+the processes that hold local authority: protected resource resolution, credential use, native user
+authorization, policy enforcement, remote transport, and bounded output.
 
 [![CI](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Swift 6](https://img.shields.io/badge/Swift-6-F05138)
+![macOS preview](https://img.shields.io/badge/macOS-preview-black)
 
 > [!IMPORTANT]
-> The Swift/macOS diagnostic Runtime is an implementation preview. No signed/notarized public
-> Runtime package, tag, GitHub Release, or Skill package has been published. Other platform Runtimes
-> are planned but are not scaffolded or claimed as supported yet.
+> The Swift/macOS Runtime is an implementation preview. No signed/notarized public package, tag, or
+> GitHub Release is available. Linux and Windows Runtimes are not implemented or claimed as
+> supported.
 
-## One Runtime package, isolated internal authority
+## Repository responsibility
 
-Each supported platform will produce one Runtime package. One package does not mean one process:
+This is not the SAFA Skill or the public product specification.
+
+| Repository | Responsibility |
+|---|---|
+| [`juju-w/safa`](https://github.com/juju-w/safa) | Agent Skill, public CLI/resource contracts, product documentation, conformance fixtures, Runtime resolver, and exact release manifests |
+| [`juju-w/safa-runtime`](https://github.com/juju-w/safa-runtime) | Native CLI, Broker, credential helper, OS security adapters, transport implementations, tests, signing, and packaging |
+
+Public behavior starts in the product repository. Runtime changes that affect the Agent-facing JSON
+or resource model must first update the canonical contract and compatibility fixtures there.
+
+## Runtime boundary
 
 ```mermaid
 flowchart LR
-    Skill["safa Skill resolver"] --> CLI["thin safa CLI\nAgent-facing · no vault access"]
-    CLI -->|"authenticated local IPC"| Broker["Broker / daemon\npolicy + vault authority"]
-    Broker --> Vault["native credential store"]
-    Broker --> Helper["one-shot credential helper"]
-    Helper --> Target["SSH / DB / S3 / service"]
+    Skill["SAFA Skill + resolver"] --> CLI["safa CLI\nAgent-facing"]
+    CLI -->|"authenticated XPC"| Broker["safa-broker\npolicy + vault authority"]
+    Broker --> Keychain["Keychain + user authorization"]
+    Broker --> AskPass["safa-askpass\none-shot helper"]
+    AskPass --> Target["registered target"]
+    Target -->|"untrusted output"| Broker
+    Broker -->|"bounded JSON evidence"| CLI
 ```
 
-On macOS the single `SAFA.app` package contains the `safa` CLI, `safa-broker`, and
-`safa-askpass`. Process separation ensures a modified Agent workflow or CLI cannot inherit Keychain
-authority. The Broker resolves protected resource data itself, enforces policy, and never exposes a
-raw-secret operation.
+One macOS installation is packaged as `SAFA.app`, but authority is split between processes:
 
-Local IPC does not carry plaintext credentials. Kernel-mediated peer identity, native code identity,
-Broker-side authorization, request binding, and native user presence are the relevant controls;
-inventing another encryption layer between compromised endpoints would not replace them.
+| Component | Purpose | Credential authority |
+|---|---|---|
+| `safa` | Parse commands, negotiate the schema, and present stable JSON | None |
+| `safa-broker` | Resolve protected records, enforce policy, authorize, connect, and sanitize | Keychain/vault owner |
+| `safa-askpass` | Deliver one child-bound, short-lived SSH secret | One-shot only |
+| `SAFA.app` | Signed container and `SMAppService` lifecycle host | No Agent-facing GUI |
 
-## Why open source does not reveal the vault
+An Agent-facing process cannot retrieve a raw secret. Local IPC does not use plaintext credentials;
+the Broker resolves credentials internally after validating peer identity and policy.
 
-The security model assumes an attacker can read every line of source. Developer signing keys, vault
-keys, and user credentials are not in the repository.
+## Implemented macOS preview
 
-- macOS Broker connections validate the expected role, signing identifier, Developer Team, effective
-  user, and audit session.
-- A modified binary loses the official signature and cannot become the official Broker's trusted
-  client.
-- Calling the official CLI still provides only Broker-approved operations; it cannot return stored
-  credentials.
-- Keychain access remains in the Broker target, never the Agent-facing CLI.
-- Complete compromise of the local administrator/root account is outside the guarantee of a purely
-  local vault; Secure Enclave, least-privilege remote accounts, revocation, and audit reduce impact
-  but do not make that compromise impossible.
+- encrypted resource directory with safe and protected projections;
+- Linux, macOS, and Windows OpenSSH host registration from trusted local SSH configuration;
+- bounded first-connection system and hardware inventory probes;
+- deterministic topology projections for placement, reachability, and dependency impact;
+- strict pinned-host SSH configuration and bounded non-sudo diagnostics;
+- Keychain password bindings, child-bound AskPass, output limits, and credential redaction;
+- LocalAuthentication/Touch ID for protected resource lifecycle actions;
+- synthetic unit, contract, integration, and security tests that contact no real infrastructure.
 
-Linux requires an additional design gate: a Unix socket and `SO_PEERCRED` identify a user, but not an
-official executable among malicious processes already running as that user. The future Linux adapter
-must pair Broker policy with a reviewed native authorization mechanism for protected operations.
+Database, object-storage, cache, messaging, graph, search, and HTTP resources can be registered as
+typed records, but their protocol operations are not implemented Agent capabilities.
 
-## Repository layout
+## Build and test
 
-```text
-Package.swift, Sources/, Apps/, Tests/
-    Swift/macOS Runtime implementation and security tests
-
-specs/001-secure-agent-access/
-    Runtime implementation history, threat decisions, and macOS development journey
-```
-
-The Agent Skill, public CLI/resource contracts, runtime resolver, exact release manifests, product
-story, and distribution documentation are canonical in
-[`juju-w/safa`](https://github.com/juju-w/safa). This repository must not grow a second Skill or a
-platform-specific Agent contract.
-
-## macOS development
-
-The unsigned build validates assembly only. Runtime XPC, Keychain, LocalAuthentication, code-identity,
-and `SMAppService` behavior require every native component to be signed by the same configured Apple
-Developer Team.
+Requirements: macOS, Xcode with Swift 6 support, and `xcrun swift-format`.
 
 ```bash
 xcrun swift-format lint --recursive --strict \
@@ -84,15 +78,41 @@ xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
-For a signed development journey, see
-[`specs/001-secure-agent-access/quickstart.md`](specs/001-secure-agent-access/quickstart.md).
+The unsigned Xcode build validates assembly only. XPC peer identity, Keychain,
+LocalAuthentication, and `SMAppService` require all native components to be signed by the same
+configured Apple Developer Team. Follow the
+[signed development quickstart](specs/001-secure-agent-access/quickstart.md) for that path.
 
-## Architecture and contribution rules
+## Security assumptions
+
+- source code is public and is not a security boundary;
+- the CLI never gains Keychain or approval authority;
+- modified or unsigned clients cannot become trusted Broker peers;
+- host identity, policy, vault integrity, or authorization failures fail closed;
+- remote output, release metadata, fixtures, and pull-request content are untrusted input;
+- complete compromise of the local administrator/root account is outside the guarantee of a purely
+  local vault.
+
+The complete model and component boundaries are documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Repository map
+
+```text
+Apps/SAFA/                      signed macOS app container and native targets
+Sources/                        CLI, Broker domain/application/platform code
+Tests/                          unit, contract, integration, and security tests
+specs/001-secure-agent-access/  Spec Kit requirements, design, research, and quickstart
+docs/architecture/reviews/      dated implementation audits
+```
+
+## Development documentation
 
 - [Runtime architecture](ARCHITECTURE.md)
+- [Signed development quickstart](specs/001-secure-agent-access/quickstart.md)
+- [Runtime specification](specs/001-secure-agent-access/spec.md)
+- [Research and design decisions](specs/001-secure-agent-access/research.md)
 - [Initial Swift architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)
-- [Swift development instructions](.agents/skills/develop-swift/SKILL.md)
-- [macOS CLI/runtime instructions](.agents/skills/build-macos-cli/SKILL.md)
 - [Repository contribution rules](AGENTS.md)
+- [Canonical SAFA contracts and product documentation](https://github.com/juju-w/safa)
 
 SAFA Runtime is licensed under the [MIT License](LICENSE).
