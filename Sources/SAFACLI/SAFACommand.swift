@@ -11,7 +11,7 @@ public struct SAFACommand: AsyncParsableCommand {
         version: "0.1.0",
         subcommands: [
             VersionCommand.self, DoctorCommand.self, SetupCommand.self,
-            ResourceCommand.self, ExecCommand.self,
+            ResourceCommand.self, TopologyCommand.self, ExecCommand.self,
         ]
     )
 

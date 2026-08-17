@@ -80,7 +80,9 @@ attributed, and permits parallel edges. It is versioned independently from indiv
 A `TopologyNode` has an immutable ID, kind (`resource`, `site`, `security-domain`,
 `network-segment`, `runtime`, or `route`), optional Resource ID, stable semantic alias, visibility,
 and bounded typed attributes. Resource aliases reuse the directory selector; context aliases occupy
-reviewed namespaces. Raw network coordinates never become Agent-visible node attributes.
+reviewed namespaces. Agent-proposed context aliases are limited to one semantic segment beneath
+`site`, `domain`, `network`, `runtime`, or `route`; raw network coordinates never become
+Agent-visible node attributes.
 
 A `TopologyEdge` has an immutable ID, source/target IDs, relation, layer (`desired`, `observed`, or
 `derived`), verification (`asserted`, `verified`, `stale`, or `failed`), origin, visibility,
@@ -94,9 +96,9 @@ Credential bindings are not graph nodes or Agent-visible edge properties.
 
 ## TopologyProjection
 
-A transient, bounded Agent DTO derived from one graph revision. It contains safe semantic aliases,
-a node table, typed directed edge table, task, declared ordering, roots, Broker-computed proofs, and
-a truncation flag. Inventory, reachability, dependency-impact, and dense-comparison tasks select
+A transient, bounded Agent DTO derived from one graph revision. It contains an answer-first outcome,
+safe semantic aliases, a node table, typed directed edge table, task, declared ordering, roots,
+Broker-computed proof edge IDs, and a truncation flag. Inventory, reachability, dependency-impact, and dense-comparison tasks select
 different views; there is deliberately no universal serialization. Visual diagrams are derived
 artifacts and cannot be read back as trusted graph state.
 

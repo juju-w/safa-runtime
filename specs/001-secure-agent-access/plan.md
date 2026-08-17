@@ -21,6 +21,9 @@ directory is adapter-independent so later database, object-storage, cache, and s
 not fork the security architecture. Delivery first covers
 SSH-config import, tunnel preflight, public-key execution, strict host identity, read-only
 diagnostics, Keychain-backed sudo migration, encrypted inventory, and compact CLI contracts.
+The same encrypted authority now includes a revisioned typed topology graph. Deterministic Broker
+algorithms answer placement, verified reachability, dependency impact, dense comparison, and cycle
+questions while the Agent-facing CLI remains five semantic verbs with an answer-first projection.
 Arbitrary mutation, general execution authorization/audit, team vaults, non-SSH execution adapters,
 and custom GUI are deferred until parity and security gates are complete. A narrowly scoped macOS
 user-presence gate for protected resource details is included.
@@ -160,7 +163,8 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
   fixtures, threat-model tests.
 - **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, trusted no-GUI
   registration, managed Secure Enclave key or password SSH, strict host identity, read-only
-  execution and audit. Existing direct OpenSSH identity/agent registration is implemented in the
+  execution and audit, plus bounded safe topology queries and user-authorized desired relationship
+  edits. Existing direct OpenSSH identity/agent registration is implemented in the
   current preview; managed Secure Enclave/password enrollment and proxy-route setup remain open.
 - **M2 command authority**: arbitrary `exec`/`shell`, policy classifier, trusted approval, sudo,
   scoped grants, revocation, bounded streaming and redaction.

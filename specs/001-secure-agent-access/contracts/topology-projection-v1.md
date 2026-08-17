@@ -1,6 +1,6 @@
 # Topology Projection v1 (Runtime Mirror)
 
-**Status**: Design approved; implementation pending.
+**Status**: Implemented and covered by domain, contract, integration, and leakage tests.
 
 The canonical public contract is
 `juju-w/safa/contracts/topology-projection-v1.md`. This Runtime mirror records the implementation
@@ -36,7 +36,8 @@ ordering
 roots[]
 nodes[{alias, kind, allowlisted attributes}]
 edges[{id, from, relation, to, layer, verification, freshness}]
-proofs[{question, from, to, result, edge_ids[], computed_by}]
+answer{outcome, source, target, affected_aliases[], proof_edge_ids[]}
+matrix?
 truncated
 ```
 
@@ -62,3 +63,12 @@ semantic retrieval may find candidate roots later but never proves connectivity.
 
 Visual diagrams are optional derived artifacts. Layout, color, proximity, and arrow routing carry no
 authority, and a multimodal interpretation can never create a verified edge.
+
+## Agent CLI
+
+The Runtime exposes only five semantic verbs: `topology show`, `topology path`, `topology impact`,
+`topology link`, and `topology unlink`. Queries are safe, bounded projections. Mutations require
+macOS user presence and can change desired/asserted edges only. Dense comparison and cycle checks
+remain internal Broker capabilities so simpler Agents do not need to choose graph algorithms.
+`link` may create a missing context node only from a constrained one-segment `site.*`, `domain.*`,
+`network.*`, `runtime.*`, or `route.*` semantic alias; IP/CIDR/DNS-shaped context is rejected.

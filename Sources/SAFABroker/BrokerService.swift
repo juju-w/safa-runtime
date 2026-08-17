@@ -75,6 +75,8 @@ public actor BrokerRequestDispatcher {
     private let trustedHandler: any TrustedLocalOperationHandling
     private let resourceDirectoryHandler: any ResourceDirectoryHandling
     private let resourceMutationHandler: any ResourceMutationHandling
+    private let topologyQueryHandler: any TopologyQueryHandling
+    private let topologyMutationHandler: any TopologyMutationHandling
     private let log: SecurityLog
 
     public init(
@@ -82,12 +84,16 @@ public actor BrokerRequestDispatcher {
         trustedHandler: any TrustedLocalOperationHandling,
         resourceDirectoryHandler: any ResourceDirectoryHandling,
         resourceMutationHandler: any ResourceMutationHandling,
+        topologyQueryHandler: any TopologyQueryHandling,
+        topologyMutationHandler: any TopologyMutationHandling,
         log: SecurityLog = SecurityLog()
     ) {
         self.agentHandler = agentHandler
         self.trustedHandler = trustedHandler
         self.resourceDirectoryHandler = resourceDirectoryHandler
         self.resourceMutationHandler = resourceMutationHandler
+        self.topologyQueryHandler = topologyQueryHandler
+        self.topologyMutationHandler = topologyMutationHandler
         self.log = log
     }
 
@@ -217,6 +223,72 @@ public actor BrokerRequestDispatcher {
         }
     }
 
+    public func dispatchTopologyQuery(
+        _ request: Data,
+        caller: CallerIdentity,
+        now: Date = Date()
+    ) async -> Data {
+        do {
+            let message = try CanonicalCodec.decode(
+                TopologyQueryRequestV1.self,
+                from: request,
+                maxBytes: Self.maximumMessageBytes
+            )
+            try validate(message.header, now: now)
+            return try CanonicalCodec.encode(
+                await topologyQueryHandler.query(message, caller: caller, now: now)
+            )
+        } catch {
+            log.invalidMessage(role: .agent, code: "invalid_topology_query_message")
+            let reply = TopologyQueryReplyV1(
+                messageID: UUID(),
+                status: .failed,
+                error: SAFAErrorPayload(
+                    code: dispatchErrorCode(error),
+                    message: "The broker rejected the topology query.",
+                    retryable: false
+                )
+            )
+            return (try? CanonicalCodec.encode(reply)) ?? Data()
+        }
+    }
+
+    public func dispatchTopologyMutation(
+        _ request: Data,
+        caller: CallerIdentity,
+        now: Date = Date()
+    ) async -> Data {
+        do {
+            let message = try CanonicalCodec.decode(
+                TopologyMutationRequestV1.self,
+                from: request,
+                maxBytes: Self.maximumMessageBytes
+            )
+            try validate(message.header, now: now)
+            return try CanonicalCodec.encode(
+                await topologyMutationHandler.mutate(message, caller: caller, now: now)
+            )
+        } catch {
+            log.invalidMessage(role: .agent, code: "invalid_topology_mutation_message")
+            let reply = TopologyMutationReplyV1(
+                messageID: UUID(),
+                status: .failed,
+                error: SAFAErrorPayload(
+                    code: dispatchErrorCode(error),
+                    message: "The broker rejected the topology mutation.",
+                    retryable: false
+                )
+            )
+            return (try? CanonicalCodec.encode(reply)) ?? Data()
+        }
+    }
+
+    private func dispatchErrorCode(_ error: any Error) -> String {
+        if case ProtocolCodecError.inputTooLarge = error { return "message_too_large" }
+        if error as? BrokerDispatchError == .expired { return "message_expired" }
+        return "invalid_message"
+    }
+
     private func validate(_ header: IPCHeader, now: Date) throws {
         guard header.protocolVersion == IPCHeader.currentVersion else {
             throw BrokerDispatchError.unsupportedProtocol
@@ -287,6 +359,20 @@ private final class AgentXPCExport: NSObject, SAFAAgentBrokerXPC, @unchecked Sen
         let replyBox = ReplyBox(reply)
         Task {
             replyBox.value(await dispatcher.dispatchResourceMutation(request, caller: caller))
+        }
+    }
+
+    func queryTopology(_ request: Data, reply: @escaping (Data) -> Void) {
+        let replyBox = ReplyBox(reply)
+        Task {
+            replyBox.value(await dispatcher.dispatchTopologyQuery(request, caller: caller))
+        }
+    }
+
+    func mutateTopology(_ request: Data, reply: @escaping (Data) -> Void) {
+        let replyBox = ReplyBox(reply)
+        Task {
+            replyBox.value(await dispatcher.dispatchTopologyMutation(request, caller: caller))
         }
     }
 }
@@ -579,11 +665,18 @@ public enum BrokerRuntime {
                 userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
             )
         )
+        let topology = TopologyGraphService(
+            vault: vault,
+            userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer(),
+            mutationGate: resourceStore.mutationGate
+        )
         let dispatcher = BrokerRequestDispatcher(
             agentHandler: handler,
             trustedHandler: handler,
             resourceDirectoryHandler: resourceDirectory,
-            resourceMutationHandler: resourceMutation
+            resourceMutationHandler: resourceMutation,
+            topologyQueryHandler: topology,
+            topologyMutationHandler: topology
         )
         do {
             try await BrokerService(

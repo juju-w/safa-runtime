@@ -832,6 +832,8 @@ public struct VaultDocument: Codable, Equatable, Sendable {
     public var activeGrants: [ApprovalGrant]
     public var settings: [String: String]
     public var appliedMigrations: [String]
+    /// Broker-owned topology state. Optional so pre-topology vaults decode unchanged.
+    public var topologyGraph: TopologyGraph?
 
     public init(
         schemaVersion: UInt,
@@ -841,7 +843,8 @@ public struct VaultDocument: Codable, Equatable, Sendable {
         pendingRequests: [ExecutionRequest] = [],
         activeGrants: [ApprovalGrant] = [],
         settings: [String: String] = [:],
-        appliedMigrations: [String] = []
+        appliedMigrations: [String] = [],
+        topologyGraph: TopologyGraph? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.resources = resources
@@ -851,6 +854,7 @@ public struct VaultDocument: Codable, Equatable, Sendable {
         self.activeGrants = activeGrants
         self.settings = settings
         self.appliedMigrations = appliedMigrations
+        self.topologyGraph = topologyGraph
     }
 
     public static let empty = Self(schemaVersion: 1, resources: [])

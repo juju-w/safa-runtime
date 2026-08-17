@@ -328,6 +328,12 @@ its ordering and graph revision. The Broker computes exact graph operations; the
 explains, and may propose desired logical edges but does not calculate or self-verify operational
 authority.
 
+The Agent-facing surface is deliberately limited to `topology show`, `path`, `impact`, `link`, and
+`unlink`. Query results place a simple `answer.outcome` before supporting graph evidence. Protected
+link mutations may create one constrained semantic context alias under `site.*`, `domain.*`,
+`network.*`, `runtime.*`, or `route.*`; they cannot encode IP, CIDR, or DNS coordinates. Dense
+comparison and cycle detection stay inside the Broker rather than becoming more Agent commands.
+
 Abstract aliases and reviewed logical edges may be Agent-visible. IPs, CIDRs, ports, usernames,
 physical route coordinates, evidence records, security policy, and credential bindings remain
 protected. Human diagrams and optional multimodal views are derived from the same projection and

@@ -21,6 +21,18 @@ public protocol BrokerAgentClient: Sendable {
         alias: ResourceAlias,
         mutation: ResourceMutationV1?
     ) async throws -> ResourceMutationReplyV1
+    func queryTopology(
+        task: TopologyProjectionTask,
+        source: ResourceAlias?,
+        target: ResourceAlias?,
+        relation: TopologyRelation?
+    ) async throws -> TopologyQueryReplyV1
+    func mutateTopology(
+        action: TopologyMutationActionV1,
+        source: ResourceAlias,
+        relation: TopologyRelation,
+        target: ResourceAlias
+    ) async throws -> TopologyMutationReplyV1
 }
 
 final class XPCReplyContinuationBox<Reply: Sendable>: @unchecked Sendable {
@@ -82,6 +94,10 @@ enum XPCReplyTimeout {
     }
 
     static func interval(for _: ResourceMutationActionV1) -> TimeInterval {
+        userPresence
+    }
+
+    static func interval(for _: TopologyMutationActionV1) -> TimeInterval {
         userPresence
     }
 }
@@ -282,6 +298,128 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                     else {
                         throw BrokerAgentClientError.invalidReply
                     }
+                    box.succeed(reply)
+                } catch {
+                    box.fail(error)
+                }
+            }
+        }
+    }
+
+    public func queryTopology(
+        task: TopologyProjectionTask,
+        source: ResourceAlias? = nil,
+        target: ResourceAlias? = nil,
+        relation: TopologyRelation? = nil
+    ) async throws -> TopologyQueryReplyV1 {
+        let team = try CodeSigningRequirement.currentTeamIdentifier()
+        let requirement = try CodeSigningRequirement.requirement(
+            teamIdentifier: team,
+            signingIdentifiers: ["dev.safa.broker"]
+        )
+        let now = Date()
+        let message = TopologyQueryRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            task: task,
+            source: source,
+            target: target,
+            relation: relation
+        )
+        let request = try CanonicalCodec.encode(message)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let connection = NSXPCConnection(machServiceName: BrokerServiceNames.agent)
+            let box = XPCReplyContinuationBox(
+                connection: connection,
+                continuation: continuation
+            )
+            box.scheduleTimeout(after: XPCReplyTimeout.standard)
+            connection.remoteObjectInterface = NSXPCInterface(
+                with: (any SAFAAgentBrokerXPC).self
+            )
+            connection.setCodeSigningRequirement(requirement)
+            connection.interruptionHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.invalidationHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.resume()
+            guard
+                let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+                    box.fail(BrokerAgentClientError.unavailable)
+                }) as? any SAFAAgentBrokerXPC
+            else {
+                box.fail(BrokerAgentClientError.unavailable)
+                return
+            }
+            proxy.queryTopology(request) { data in
+                do {
+                    let reply = try CanonicalCodec.decode(
+                        TopologyQueryReplyV1.self,
+                        from: data,
+                        maxBytes: 2 * 1_048_576
+                    )
+                    guard reply.protocolVersion == IPCHeader.currentVersion,
+                        reply.messageID == message.header.messageID
+                    else { throw BrokerAgentClientError.invalidReply }
+                    box.succeed(reply)
+                } catch {
+                    box.fail(error)
+                }
+            }
+        }
+    }
+
+    public func mutateTopology(
+        action: TopologyMutationActionV1,
+        source: ResourceAlias,
+        relation: TopologyRelation,
+        target: ResourceAlias
+    ) async throws -> TopologyMutationReplyV1 {
+        let team = try CodeSigningRequirement.currentTeamIdentifier()
+        let requirement = try CodeSigningRequirement.requirement(
+            teamIdentifier: team,
+            signingIdentifiers: ["dev.safa.broker"]
+        )
+        let now = Date()
+        let message = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: action,
+            source: source,
+            relation: relation,
+            target: target
+        )
+        let request = try CanonicalCodec.encode(message)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let connection = NSXPCConnection(machServiceName: BrokerServiceNames.agent)
+            let box = XPCReplyContinuationBox(
+                connection: connection,
+                continuation: continuation
+            )
+            box.scheduleTimeout(after: XPCReplyTimeout.interval(for: action))
+            connection.remoteObjectInterface = NSXPCInterface(
+                with: (any SAFAAgentBrokerXPC).self
+            )
+            connection.setCodeSigningRequirement(requirement)
+            connection.interruptionHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.invalidationHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.resume()
+            guard
+                let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+                    box.fail(BrokerAgentClientError.unavailable)
+                }) as? any SAFAAgentBrokerXPC
+            else {
+                box.fail(BrokerAgentClientError.unavailable)
+                return
+            }
+            proxy.mutateTopology(request) { data in
+                do {
+                    let reply = try CanonicalCodec.decode(
+                        TopologyMutationReplyV1.self,
+                        from: data,
+                        maxBytes: 2 * 1_048_576
+                    )
+                    guard reply.protocolVersion == IPCHeader.currentVersion,
+                        reply.messageID == message.header.messageID
+                    else { throw BrokerAgentClientError.invalidReply }
                     box.succeed(reply)
                 } catch {
                     box.fail(error)
