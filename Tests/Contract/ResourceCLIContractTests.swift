@@ -9,6 +9,7 @@ import Testing
 struct ResourceCLIContractTests {
     @Test("resource CLI exposes the complete lifecycle and an ls alias")
     func cliFirstCommandSurface() throws {
+        #expect(ResourceShowCommand.configuration.abstract.contains("--details"))
         #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
         #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
         let detailedShow = try #require(

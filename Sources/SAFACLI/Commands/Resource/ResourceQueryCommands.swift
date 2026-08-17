@@ -37,7 +37,10 @@ struct ResourceListCommand: AsyncParsableCommand, ResourceDirectoryCommand {
 }
 
 struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
-    static let configuration = CommandConfiguration(commandName: "show")
+    static let configuration = CommandConfiguration(
+        commandName: "show",
+        abstract: "Show a safe summary; pass --details for authorized inventory."
+    )
     @Argument var alias: String
     @Flag(
         name: .customLong("details"),
