@@ -139,7 +139,7 @@ struct ResourceSetupCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     @Flag var json = false
 
     var resourceType: String? { nil }
-    var template: String? { "ssh" }
+    var template: String? { nil }
 
     func run() async throws {
         try await runMutation(action: .setup, command: "resource.setup")

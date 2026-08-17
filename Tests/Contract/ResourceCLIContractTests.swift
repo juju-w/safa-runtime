@@ -38,11 +38,14 @@ struct ResourceCLIContractTests {
                 "resource", "edit", "nas.home", "--from-ssh-config", "home-nas",
             ]) is ResourceEditCommand
         )
-        #expect(
+        let setupCommand = try #require(
             try SAFACommand.parseAsRoot([
                 "resource", "setup", "nas.home", "--from-ssh-config", "home-nas",
-            ]) is ResourceSetupCommand
+            ]) as? ResourceSetupCommand
         )
+        let (_, setupMutation) = try setupCommand.mutationInput()
+        #expect(setupMutation.resourceType == nil)
+        #expect(setupMutation.templateID == nil)
         #expect(
             try SAFACommand.parseAsRoot(["resource", "disable", "nas.home"])
                 is ResourceDisableCommand
