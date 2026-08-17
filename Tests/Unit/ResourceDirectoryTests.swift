@@ -107,6 +107,35 @@ struct ResourceDirectoryTests {
         #expect(throws: ResourceRegistryError.self) {
             try ResourceRegistry(resources: [invalid])
         }
+
+        let forged = TestDirectoryResourceFactory.make(
+            alias: "forged-service",
+            relationships: [
+                ResourceRelationship(
+                    kind: .hostedOn,
+                    targetResourceID: host.id,
+                    origin: .adapter
+                )
+            ]
+        )
+        #expect(throws: ResourceRegistryError.self) {
+            try ResourceRegistry(resources: [host, forged])
+        }
+    }
+
+    @Test("legacy relationships decode with import provenance")
+    func legacyRelationshipProvenance() throws {
+        let target = UUID(uuidString: "10000000-0000-4000-8000-000000000001")!
+        let data = Data(
+            #"{"kind":"depends-on","target_resource_id":"10000000-0000-4000-8000-000000000001"}"#
+                .utf8
+        )
+
+        let relationship = try JSONDecoder().decode(ResourceRelationship.self, from: data)
+
+        #expect(relationship.kind == .dependsOn)
+        #expect(relationship.targetResourceID == target)
+        #expect(relationship.origin == .import)
     }
 
     @Test("unknown metadata is private unless code explicitly allowlists its key")

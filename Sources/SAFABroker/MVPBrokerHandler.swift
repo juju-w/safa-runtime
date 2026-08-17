@@ -17,6 +17,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
     private let askPassExecutable: URL
     private let workingDirectory: URL
     private let trustedResourceSetup: TrustedResourceSetupService
+    private let topologyReachabilityRecorder: (any TopologyReachabilityRecording)?
 
     public init(
         vault: any VaultDocumentStoring,
@@ -26,6 +27,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         transport: SSHTransport = SSHTransport(),
         diagnosticPolicy: DiagnosticCommandPolicy = DiagnosticCommandPolicy(),
         audit: AuditService = AuditService(),
+        topologyReachabilityRecorder: (any TopologyReachabilityRecording)? = nil,
         askPassExecutable: URL,
         workingDirectory: URL
     ) {
@@ -40,6 +42,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         self.transport = transport
         self.diagnosticPolicy = diagnosticPolicy
         self.audit = audit
+        self.topologyReachabilityRecorder = topologyReachabilityRecorder
         self.askPassExecutable = askPassExecutable
         self.workingDirectory = workingDirectory
     }
@@ -289,6 +292,15 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
             )
         }
         if binding != nil { bindingStore.revoke(requestID: requestID) }
+
+        // OpenSSH reserves 255 for connection/authentication failures. Other exit codes
+        // come from a reached remote command and still prove transport reachability.
+        if result.termination == .exit, result.exitCode != 255 {
+            try? await topologyReachabilityRecorder?.recordSuccessfulReachability(
+                to: alias,
+                observedAt: result.finishedAt
+            )
+        }
 
         let stdout = redactionSecret.map { Self.redact($0, from: result.stdout) } ?? result.stdout
         let stderr = redactionSecret.map { Self.redact($0, from: result.stderr) } ?? result.stderr

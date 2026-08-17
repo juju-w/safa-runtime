@@ -106,7 +106,7 @@ extension ResourceService {
         }
         document.resources.append(resource)
         do {
-            try await vault.writeDocument(document)
+            try await writeResourceDocument(document)
         } catch {
             if let credentialID {
                 try? await passwordStore.deleteSecret(id: credentialID)
@@ -260,7 +260,7 @@ extension ResourceService {
             document.credentialReferences.removeAll { $0.id == previousCredentialID }
         }
         do {
-            try await vault.writeDocument(document)
+            try await writeResourceDocument(document)
         } catch {
             if let replacementCredentialID {
                 try? await passwordStore.deleteSecret(id: replacementCredentialID)
@@ -314,7 +314,7 @@ extension ResourceService {
             resource.revision += 1
             resource.updatedAt = now
             document.resources[index] = resource
-            try await vault.writeDocument(document)
+            try await writeResourceDocument(document)
             return resource
         }
     }

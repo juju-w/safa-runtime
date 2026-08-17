@@ -134,6 +134,21 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T046h [US1] Mirror the canonical answer-first CLI fixtures, update the SAFA Skill routing
   rules, and document the complex-inside/simple-outside algorithm and decision diagrams in the
   public product repository
+- [X] T046i [US1] Make encrypted resource relationships canonical for resource-to-resource
+  `hosted-on`, `depends-on`, and `backed-by` declarations and reconcile stable desired graph edges
+- [X] T046j [US1] Serialize matching topology link/unlink and resource lifecycle writes through one
+  Broker transaction gate, with backward-compatible relationship provenance
+- [X] T046k [US1] Refresh short-lived verified `runtime.local can-reach` evidence only after bounded
+  SSH setup or an execution result that is not OpenSSH transport/authentication exit `255`
+- [X] T046l [US1] Cover relationship reconciliation, lifecycle synchronization, observation refresh,
+  transport-failure rejection, and synthetic execution with unit and integration tests
+- [X] T046la [US1] Add separate five-minute in-memory approval leases for similar resource setup and
+  desired topology link operations while requiring fresh authorization for destructive/state actions
+- [X] T046m [US1] Install the locally signed Runtime, import the existing SSH alias catalog, run only
+  bounded read-only probes, and verify the packaged resource/topology closure without committing any
+  real infrastructure coordinates to the repository
+- [X] T046n [US1] Adapt strict OpenSSH setup to quoted Application Support paths, non-default-port
+  host-key aliases, portable POSIX hostname probes, and single-layer UTF-8 Windows inventory
 
 **Checkpoint**: User Story 1 is independently demonstrable and is the first releasable diagnostic
 MVP, even before arbitrary elevated command approval is added.

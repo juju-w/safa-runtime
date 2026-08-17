@@ -54,6 +54,65 @@ public struct SSHConfigurationBuilder: Sendable {
         rootDirectory: URL,
         randomBytes: Data? = nil
     ) throws -> PreparedSSHExecution {
+        guard command.mode == .exec, let commandArguments = command.arguments else {
+            throw SSHConfigurationError.unsupportedCommand
+        }
+        let remoteCommand: String
+        if resource.resolvedHostPlatform == .windows {
+            remoteCommand = try Self.windowsPowerShellCommand(commandArguments)
+        } else {
+            remoteCommand = commandArguments.map(Self.posixQuote).joined(separator: " ")
+        }
+        return try prepare(
+            resource: resource,
+            remoteCommand: remoteCommand,
+            credential: credential,
+            rootDirectory: rootDirectory,
+            timeoutSeconds: command.timeoutSeconds,
+            outputLimitBytes: command.outputLimitBytes,
+            randomBytes: randomBytes
+        )
+    }
+
+    /// Trusted adapters use this path for a bounded script they own. Agent command DTOs never
+    /// carry this payload, avoiding the second PowerShell/base64 layer that can exceed Windows'
+    /// OpenSSH command-line limit.
+    public func prepareWindowsPowerShell(
+        resource: Resource,
+        encodedScript: String,
+        credential: SSHCredentialContext,
+        rootDirectory: URL,
+        timeoutSeconds: UInt,
+        outputLimitBytes: UInt,
+        randomBytes: Data? = nil
+    ) throws -> PreparedSSHExecution {
+        guard resource.resolvedHostPlatform == .windows,
+            encodedScript.utf8.count <= 6 * 1_024,
+            Data(base64Encoded: encodedScript) != nil
+        else {
+            throw SSHConfigurationError.unsupportedCommand
+        }
+        return try prepare(
+            resource: resource,
+            remoteCommand:
+                "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand \(encodedScript)",
+            credential: credential,
+            rootDirectory: rootDirectory,
+            timeoutSeconds: timeoutSeconds,
+            outputLimitBytes: outputLimitBytes,
+            randomBytes: randomBytes
+        )
+    }
+
+    private func prepare(
+        resource: Resource,
+        remoteCommand: String,
+        credential: SSHCredentialContext,
+        rootDirectory: URL,
+        timeoutSeconds: UInt,
+        outputLimitBytes: UInt,
+        randomBytes: Data?
+    ) throws -> PreparedSSHExecution {
         guard resource.state == .active else { throw SSHConfigurationError.resourceInactive }
         guard resource.resolvedAccessMethods.contains(.ssh),
             let endpoint = resource.endpoint,
@@ -69,10 +128,6 @@ public struct SSHConfigurationBuilder: Sendable {
             if identity.status == .changed { throw SSHConfigurationError.hostIdentityChanged }
             throw SSHConfigurationError.invalidHostIdentity
         }
-        guard command.mode == .exec, let commandArguments = command.arguments else {
-            throw SSHConfigurationError.unsupportedCommand
-        }
-
         let salt = try randomBytes ?? secureRandom(count: 20)
         guard salt.count >= 20 else { throw SSHConfigurationError.invalidRandomness }
         let opaqueAlias = "safa-" + UUID().uuidString.lowercased()
@@ -85,11 +140,14 @@ public struct SSHConfigurationBuilder: Sendable {
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
-            let knownHostName =
+            // OpenSSH performs host-key lookup against the command-line alias. Pin the
+            // per-request opaque alias explicitly so the temporary known_hosts entry and
+            // lookup identity cannot diverge from HostName/port canonicalization details.
+            let hostKeyAlias =
                 endpoint.port == 22
-                ? endpoint.host
-                : "[\(endpoint.host)]:\(endpoint.port)"
-            let hashedHost = hashKnownHost(knownHostName, salt: salt.prefix(20))
+                ? opaqueAlias
+                : "[\(opaqueAlias)]:\(endpoint.port)"
+            let hashedHost = hashKnownHost(hostKeyAlias, salt: salt.prefix(20))
             let keyPayload = identity.publicKey.base64EncodedString()
             let knownHosts = "\(hashedHost) \(identity.algorithm) \(keyPayload)\n"
             try writePrivate(Data(knownHosts.utf8), to: knownHostsURL)
@@ -104,10 +162,11 @@ public struct SSHConfigurationBuilder: Sendable {
                     ClearAllForwardings yes
                     GlobalKnownHostsFile /dev/null
                     HashKnownHosts yes
+                    HostKeyAlias \(hostKeyAlias)
                     IdentitiesOnly yes
                     LogLevel ERROR
                     StrictHostKeyChecking yes
-                    UserKnownHostsFile \(knownHostsURL.path)
+                    UserKnownHostsFile \(Self.quoteConfig(knownHostsURL.path))
 
                 """
             var environment = ["LC_ALL": "C", "LANG": "C"]
@@ -143,18 +202,12 @@ public struct SSHConfigurationBuilder: Sendable {
             }
             try writePrivate(Data(config.utf8), to: configURL)
 
-            let remoteCommand: String
-            if resource.resolvedHostPlatform == .windows {
-                remoteCommand = try Self.windowsPowerShellCommand(commandArguments)
-            } else {
-                remoteCommand = commandArguments.map(Self.posixQuote).joined(separator: " ")
-            }
             let invocation = ProcessInvocation(
                 executableURL: URL(fileURLWithPath: "/usr/bin/ssh"),
                 arguments: ["-F", configURL.path, "-T", "--", opaqueAlias, remoteCommand],
                 environment: environment,
-                timeoutSeconds: command.timeoutSeconds,
-                outputLimitBytes: command.outputLimitBytes
+                timeoutSeconds: timeoutSeconds,
+                outputLimitBytes: outputLimitBytes
             )
             return PreparedSSHExecution(
                 invocation: invocation,

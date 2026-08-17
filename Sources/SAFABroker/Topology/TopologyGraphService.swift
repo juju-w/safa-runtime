@@ -19,25 +19,38 @@ public protocol TopologyMutationHandling: Sendable {
     ) async -> TopologyMutationReplyV1
 }
 
+public protocol TopologyReachabilityRecording: Sendable {
+    func recordSuccessfulReachability(
+        to target: ResourceAlias,
+        observedAt: Date
+    ) async throws
+}
+
 public enum TopologyObservationError: Error, Equatable, Sendable {
     case aliasNotFound(String)
 }
 
-public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandling {
+public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandling,
+    TopologyReachabilityRecording
+{
     private let vault: any VaultDocumentStoring
     private let userPresenceAuthorizer: any UserPresenceAuthorizing
     private let cooldown: TimeInterval
+    private let authorizationReuseInterval: TimeInterval
     private let mutationGate: ResourceMutationGate
     private var lastDeniedAt: Date?
+    private var lastReusableApprovalAt: Date?
 
     public init(
         vault: any VaultDocumentStoring,
         userPresenceAuthorizer: any UserPresenceAuthorizing,
-        cooldown: TimeInterval = 10
+        cooldown: TimeInterval = 10,
+        authorizationReuseInterval: TimeInterval = 0
     ) {
         self.vault = vault
         self.userPresenceAuthorizer = userPresenceAuthorizer
         self.cooldown = cooldown
+        self.authorizationReuseInterval = min(max(0, authorizationReuseInterval), 300)
         mutationGate = ResourceMutationGate()
     }
 
@@ -45,11 +58,13 @@ public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandli
         vault: any VaultDocumentStoring,
         userPresenceAuthorizer: any UserPresenceAuthorizing,
         cooldown: TimeInterval = 10,
+        authorizationReuseInterval: TimeInterval = 0,
         mutationGate: ResourceMutationGate
     ) {
         self.vault = vault
         self.userPresenceAuthorizer = userPresenceAuthorizer
         self.cooldown = cooldown
+        self.authorizationReuseInterval = min(max(0, authorizationReuseInterval), 300)
         self.mutationGate = mutationGate
     }
 
@@ -116,17 +131,27 @@ public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandli
             )
         }
 
-        let verb = request.action == .link ? "Link" : "Unlink"
-        let reason =
-            "\(verb) \(request.source.rawValue) \(request.relation.rawValue) "
-            + "\(request.target.rawValue) in SAFA topology"
-        guard await userPresenceAuthorizer.authorize(reason: reason) else {
-            lastDeniedAt = now
-            return mutationDenial(
-                request,
-                code: "topology_change_denied",
-                message: "The topology change was not authorized by the user."
-            )
+        let elapsed = lastReusableApprovalAt.map { now.timeIntervalSince($0) }
+        let hasReusableApproval =
+            request.action == .link
+            && authorizationReuseInterval > 0
+            && elapsed.map { $0 >= 0 && $0 <= authorizationReuseInterval } == true
+        if !hasReusableApproval {
+            if request.action == .unlink { lastReusableApprovalAt = nil }
+            let verb = request.action == .link ? "Link" : "Unlink"
+            let reason =
+                "\(verb) \(request.source.rawValue) \(request.relation.rawValue) "
+                + "\(request.target.rawValue) in SAFA topology"
+            guard await userPresenceAuthorizer.authorize(reason: reason) else {
+                lastReusableApprovalAt = nil
+                lastDeniedAt = now
+                return mutationDenial(
+                    request,
+                    code: "topology_change_denied",
+                    message: "The topology change was not authorized by the user."
+                )
+            }
+            if request.action == .link { lastReusableApprovalAt = now }
         }
 
         do {
@@ -157,46 +182,77 @@ public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandli
                         && edge.layer == .desired
                 }
                 var changedEdge: TopologyEdge?
-                var edges = graph.edges
-                switch request.action {
-                case .link:
-                    if let existing = edges.first(where: matches) {
-                        changedEdge = existing
-                    } else {
-                        let edge = TopologyEdge(
-                            id: UUID(),
-                            fromNodeID: source.id,
-                            relation: request.relation,
-                            toNodeID: target.id,
-                            layer: .desired,
-                            verification: .asserted,
-                            origin: .agent,
-                            visibility: .agent
+                if let relationshipKind = request.relation.resourceRelationshipKind,
+                    let sourceID = source.resourceID,
+                    let targetID = target.resourceID
+                {
+                    changedEdge = graph.edges.first(where: matches)
+                    let changed = try Self.updateResourceRelationship(
+                        in: &document,
+                        sourceID: sourceID,
+                        kind: relationshipKind,
+                        targetID: targetID,
+                        action: request.action,
+                        now: now
+                    )
+                    if changed {
+                        graph = try graph.reconciling(
+                            resources: document.resources,
+                            incrementRevisionWhenChanged: true
                         )
-                        edges.append(edge)
-                        changedEdge = edge
+                        if request.action == .link {
+                            changedEdge = graph.edges.first(where: matches)
+                        }
+                    } else if request.action == .unlink, let existing = changedEdge {
                         graph = try TopologyGraph(
                             revision: graph.revision + 1,
-                            nodes: nodes,
+                            nodes: graph.nodes,
+                            edges: graph.edges.filter { $0.id != existing.id }
+                        )
+                    }
+                } else {
+                    var edges = graph.edges
+                    switch request.action {
+                    case .link:
+                        if let existing = edges.first(where: matches) {
+                            changedEdge = existing
+                        } else {
+                            let edge = TopologyEdge(
+                                id: UUID(),
+                                fromNodeID: source.id,
+                                relation: request.relation,
+                                toNodeID: target.id,
+                                layer: .desired,
+                                verification: .asserted,
+                                origin: .agent,
+                                visibility: .agent
+                            )
+                            edges.append(edge)
+                            changedEdge = edge
+                            graph = try TopologyGraph(
+                                revision: graph.revision + 1,
+                                nodes: nodes,
+                                edges: edges
+                            )
+                        }
+                    case .unlink:
+                        guard let existing = edges.first(where: matches) else {
+                            throw TopologyMutationError.edgeNotFound
+                        }
+                        edges.removeAll(where: matches)
+                        changedEdge = existing
+                        graph = try TopologyGraph(
+                            revision: graph.revision + 1,
+                            nodes: graph.nodes,
                             edges: edges
                         )
-                        if Self.requiresAcyclicPlacement(request.relation),
-                            Self.hasPlacementCycle(graph)
-                        {
-                            throw TopologyMutationError.cycleProhibited
-                        }
                     }
-                case .unlink:
-                    guard let existing = edges.first(where: matches) else {
-                        throw TopologyMutationError.edgeNotFound
-                    }
-                    edges.removeAll(where: matches)
-                    changedEdge = existing
-                    graph = try TopologyGraph(
-                        revision: graph.revision + 1,
-                        nodes: graph.nodes,
-                        edges: edges
-                    )
+                }
+                if request.action == .link,
+                    Self.requiresAcyclicPlacement(request.relation),
+                    Self.hasPlacementCycle(graph)
+                {
+                    throw TopologyMutationError.cycleProhibited
                 }
                 document.topologyGraph = graph
                 try await vault.writeDocument(document)
@@ -237,30 +293,37 @@ public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandli
             var document = try await vault.readDocument()
             let graph = try (document.topologyGraph ?? TopologyGraph()).reconciling(
                 resources: document.resources)
-            guard let sourceNode = graph.nodes.first(where: { $0.alias == source }) else {
-                throw TopologyObservationError.aliasNotFound(source.rawValue)
-            }
-            guard let targetNode = graph.nodes.first(where: { $0.alias == target }) else {
+            guard graph.nodes.contains(where: { $0.alias == target }) else {
                 throw TopologyObservationError.aliasNotFound(target.rawValue)
             }
-            let edge = try TopologyEdge.observed(
-                fromNodeID: sourceNode.id,
+            document.topologyGraph = try graph.recordingObservation(
+                source: source,
                 relation: relation,
-                toNodeID: targetNode.id,
+                target: target,
                 verification: verification,
-                origin: .adapter,
                 observedAt: observedAt,
                 validUntil: validUntil,
+                origin: .adapter,
                 visibility: visibility,
                 evidenceReference: evidenceReference
             )
-            document.topologyGraph = try TopologyGraph(
-                revision: graph.revision + 1,
-                nodes: graph.nodes,
-                edges: graph.edges + [edge]
-            )
             try await vault.writeDocument(document)
         }
+    }
+
+    public func recordSuccessfulReachability(
+        to target: ResourceAlias,
+        observedAt: Date
+    ) async throws {
+        try await recordObservation(
+            source: ResourceAlias("runtime.local"),
+            relation: .canReach,
+            target: target,
+            verification: .verified,
+            observedAt: observedAt,
+            validUntil: observedAt.addingTimeInterval(300),
+            evidenceReference: UUID()
+        )
     }
 
     private func makeQuery(_ request: TopologyQueryRequestV1) throws -> TopologyQuery {
@@ -392,6 +455,55 @@ public actor TopologyGraphService: TopologyQueryHandling, TopologyMutationHandli
         } catch {
             throw TopologyMutationError.aliasNotFound(alias.rawValue)
         }
+    }
+
+    private static func updateResourceRelationship(
+        in document: inout VaultDocument,
+        sourceID: UUID,
+        kind: ResourceRelationshipKind,
+        targetID: UUID,
+        action: TopologyMutationActionV1,
+        now: Date
+    ) throws -> Bool {
+        guard
+            let index = document.resources.firstIndex(where: {
+                $0.id == sourceID && $0.state != .deleted
+            })
+        else {
+            throw TopologyMutationError.aliasNotFound(sourceID.uuidString.lowercased())
+        }
+        var resource = document.resources[index]
+        var relationships = resource.resolvedRelationships
+        let matches = { (relationship: ResourceRelationship) in
+            relationship.kind == kind && relationship.targetResourceID == targetID
+        }
+        switch action {
+        case .link:
+            guard !relationships.contains(where: matches) else { return false }
+            relationships.append(
+                ResourceRelationship(
+                    kind: kind,
+                    targetResourceID: targetID,
+                    origin: .agent
+                )
+            )
+        case .unlink:
+            guard relationships.contains(where: matches) else { return false }
+            relationships.removeAll(where: matches)
+        }
+        resource.profile = ResourceProfile(
+            classification: resource.resolvedClassification,
+            alternateAliases: resource.resolvedAlternateAliases,
+            accessMethods: resource.resolvedAccessMethods,
+            metadata: resource.resolvedMetadata,
+            relationships: relationships,
+            credentialBindings: resource.resolvedCredentialBindings
+        )
+        resource.revision += 1
+        resource.updatedAt = now
+        document.resources[index] = resource
+        _ = try ResourceRegistry(resources: document.resources)
+        return true
     }
 
     private static let acyclicPlacementRelations: Set<TopologyRelation> = [

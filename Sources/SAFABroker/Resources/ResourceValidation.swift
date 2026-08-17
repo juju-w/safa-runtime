@@ -94,6 +94,7 @@ extension ResourceService {
             let key = "\(relationship.kind.rawValue):\(relationship.targetResourceID.uuidString)"
             guard relationship.targetResourceID != ownerID,
                 liveIDs.contains(relationship.targetResourceID),
+                [.user, .agent, .import].contains(relationship.origin),
                 seen.insert(key).inserted
             else {
                 throw ResourceServiceError.invalidRelationship

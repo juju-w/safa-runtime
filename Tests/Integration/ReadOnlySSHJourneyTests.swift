@@ -1,4 +1,5 @@
 import Foundation
+import SAFACrypto
 import SAFADomain
 import SAFAProtocol
 import SAFASSH
@@ -48,12 +49,18 @@ struct ReadOnlySSHJourneyTests {
             id: resource.authRef!
         )
         let audit = AuditService()
+        let topology = TopologyGraphService(
+            vault: vault,
+            userPresenceAuthorizer: JourneyPresenceAuthorizer(),
+            cooldown: 0
+        )
         let handler = MVPBrokerHandler(
             vault: vault,
             passwordStore: credentials,
             bindingStore: ChildCredentialBindingStore(),
             transport: SSHTransport(runner: runner),
             audit: audit,
+            topologyReachabilityRecorder: topology,
             askPassExecutable: URL(fileURLWithPath: "/usr/local/libexec/safa-askpass"),
             workingDirectory: FileManager.default.temporaryDirectory
                 .appendingPathComponent("safa-journey-\(UUID().uuidString)")
@@ -92,6 +99,16 @@ struct ReadOnlySSHJourneyTests {
         #expect(!agentSurface.contains("203.0.113.10"))
         #expect(!agentSurface.contains("diagnostic-user"))
         #expect(!agentSurface.contains("synthetic-password"))
+        let graph = try #require(await vault.readDocument().topologyGraph)
+        let runtime = try ResourceAlias("runtime.local")
+        let observation = try #require(
+            graph.edges.first(where: {
+                $0.fromNodeID == graph.nodes.first(where: { $0.alias == runtime })?.id
+                    && $0.relation == .canReach
+                    && $0.toNodeID == resource.id
+            }))
+        #expect(observation.verification == .verified)
+        #expect(observation.observedAt == Date(timeIntervalSince1970: 1_700_000_001))
     }
 
     @Test("an imported OpenSSH identity executes without a password binding")
@@ -160,6 +177,87 @@ struct ReadOnlySSHJourneyTests {
 
         #expect(reply.status == .completed)
         #expect(await runner.lastInvocation() != nil)
+    }
+
+    @Test("OpenSSH transport failure never becomes verified reachability")
+    func transportFailureDoesNotRecordReachability() async throws {
+        let resource = JourneyResourceFactory.active(alias: "nas.unreachable")
+        let locator = try OpenSSHCredentialLocatorV1(
+            identityFiles: ["/synthetic/id_ed25519"],
+            identityAgent: nil
+        )
+        let runner = FakeProcessRunner(
+            result: ProcessExecutionResult(
+                termination: .exit,
+                exitCode: 255,
+                stdout: Data(),
+                stderr: Data("connection refused\n".utf8),
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                finishedAt: Date(timeIntervalSince1970: 1_700_000_001),
+                stdoutTruncated: false,
+                stderrTruncated: false
+            )
+        )
+        let vault = InMemoryVaultDocumentStore(
+            document: VaultDocument(
+                schemaVersion: 1,
+                resources: [resource],
+                credentialReferences: [
+                    CredentialReference(
+                        id: resource.authRef!,
+                        kind: .sshOpenSSH,
+                        storageLocator: try CanonicalCodec.encode(locator),
+                        securityDomains: ["synthetic"],
+                        accessClass: .automaticWithinPolicy,
+                        health: .ready,
+                        createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+                    )
+                ]
+            )
+        )
+        let recorder = JourneyReachabilityRecorder()
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore(),
+            bindingStore: ChildCredentialBindingStore(),
+            transport: SSHTransport(runner: runner),
+            topologyReachabilityRecorder: recorder,
+            askPassExecutable: URL(fileURLWithPath: "/usr/local/libexec/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("safa-failed-journey-\(UUID().uuidString)")
+        )
+
+        _ = await handler.handle(
+            .submitExecution(
+                resourceAlias: resource.alias,
+                command: try CommandSpec.exec(arguments: ["uptime"]),
+                privilege: .user,
+                intent: "Check an unreachable synthetic host",
+                expectedEffect: nil,
+                rollback: nil
+            ),
+            caller: CallerIdentity(
+                signingIdentifier: "dev.safa.cli",
+                teamIdentifier: "TESTTEAM1",
+                effectiveUserID: 501,
+                auditSessionID: 77
+            ),
+            messageID: UUID()
+        )
+
+        #expect(await recorder.targets.isEmpty)
+    }
+}
+
+private actor JourneyPresenceAuthorizer: UserPresenceAuthorizing {
+    func authorize(reason _: String) -> Bool { false }
+}
+
+private actor JourneyReachabilityRecorder: TopologyReachabilityRecording {
+    private(set) var targets: [ResourceAlias] = []
+
+    func recordSuccessfulReachability(to target: ResourceAlias, observedAt _: Date) {
+        targets.append(target)
     }
 }
 

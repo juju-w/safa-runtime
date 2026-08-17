@@ -27,7 +27,7 @@ databases, object storage, caches, and services reuse the same aggregate as adap
 | `endpoint` | Scheme + host + port + path | Encrypted; disclosed only by authorized detailed show |
 | `username` | String | Encrypted; disclosed only by authorized detailed show |
 | `metadata` | Typed entry list | Non-secret profile data; unknown keys default private |
-| `relationships` | Kind + target ID list | Encrypted topology; exposed by target alias only after authorization |
+| `relationships` | Kind + target ID + origin list | Canonical encrypted resource relationships; exposed by target alias only after authorization |
 | `credentialBindings` | Role + CredentialReference ID list | Encrypted; never Agent-visible |
 | `jumpRoute` | Resource ID list | Acyclic; each item must be an SSH resource |
 | `securityDomain` | String | Used to detect credential reuse/blast radius |
@@ -93,6 +93,11 @@ observation/expiry timestamps, Broker-only evidence reference, and revision. Ini
 Agent proposals may create or update only desired/asserted logical edges. A signed adapter or probe
 owns observed evidence; deterministic Broker graph operations own derived edges and proof paths.
 Credential bindings are not graph nodes or Agent-visible edge properties.
+
+For resource pairs, `hosted-on`, `depends-on`, and `backed-by` are canonical in
+`Resource.relationships` and materialize as deterministic `runs-on`, `depends-on`, and `backed-by`
+desired edges. A successful bounded SSH setup or execution refreshes a single observed/verified
+`runtime.local can-reach <resource>` edge for five minutes; OpenSSH exit `255` never creates it.
 
 ## TopologyProjection
 

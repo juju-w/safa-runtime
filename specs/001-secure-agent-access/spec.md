@@ -379,6 +379,17 @@ then confirm that the user can reconstruct the sequence without finding credenti
   DNS endpoints, ports, usernames, database or bucket names, physical route coordinates, host
   identities, raw probe evidence, policy internals, credential roles, credential references, and
   secret values.
+- **FR-003ab**: Resource-to-resource `hosted-on`, `depends-on`, and `backed-by` declarations MUST
+  have one canonical encrypted source and MUST reconcile deterministically to desired/asserted graph
+  edges. Resource CRUD and matching topology link/unlink mutations MUST update the resource profile
+  and graph in one serialized Broker transaction. Successful bounded SSH setup or execution MAY
+  refresh short-lived observed/verified reachability evidence, but a transport/authentication
+  failure MUST NOT create evidence, and evidence MUST NOT authorize execution or credential use.
+- **FR-003ac**: The macOS Runtime MAY reuse a successful user-presence decision for at most five
+  minutes only within the same Broker process and operation class for resource add/edit/setup or
+  desired topology link. Such a lease MUST be memory-only, MUST clear on denial or a sensitive state
+  action, and MUST NOT cover remove, disable, enable, unlink, protected disclosure, credential use,
+  sudo, or arbitrary execution.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private

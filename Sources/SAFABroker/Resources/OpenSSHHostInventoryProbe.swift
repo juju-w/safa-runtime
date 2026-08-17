@@ -29,7 +29,7 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
         observedAt: Date
     ) async throws -> HostInventorySnapshot {
         guard let expectedPlatform = resource.resolvedHostPlatform else {
-            throw ResourceSetupError.verificationFailed
+            throw ResourceSetupError.inventoryProbeFailed
         }
         let arguments: [String]
         switch expectedPlatform {
@@ -38,34 +38,43 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
         case .macOS:
             arguments = ["/bin/sh", "-c", Self.macOSProbe]
         case .windows:
-            arguments = [
-                "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive",
-                "-EncodedCommand", Self.windowsProbe,
-            ]
+            arguments = []
         }
 
         let result: ProcessExecutionResult
         do {
-            result = try await transport.execute(
-                resource: resource,
-                command: CommandSpec.exec(
-                    arguments: arguments,
+            let workingRoot = workingDirectory.appendingPathComponent(
+                "inventory-\(UUID().uuidString)",
+                isDirectory: true
+            )
+            if expectedPlatform == .windows {
+                result = try await transport.executeWindowsPowerShell(
+                    resource: resource,
+                    encodedScript: Self.windowsProbe,
+                    credential: try locator.credentialContext(),
+                    workingRoot: workingRoot,
                     timeoutSeconds: 15,
                     outputLimitBytes: 32 * 1_024
-                ),
-                credential: try locator.credentialContext(),
-                workingRoot: workingDirectory.appendingPathComponent(
-                    "inventory-\(UUID().uuidString)",
-                    isDirectory: true
                 )
-            )
+            } else {
+                result = try await transport.execute(
+                    resource: resource,
+                    command: CommandSpec.exec(
+                        arguments: arguments,
+                        timeoutSeconds: 15,
+                        outputLimitBytes: 32 * 1_024
+                    ),
+                    credential: try locator.credentialContext(),
+                    workingRoot: workingRoot
+                )
+            }
         } catch {
-            throw ResourceSetupError.verificationFailed
+            throw ResourceSetupError.inventoryProbeFailed
         }
         guard result.termination == .exit, result.exitCode == 0,
             !result.stdoutTruncated, !result.stderrTruncated
         else {
-            throw ResourceSetupError.verificationFailed
+            throw ResourceSetupError.inventoryProbeFailed
         }
 
         let snapshot: HostInventorySnapshot
@@ -81,14 +90,14 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
         do {
             try ResourceMetadataPolicy.validateForPersistence(snapshot.metadata)
         } catch {
-            throw ResourceSetupError.verificationFailed
+            throw ResourceSetupError.inventoryProbeFailed
         }
         return snapshot
     }
 
     static func parsePOSIX(_ data: Data, observedAt: Date) throws -> HostInventorySnapshot {
         guard let text = String(data: data, encoding: .utf8), text.utf8.count <= 32 * 1_024 else {
-            throw ResourceSetupError.verificationFailed
+            throw ResourceSetupError.inventoryProbeFailed
         }
         let values = text.split(whereSeparator: \Character.isNewline).reduce(
             into: [String: String]()
@@ -101,7 +110,7 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
         switch values["platform"] {
         case "linux": platform = .linux
         case "macos": platform = .macOS
-        default: throw ResourceSetupError.verificationFailed
+        default: throw ResourceSetupError.inventoryProbeFailed
         }
         return HostInventorySnapshot(
             platform: platform,
@@ -114,7 +123,7 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
             let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             object["platform"] as? String == HostPlatform.windows.rawValue
         else {
-            throw ResourceSetupError.verificationFailed
+            throw ResourceSetupError.inventoryProbeFailed
         }
         var values: [String: String] = [:]
         for key in [
@@ -263,13 +272,16 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
     private static let windowsProbe: String = {
         let script = #"""
             $ErrorActionPreference = 'Stop'
+            $ProgressPreference = 'SilentlyContinue'
+            [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+            $OutputEncoding = [Console]::OutputEncoding
             $os = Get-CimInstance Win32_OperatingSystem
             $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
             $computer = Get-CimInstance Win32_ComputerSystem
             $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
             $docker = Get-Command docker.exe -ErrorAction SilentlyContinue
             $dockerVersion = if ($docker) { (& docker.exe --version 2>$null | Select-Object -First 1) } else { $null }
-            [ordered]@{
+            $result = [ordered]@{
               platform = 'windows'
               architecture = $env:PROCESSOR_ARCHITECTURE
               os_version = (($os.Caption + ' ' + $os.Version).Trim())
@@ -284,6 +296,7 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
               docker_available = [bool]$docker
               docker_version = [string]$dockerVersion
             } | ConvertTo-Json -Compress
+            [Console]::Out.Write($result)
             """#
         return script.data(using: .utf16LittleEndian)?.base64EncodedString() ?? ""
     }()

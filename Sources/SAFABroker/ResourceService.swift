@@ -64,4 +64,30 @@ public actor ResourceService {
         }
         return resource
     }
+
+    func writeResourceDocument(
+        _ value: VaultDocument,
+        verifiedReachabilityTo target: ResourceAlias? = nil,
+        observedAt: Date? = nil
+    ) async throws {
+        var document = value
+        var graph = try (document.topologyGraph ?? TopologyGraph()).reconciling(
+            resources: document.resources,
+            incrementRevisionWhenChanged: true
+        )
+        if let target, let observedAt {
+            graph = try graph.recordingObservation(
+                source: ResourceAlias("runtime.local"),
+                relation: .canReach,
+                target: target,
+                verification: .verified,
+                observedAt: observedAt,
+                validUntil: observedAt.addingTimeInterval(300),
+                origin: .adapter,
+                evidenceReference: UUID()
+            )
+        }
+        document.topologyGraph = graph
+        try await vault.writeDocument(document)
+    }
 }

@@ -42,7 +42,7 @@ extension ResourceService {
             updatedAt: now
         )
         document.resources.append(resource)
-        try await vault.writeDocument(document)
+        try await writeResourceDocument(document)
         return resource
     }
 
@@ -102,7 +102,7 @@ extension ResourceService {
         resource.revision += 1
         resource.updatedAt = now
         document.resources[index] = resource
-        try await vault.writeDocument(document)
+        try await writeResourceDocument(document)
         return resource
     }
 
@@ -191,7 +191,11 @@ extension ResourceService {
         resource.revision += 1
         resource.updatedAt = now
         document.resources[index] = resource
-        try await vault.writeDocument(document)
+        try await writeResourceDocument(
+            document,
+            verifiedReachabilityTo: resource.alias,
+            observedAt: now
+        )
         return resource
     }
 }

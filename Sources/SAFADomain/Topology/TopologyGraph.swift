@@ -319,23 +319,82 @@ public struct TopologyGraph: Codable, Equatable, Sendable {
         )
     }
 
-    public func reconciling(resources: [Resource]) throws -> Self {
+    public func reconciling(
+        resources: [Resource],
+        incrementRevisionWhenChanged: Bool = false
+    ) throws -> Self {
         let live = resources.filter { $0.state != .deleted }
-        let liveIDs = Set(live.map(\.id))
-        var reconciled = nodes.filter { node in
-            node.kind != .resource || node.resourceID.map(liveIDs.contains) == true
+        _ = try ResourceRegistry(resources: live)
+
+        let resourceNodes = try live.map {
+            try TopologyNode(resource: $0, visibility: .agent)
         }
-        let present = Set(reconciled.compactMap(\.resourceID))
-        for resource in live where !present.contains(resource.id) {
-            reconciled.append(try TopologyNode(resource: resource, visibility: .agent))
+        let reconciledNodes = (nodes.filter { $0.kind != .resource } + resourceNodes)
+            .sorted(by: Self.nodeLess)
+        let nodeIDs = Set(reconciledNodes.map(\.id))
+        let resourceIDs = Set(resourceNodes.map(\.id))
+
+        var desiredRelationships: [ResourceTopologyRelationshipKey: TopologyOrigin] = [:]
+        for resource in live {
+            for relationship in resource.resolvedRelationships {
+                guard let relation = relationship.kind.topologyRelation else { continue }
+                desiredRelationships[
+                    ResourceTopologyRelationshipKey(
+                        sourceID: resource.id,
+                        relation: relation,
+                        targetID: relationship.targetResourceID
+                    )
+                ] = relationship.origin
+            }
         }
-        let nodeIDs = Set(reconciled.map(\.id))
-        return try Self(
-            revision: revision,
-            nodes: reconciled,
-            edges: edges.filter {
-                nodeIDs.contains($0.fromNodeID) && nodeIDs.contains($0.toNodeID)
+
+        var reconciledEdges = edges.filter {
+            nodeIDs.contains($0.fromNodeID) && nodeIDs.contains($0.toNodeID)
+        }.filter { edge in
+            guard edge.layer == .desired,
+                edge.relation.resourceRelationshipKind != nil,
+                resourceIDs.contains(edge.fromNodeID),
+                resourceIDs.contains(edge.toNodeID)
+            else { return true }
+            let key = ResourceTopologyRelationshipKey(
+                sourceID: edge.fromNodeID,
+                relation: edge.relation,
+                targetID: edge.toNodeID
+            )
+            // Preserve only pre-bridge random-ID relationships for compatibility. New
+            // resource-owned relationships always use the deterministic identity below.
+            return desiredRelationships[key] == nil && edge.id != key.stableEdgeID
+        }
+        reconciledEdges.append(
+            contentsOf: desiredRelationships.map { key, origin in
+                TopologyEdge(
+                    id: key.stableEdgeID,
+                    fromNodeID: key.sourceID,
+                    relation: key.relation,
+                    toNodeID: key.targetID,
+                    layer: .desired,
+                    verification: .asserted,
+                    origin: origin,
+                    visibility: .agent
+                )
             }
         )
+        reconciledEdges.sort(by: Self.edgeLess)
+
+        let changed = reconciledNodes != nodes || reconciledEdges != edges
+        return try Self(
+            revision: changed && incrementRevisionWhenChanged ? revision + 1 : revision,
+            nodes: reconciledNodes,
+            edges: reconciledEdges
+        )
+    }
+
+    private static func nodeLess(_ lhs: TopologyNode, _ rhs: TopologyNode) -> Bool {
+        if lhs.alias != rhs.alias { return lhs.alias.rawValue < rhs.alias.rawValue }
+        return lhs.id.uuidString.lowercased() < rhs.id.uuidString.lowercased()
+    }
+
+    private static func edgeLess(_ lhs: TopologyEdge, _ rhs: TopologyEdge) -> Bool {
+        lhs.id.uuidString.lowercased() < rhs.id.uuidString.lowercased()
     }
 }

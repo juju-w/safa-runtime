@@ -195,6 +195,35 @@ struct TopologyGraphTests {
         }
     }
 
+    @Test("resource relationships reconcile into one stable desired topology edge")
+    func resourceRelationshipsReconcileIntoTopology() throws {
+        let host = try resource(
+            id: "10000000-0000-4000-8000-000000000001",
+            alias: "host.compute"
+        )
+        let service = try resource(
+            id: "10000000-0000-4000-8000-000000000002",
+            alias: "service.api",
+            relationships: [
+                ResourceRelationship(kind: .hostedOn, targetResourceID: host.id)
+            ]
+        )
+
+        let reconciled = try TopologyGraph().reconciling(resources: [service, host])
+        let edge = try #require(reconciled.edges.first)
+
+        #expect(
+            reconciled.nodes.map(\.alias).sorted { $0.rawValue < $1.rawValue }
+                == [host.alias, service.alias])
+        #expect(reconciled.edges.count == 1)
+        #expect(edge.fromNodeID == service.id)
+        #expect(edge.relation == .runsOn)
+        #expect(edge.toNodeID == host.id)
+        #expect(edge.layer == .desired)
+        #expect(edge.verification == .asserted)
+        #expect(try reconciled.reconciling(resources: [host, service]) == reconciled)
+    }
+
     private func node(
         _ alias: String,
         kind: TopologyNodeKind,
@@ -227,6 +256,25 @@ struct TopologyGraphTests {
             validUntil: now.addingTimeInterval(300),
             visibility: .agent,
             evidenceReference: UUID()
+        )
+    }
+
+    private func resource(
+        id: String,
+        alias: String,
+        relationships: [ResourceRelationship] = []
+    ) throws -> Resource {
+        Resource(
+            id: UUID(uuidString: id)!,
+            alias: try ResourceAlias(alias),
+            resourceType: .hostLinux,
+            relationships: relationships,
+            endpoint: ResourceEndpoint(host: "host.invalid", port: 22),
+            username: "operator",
+            securityDomain: "synthetic",
+            state: .active,
+            createdAt: now,
+            updatedAt: now
         )
     }
 

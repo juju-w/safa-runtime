@@ -181,6 +181,11 @@ never silently rewrites another resource's topology.
 Relationships participate in the typed topology graph defined by
 [`topology-projection-v1.md`](topology-projection-v1.md). Agent proposals are desired/asserted
 claims; only the Broker may attach verification evidence or derive a verified path.
+For resource-to-resource `hosted-on`, `depends-on`, and `backed-by` relations, the encrypted
+resource profile is the canonical declaration. Each relationship persists its origin; legacy
+records without an origin decode as `import`. Reconciliation emits one stable desired/asserted graph
+edge, while `topology link`/`unlink` changes the profile and graph atomically. Resource CRUD removes
+or refreshes its materialized nodes and edges in the same encrypted transaction.
 
 ## Query and mutation contracts
 
@@ -201,6 +206,11 @@ The Agent XPC surface uses separate explicit DTOs instead of the legacy dynamic 
   be silently retargeted. `edit --state disabled|active` changes access state.
 - `remove`: requires device-owner authentication and a revisioned broker transaction; removal
   refuses to break a live relationship.
+
+The macOS Runtime may reuse one successful add/edit/setup authorization for the same operation
+class for at most five minutes. This is an in-memory Broker lease, not a stored password or Agent
+token. It does not cover remove, disable, enable, protected inspection, credential use, sudo, or
+arbitrary execution; a denial, sensitive state action, or Broker restart clears it.
 
 Setup, verification, activation, disabling, and enabling remain internal lifecycle stages rather
 than public resource commands. `ProxyJump` and `ProxyCommand` routes fail closed pending reviewed

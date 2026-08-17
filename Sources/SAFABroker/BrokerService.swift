@@ -635,11 +635,18 @@ public enum BrokerRuntime {
             executableURL: Bundle.main.executableURL
         )
         let resourceStore = ResourceService(vault: vault, passwordStore: keychain)
+        let topology = TopologyGraphService(
+            vault: vault,
+            userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer(),
+            authorizationReuseInterval: 300,
+            mutationGate: resourceStore.mutationGate
+        )
         let handler = MVPBrokerHandler(
             vault: vault,
             passwordStore: keychain,
             bindingStore: bindingStore,
             resourceService: resourceStore,
+            topologyReachabilityRecorder: topology,
             askPassExecutable: askPassExecutable,
             workingDirectory: applicationSupport.appendingPathComponent(
                 "runtime", isDirectory: true)
@@ -662,13 +669,9 @@ public enum BrokerRuntime {
                         )
                     )
                 ),
-                userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer()
+                userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer(),
+                authorizationReuseInterval: 300
             )
-        )
-        let topology = TopologyGraphService(
-            vault: vault,
-            userPresenceAuthorizer: LocalAuthenticationUserPresenceAuthorizer(),
-            mutationGate: resourceStore.mutationGate
         )
         let dispatcher = BrokerRequestDispatcher(
             agentHandler: handler,

@@ -24,6 +24,17 @@ Agent proposals create only desired/asserted claims. Only a trusted adapter or B
 may create verified observed/derived edges. A verified path is evidence, not approval or credential
 authority.
 
+`hosted-on`, `depends-on`, and `backed-by` resource relationships are materialized respectively as
+stable `runs-on`, `depends-on`, and `backed-by` desired edges. Their canonical declaration remains
+in the encrypted resource profile, and link/unlink keeps profile and graph consistent in one Broker
+transaction.
+
+After bounded SSH setup or execution actually reaches a resource, the trusted Runtime records or
+refreshes one observed/verified `runtime.local can-reach <resource>` edge with a five-minute
+validity window. OpenSSH connection/authentication failure exit `255` records no evidence. The edge
+is explanatory freshness evidence only: it never grants execution, chooses a route, or binds a
+credential.
+
 ## Projection
 
 The Agent receives a bounded `dev.safa.topology/v1` JSON projection containing:
@@ -72,3 +83,5 @@ macOS user presence and can change desired/asserted edges only. Dense comparison
 remain internal Broker capabilities so simpler Agents do not need to choose graph algorithms.
 `link` may create a missing context node only from a constrained one-segment `site.*`, `domain.*`,
 `network.*`, `runtime.*`, or `route.*` semantic alias; IP/CIDR/DNS-shaped context is rejected.
+Successive desired `link` operations may reuse one scoped in-memory user-presence approval for no
+more than five minutes. `unlink` always requires fresh authorization and clears the link lease.

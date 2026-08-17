@@ -279,6 +279,11 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
    `resource remove` deletes the resource. Both require macOS user presence. All resource writes pass
    through one serialized broker transaction gate. Removal preserves relationship integrity and
    deletes an unshared credential reference through the same transaction.
+7. Production add/edit/setup and desired topology link operations may reuse a scoped, in-memory
+   approval for at most five minutes within their own Broker service. The lease is capped at 300
+   seconds, is lost on Broker restart, cannot cross from resource setup to topology, and is cleared
+   by a denial or sensitive state change. Remove, disable, enable, unlink, credential use, protected
+   inspection, sudo, and arbitrary execution never consume this convenience lease.
 
 ### Resource directory extension model
 
@@ -293,8 +298,11 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 - Metadata is an ordered set of typed key/value entries (`text`, `integer`, `boolean`, `byte_count`,
   or `text_list`). Passwords, API tokens, private keys, access keys, and Keychain locators are never
   metadata.
-- Resource relationships such as `hosted-on`, `depends-on`, and `backed-by` form the later service
-  topology without copying endpoints into dependent records.
+- Resource-to-resource relationships `hosted-on`, `depends-on`, and `backed-by` are canonical in
+  the encrypted resource profile. Reconciliation materializes them as stable desired/asserted graph
+  edges without copying endpoints into dependent records. `topology link`/`unlink` updates both
+  representations through the same broker transaction gate; resource CRUD reconciles the graph in
+  that same encrypted write.
 - Credential kinds and roles are also extensible identifiers, while secret material stays in
   Keychain/Secure Enclave and the encrypted directory keeps only opaque references.
 - Built-in templates currently cover SSH (including Windows OpenSSH), MySQL, PostgreSQL,
@@ -334,6 +342,12 @@ link mutations may create one constrained semantic context alias under `site.*`,
 `network.*`, `runtime.*`, or `route.*`; they cannot encode IP, CIDR, or DNS coordinates. Dense
 comparison and cycle detection stay inside the Broker rather than becoming more Agent commands.
 
+Successful bounded SSH setup and execution refresh a five-minute observed/verified
+`runtime.local can-reach <resource>` edge. The evidence is written only by the Broker/adapter after
+the connection succeeds; OpenSSH's transport/authentication failure exit `255` is never promoted.
+This evidence explains current reachability but does not select a credential, change a desired
+route, or authorize execution. Expiry turns it stale until another real operation refreshes it.
+
 Abstract aliases and reviewed logical edges may be Agent-visible. IPs, CIDRs, ports, usernames,
 physical route coordinates, evidence records, security policy, and credential bindings remain
 protected. Human diagrams and optional multimodal views are derived from the same projection and
@@ -353,6 +367,12 @@ The normative schema and initial host keys are defined in
 3. Setup references only existing readable identity-file paths or an existing SSH-agent socket. The
    path/socket locator remains encrypted in the broker vault and is never returned by list, default
    show, or protected details. Private-key bytes do not enter SAFA storage.
+4. Each execution uses a private temporary config and `known_hosts`. Paths are OpenSSH-quoted, and
+   the random host-key alias is normalized as `[alias]:port` for non-default ports before hashing,
+   so Core Tunnel listeners retain strict host-key verification without exposing endpoints in argv.
+5. Windows inventory emits UTF-8 JSON and uses one trusted, bounded encoded-PowerShell layer. The
+   generic Agent command wrapper remains separate, preventing nested base64 from exceeding the
+   Windows OpenSSH command-line limit.
 4. The broker constructs an isolated, pinned OpenSSH configuration, verifies the expected account,
    and runs one fixed read-only platform probe. Linux/macOS report architecture, OS/kernel, CPU,
    memory, root-filesystem capacity, hardware model, and Docker availability; Windows reports the

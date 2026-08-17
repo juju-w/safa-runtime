@@ -11,7 +11,11 @@ enum ResourceSetupError: Error, Equatable, Sendable {
     case unsupportedRoute
     case hostIdentityUnavailable
     case authenticationUnavailable
-    case verificationFailed
+    case accountVerificationFailed
+    case authenticationRejected
+    case hostIdentityRejected
+    case routeUnavailable
+    case inventoryProbeFailed
     case platformMismatch
     case invalidCredentialLocator
 }
@@ -301,7 +305,7 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
             ]
         } else {
             checks = [
-                (["hostname"], { !$0.isEmpty }),
+                (["uname", "-n"], { !$0.isEmpty }),
                 (["id", "-un"], { $0 == resource.username }),
             ]
         }
@@ -322,14 +326,17 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
                     )
                 )
             } catch {
-                throw ResourceSetupError.verificationFailed
+                throw ResourceSetupError.accountVerificationFailed
             }
             let output = String(decoding: result.stdout, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.termination == .exit, result.exitCode == 255 {
+                throw Self.classifySSHFailure(result.stderr)
+            }
             guard result.termination == .exit, result.exitCode == 0,
                 !result.stdoutTruncated, accepts(output)
             else {
-                throw ResourceSetupError.verificationFailed
+                throw ResourceSetupError.accountVerificationFailed
             }
         }
         return try await inventoryProbe.probe(
@@ -337,6 +344,32 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
             locator: locator,
             observedAt: observedAt
         )
+    }
+
+    private static func classifySSHFailure(_ stderr: Data) -> ResourceSetupError {
+        let message = String(decoding: stderr.prefix(16 * 1_024), as: UTF8.self).lowercased()
+        if message.contains("host key verification failed")
+            || message.contains("remote host identification has changed")
+        {
+            return .hostIdentityRejected
+        }
+        if message.contains("permission denied")
+            || message.contains("no mutual signature")
+            || message.contains("not accessible: no such file")
+        {
+            return .authenticationRejected
+        }
+        if message.contains("connection refused")
+            || message.contains("operation timed out")
+            || message.contains("connection timed out")
+            || message.contains("no route to host")
+            || message.contains("connection reset")
+            || message.contains("connection closed")
+            || message.contains("could not resolve hostname")
+        {
+            return .routeUnavailable
+        }
+        return .accountVerificationFailed
     }
 
     private static func windowsAccount(_ output: String, matches expected: String?) -> Bool {

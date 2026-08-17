@@ -115,11 +115,35 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 code: "resource_state_invalid",
                 message: "Only a needs_setup draft can complete initial setup."
             )
-        } catch ResourceSetupError.verificationFailed {
+        } catch ResourceSetupError.accountVerificationFailed {
             return failure(
                 request,
-                code: "transport_failure",
-                message: "OpenSSH verification did not complete successfully."
+                code: "ssh_account_verification_failed",
+                message: "The configured OpenSSH account could not be verified."
+            )
+        } catch ResourceSetupError.authenticationRejected {
+            return failure(
+                request,
+                code: "ssh_authentication_rejected",
+                message: "The host rejected the configured OpenSSH identity."
+            )
+        } catch ResourceSetupError.hostIdentityRejected {
+            return failure(
+                request,
+                code: "ssh_host_identity_rejected",
+                message: "The live SSH host key did not match the trusted imported identity."
+            )
+        } catch ResourceSetupError.routeUnavailable {
+            return failure(
+                request,
+                code: "ssh_route_unavailable",
+                message: "The configured SSH route was unavailable during verification."
+            )
+        } catch ResourceSetupError.inventoryProbeFailed {
+            return failure(
+                request,
+                code: "ssh_inventory_probe_failed",
+                message: "OpenSSH connected, but the bounded host inventory probe failed."
             )
         } catch ResourceSetupError.platformMismatch {
             return failure(

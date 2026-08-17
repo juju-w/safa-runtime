@@ -830,6 +830,12 @@ struct ResourceOnboardingTests {
         let document = await vault.readDocument()
         #expect(document.resources.allSatisfy { $0.state == .active })
         #expect(try ResourceRegistry(resources: document.resources).list().count == 2)
+        let relationshipEdge = try #require(
+            document.topologyGraph?.edges.first(where: {
+                $0.fromNodeID != host.id && $0.relation == .runsOn && $0.toNodeID == host.id
+            }))
+        #expect(relationshipEdge.layer == .desired)
+        #expect(relationshipEdge.verification == .asserted)
     }
 }
 

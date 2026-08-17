@@ -113,6 +113,7 @@ public struct ResourceRegistry: Sendable {
                     "\(relationship.kind.rawValue):\(relationship.targetResourceID.uuidString)"
                 guard relationship.targetResourceID != resource.id,
                     resourcesByID[relationship.targetResourceID] != nil,
+                    [.user, .agent, .import].contains(relationship.origin),
                     relationships.insert(relationshipKey).inserted
                 else {
                     throw ResourceRegistryError.invalidRelationship(

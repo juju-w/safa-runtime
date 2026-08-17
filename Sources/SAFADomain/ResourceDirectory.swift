@@ -197,15 +197,36 @@ public struct ResourceRelationshipKind: RawRepresentable, Codable, Hashable, Sen
 public struct ResourceRelationship: Codable, Equatable, Sendable {
     public let kind: ResourceRelationshipKind
     public let targetResourceID: UUID
+    public let origin: TopologyOrigin
 
-    public init(kind: ResourceRelationshipKind, targetResourceID: UUID) {
+    public init(
+        kind: ResourceRelationshipKind,
+        targetResourceID: UUID,
+        origin: TopologyOrigin = .import
+    ) {
         self.kind = kind
         self.targetResourceID = targetResourceID
+        self.origin = origin
     }
 
     private enum CodingKeys: String, CodingKey {
         case kind
         case targetResourceID = "target_resource_id"
+        case origin
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(ResourceRelationshipKind.self, forKey: .kind)
+        targetResourceID = try container.decode(UUID.self, forKey: .targetResourceID)
+        origin = try container.decodeIfPresent(TopologyOrigin.self, forKey: .origin) ?? .import
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(targetResourceID, forKey: .targetResourceID)
+        try container.encode(origin, forKey: .origin)
     }
 }
 

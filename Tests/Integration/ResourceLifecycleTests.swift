@@ -11,6 +11,63 @@ import Testing
 
 @Suite("CLI resource lifecycle")
 struct ResourceLifecycleTests {
+    @Test("similar resource setup reuses a short approval but destructive state changes do not")
+    func resourceSetupAuthorizationLease() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let config = ResolvedSSHConfig(
+            endpoint: ResourceEndpoint(host: "synthetic.internal", port: 22),
+            username: "operator"
+        )
+        let lifecycle = ResourceLifecycleService(
+            resources: ResourceService(
+                vault: vault,
+                passwordStore: InMemoryPasswordSecretStore()
+            ),
+            sshConfigResolver: StaticSSHConfigResolver(value: config),
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0,
+            authorizationReuseInterval: 300
+        )
+        let mutation = ResourceMutationV1(
+            sourceSSHConfigAlias: try ResourceAlias("synthetic-host"),
+            resourceType: .hostLinux
+        )
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+        _ = try await lifecycle.mutate(
+            action: .add,
+            alias: ResourceAlias("host.one"),
+            mutation: mutation,
+            now: start
+        )
+        _ = try await lifecycle.mutate(
+            action: .add,
+            alias: ResourceAlias("host.two"),
+            mutation: mutation,
+            now: start.addingTimeInterval(299)
+        )
+        _ = try await lifecycle.mutate(
+            action: .remove,
+            alias: ResourceAlias("host.one"),
+            mutation: nil,
+            now: start.addingTimeInterval(300)
+        )
+        _ = try await lifecycle.mutate(
+            action: .add,
+            alias: ResourceAlias("host.three"),
+            mutation: mutation,
+            now: start.addingTimeInterval(301)
+        )
+
+        #expect(
+            await authorizer.reasons == [
+                "Add SAFA resource host.one",
+                "Remove SAFA resource host.one",
+                "Add SAFA resource host.three",
+            ])
+    }
+
     @Test("denied user presence leaves the vault unchanged")
     func deniedMutationFailsClosed() async throws {
         let vault = InMemoryVaultDocumentStore()
@@ -617,7 +674,7 @@ struct ResourceLifecycleTests {
             workingDirectory: FileManager.default.temporaryDirectory
         )
 
-        await #expect(throws: ResourceSetupError.verificationFailed) {
+        await #expect(throws: ResourceSetupError.accountVerificationFailed) {
             try await verifier.verify(
                 resource: resource,
                 locator: OpenSSHCredentialLocatorV1(
@@ -813,6 +870,18 @@ struct ResourceLifecycleTests {
         #expect(reference.kind == .sshOpenSSH)
         #expect(reference.storageLocator != Data("/synthetic/id_ed25519".utf8))
         #expect(await authorizer.reasons == ["Set up SAFA resource nas.home"])
+        let graph = try #require(document.topologyGraph)
+        let runtime = try ResourceAlias("runtime.local")
+        let observation = try #require(
+            graph.edges.first(where: {
+                $0.fromNodeID == graph.nodes.first(where: { $0.alias == runtime })?.id
+                    && $0.relation == .canReach
+                    && $0.toNodeID == active.id
+            })
+        )
+        #expect(observation.layer == .observed)
+        #expect(observation.verification == .verified)
+        #expect(observation.observedAt == now)
     }
 
     @Test("resolver rejects an alias absent from explicit SSH Host declarations")

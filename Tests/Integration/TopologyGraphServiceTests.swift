@@ -12,6 +12,61 @@ import Testing
 struct TopologyGraphServiceTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
+    @Test("similar topology links reuse a short approval but unlink does not")
+    func topologyLinkAuthorizationLease() async throws {
+        let source = try resource(id: "10000000-0000-4000-8000-000000000001", alias: "host.one")
+        let vault = InMemoryVaultDocumentStore(
+            document: VaultDocument(schemaVersion: 1, resources: [source])
+        )
+        let authorizer = TopologyPresenceAuthorizer(result: true)
+        let service = TopologyGraphService(
+            vault: vault,
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0,
+            authorizationReuseInterval: 300
+        )
+        let first = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: .link,
+            source: source.alias,
+            relation: .locatedIn,
+            target: try ResourceAlias("site.primary")
+        )
+        let second = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: .link,
+            source: source.alias,
+            relation: .memberOf,
+            target: try ResourceAlias("domain.production")
+        )
+        let unlink = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: .unlink,
+            source: source.alias,
+            relation: .memberOf,
+            target: try ResourceAlias("domain.production")
+        )
+
+        #expect(await service.mutate(first, caller: caller, now: now).status == .completed)
+        #expect(
+            await service.mutate(
+                second,
+                caller: caller,
+                now: now.addingTimeInterval(60)
+            ).status == .completed)
+        #expect(
+            await service.mutate(
+                unlink,
+                caller: caller,
+                now: now.addingTimeInterval(61)
+            ).status == .completed)
+        #expect(
+            await authorizer.reasons == [
+                "Link host.one located-in site.primary in SAFA topology",
+                "Unlink host.one member-of domain.production in SAFA topology",
+            ])
+    }
+
     @Test("approved Agent link becomes only a desired asserted edge")
     func proposalCannotCreateTrust() async throws {
         let source = try resource(id: "10000000-0000-4000-8000-000000000001", alias: "service.a")
@@ -224,6 +279,103 @@ struct TopologyGraphServiceTests {
         #expect(reply.error?.code == "topology_alias_not_found")
         #expect(await authorizer.reasons.isEmpty)
         #expect(await vault.readDocument().topologyGraph == nil)
+    }
+
+    @Test("resource links update the encrypted directory and topology together")
+    func resourceLinkSynchronizesDirectory() async throws {
+        let source = try resource(id: "10000000-0000-4000-8000-000000000001", alias: "service.api")
+        let target = try resource(
+            id: "10000000-0000-4000-8000-000000000002", alias: "database.main")
+        let vault = InMemoryVaultDocumentStore(
+            document: VaultDocument(schemaVersion: 1, resources: [source, target])
+        )
+        let service = TopologyGraphService(
+            vault: vault,
+            userPresenceAuthorizer: TopologyPresenceAuthorizer(result: true),
+            cooldown: 0
+        )
+        let link = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: .link,
+            source: source.alias,
+            relation: .dependsOn,
+            target: target.alias
+        )
+
+        let linked = await service.mutate(link, caller: caller, now: now)
+        let linkedDocument = await vault.readDocument()
+        let storedSource = try #require(
+            linkedDocument.resources.first(where: { $0.id == source.id })
+        )
+
+        #expect(linked.status == .completed)
+        #expect(
+            storedSource.resolvedRelationships == [
+                ResourceRelationship(
+                    kind: .dependsOn,
+                    targetResourceID: target.id,
+                    origin: .agent
+                )
+            ])
+        #expect(linkedDocument.topologyGraph?.edges.count == 1)
+
+        let unlink = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: .unlink,
+            source: source.alias,
+            relation: .dependsOn,
+            target: target.alias
+        )
+        let unlinked = await service.mutate(unlink, caller: caller, now: now)
+        let unlinkedDocument = await vault.readDocument()
+        let updatedSource = try #require(
+            unlinkedDocument.resources.first(where: { $0.id == source.id })
+        )
+
+        #expect(unlinked.status == .completed)
+        #expect(updatedSource.resolvedRelationships.isEmpty)
+        #expect(unlinkedDocument.topologyGraph?.edges.isEmpty == true)
+    }
+
+    @Test("trusted observations create a context source and refresh one semantic edge")
+    func observationRefreshesOneEdge() async throws {
+        let target = try resource(id: "10000000-0000-4000-8000-000000000001", alias: "host.target")
+        let vault = InMemoryVaultDocumentStore(
+            document: VaultDocument(schemaVersion: 1, resources: [target])
+        )
+        let service = TopologyGraphService(
+            vault: vault,
+            userPresenceAuthorizer: TopologyPresenceAuthorizer(result: false),
+            cooldown: 0
+        )
+        let runtime = try ResourceAlias("runtime.local")
+
+        try await service.recordObservation(
+            source: runtime,
+            relation: .canReach,
+            target: target.alias,
+            verification: .verified,
+            observedAt: now,
+            validUntil: now.addingTimeInterval(300),
+            evidenceReference: UUID()
+        )
+        try await service.recordObservation(
+            source: runtime,
+            relation: .canReach,
+            target: target.alias,
+            verification: .verified,
+            observedAt: now.addingTimeInterval(60),
+            validUntil: now.addingTimeInterval(360),
+            evidenceReference: UUID()
+        )
+        let graph = try #require(await vault.readDocument().topologyGraph)
+        let observations = graph.edges.filter {
+            $0.relation == .canReach && $0.layer == .observed
+        }
+
+        #expect(graph.nodes.contains { $0.alias == runtime && $0.kind == .runtime })
+        #expect(observations.count == 1)
+        #expect(observations[0].observedAt == now.addingTimeInterval(60))
     }
 
     private var caller: CallerIdentity {

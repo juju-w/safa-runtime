@@ -29,19 +29,23 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
     private let setup: (any ResourceSetupHandling)?
     private let userPresenceAuthorizer: any UserPresenceAuthorizing
     private let cooldown: TimeInterval
+    private let authorizationReuseInterval: TimeInterval
     private var lastDeniedAt: Date?
+    private var lastReusableApprovalAt: Date?
 
     public init(
         resources: ResourceService,
         sshConfigResolver: any SSHConfigResolving = OpenSSHConfigResolver(),
         userPresenceAuthorizer: any UserPresenceAuthorizing,
-        cooldown: TimeInterval = 10
+        cooldown: TimeInterval = 10,
+        authorizationReuseInterval: TimeInterval = 0
     ) {
         self.resources = resources
         self.sshConfigResolver = sshConfigResolver
         setup = nil
         self.userPresenceAuthorizer = userPresenceAuthorizer
         self.cooldown = max(0, cooldown)
+        self.authorizationReuseInterval = min(max(0, authorizationReuseInterval), 300)
     }
 
     init(
@@ -49,13 +53,15 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
         sshConfigResolver: any SSHConfigResolving = OpenSSHConfigResolver(),
         setup: any ResourceSetupHandling,
         userPresenceAuthorizer: any UserPresenceAuthorizing,
-        cooldown: TimeInterval = 10
+        cooldown: TimeInterval = 10,
+        authorizationReuseInterval: TimeInterval = 0
     ) {
         self.resources = resources
         self.sshConfigResolver = sshConfigResolver
         self.setup = setup
         self.userPresenceAuthorizer = userPresenceAuthorizer
         self.cooldown = max(0, cooldown)
+        self.authorizationReuseInterval = min(max(0, authorizationReuseInterval), 300)
     }
 
     public func mutate(
@@ -110,12 +116,23 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
         if let lastDeniedAt, now.timeIntervalSince(lastDeniedAt) < cooldown {
             throw ResourceLifecycleError.rateLimited
         }
-        let approved = await userPresenceAuthorizer.authorize(
-            reason: Self.authorizationReason(action: action, alias: alias)
-        )
-        guard approved else {
-            lastDeniedAt = now
-            throw ResourceLifecycleError.denied
+        let reusable = Self.allowsReusableAuthorization(action: action, mutation: mutation)
+        let elapsed = lastReusableApprovalAt.map { now.timeIntervalSince($0) }
+        let hasReusableApproval =
+            reusable
+            && authorizationReuseInterval > 0
+            && elapsed.map { $0 >= 0 && $0 <= authorizationReuseInterval } == true
+        if !hasReusableApproval {
+            if !reusable { lastReusableApprovalAt = nil }
+            let approved = await userPresenceAuthorizer.authorize(
+                reason: Self.authorizationReason(action: action, alias: alias)
+            )
+            guard approved else {
+                lastReusableApprovalAt = nil
+                lastDeniedAt = now
+                throw ResourceLifecycleError.denied
+            }
+            if reusable { lastReusableApprovalAt = now }
         }
 
         switch action {
@@ -175,6 +192,20 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
             return try await resources.enable(alias: alias, now: now)
         case .remove:
             return try await resources.remove(alias: alias, now: now)
+        }
+    }
+
+    private static func allowsReusableAuthorization(
+        action: ResourceMutationActionV1,
+        mutation: ResourceMutationV1?
+    ) -> Bool {
+        switch action {
+        case .add, .setup:
+            return true
+        case .edit:
+            return mutation?.desiredState == nil
+        case .disable, .enable, .remove:
+            return false
         }
     }
 
