@@ -195,7 +195,7 @@ private enum BuiltInResourceTemplates {
                 ],
             credentialKinds: [.databasePassword],
             credentialRequired: false,
-            capabilities: ["cache", "health"]
+            capabilities: []
         ),
         ResourceTemplateDefinition(
             id: .elasticsearch,
@@ -209,7 +209,7 @@ private enum BuiltInResourceTemplates {
                 ],
             credentialKinds: [.apiToken, .databasePassword],
             credentialRequired: false,
-            capabilities: ["query", "health"]
+            capabilities: []
         ),
         ResourceTemplateDefinition(
             id: .neo4j,
@@ -224,7 +224,7 @@ private enum BuiltInResourceTemplates {
                 ],
             credentialKinds: [.databasePassword],
             credentialRequired: true,
-            capabilities: ["query", "health"]
+            capabilities: []
         ),
         ResourceTemplateDefinition(
             id: .http,
@@ -239,7 +239,7 @@ private enum BuiltInResourceTemplates {
                 ],
             credentialKinds: [.apiToken],
             credentialRequired: false,
-            capabilities: ["request", "health"]
+            capabilities: []
         ),
     ]
 
@@ -265,7 +265,7 @@ private enum BuiltInResourceTemplates {
                 ],
             credentialKinds: [.databasePassword],
             credentialRequired: true,
-            capabilities: ["query", "health"]
+            capabilities: []
         )
     }
 
@@ -288,7 +288,7 @@ private enum BuiltInResourceTemplates {
                 ],
             credentialKinds: [.objectStorageAccessKey],
             credentialRequired: true,
-            capabilities: ["objects", "health"]
+            capabilities: []
         )
     }
 

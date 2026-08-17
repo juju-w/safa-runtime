@@ -26,9 +26,9 @@ safa resource list|ls --json [--state active]
 safa resource show ALIAS --json
 safa resource inspect ALIAS --json
 safa resource add ALIAS --json [--from-ssh-config SSH_ALIAS]
-  [--type RESOURCE_TYPE]
+  [--template TEMPLATE] [--type RESOURCE_TYPE]
 safa resource edit ALIAS --json [--from-ssh-config SSH_ALIAS]
-  [--type RESOURCE_TYPE]
+  [--template TEMPLATE] [--type RESOURCE_TYPE]
 safa resource setup ALIAS --json [--from-ssh-config SSH_ALIAS]
 safa resource disable ALIAS --json
 safa resource enable ALIAS --json
@@ -153,8 +153,16 @@ and commits `active` only if the draft revision is unchanged. `ProxyJump` and `P
 their route can be reviewed and snapshotted. Disable/enable/remove use the same serialized revisioned
 resource transaction. Enable accepts only a disabled resource; removal is rejected while another
 live resource references the target.
-The SSH config adapter accepts only `host.linux`, `host.macos`, and `host.nas`; other resource
-profiles wait for their own typed adapter.
+The SSH config adapter accepts `host.linux`, `host.macos`, `host.nas`, and `host.windows` when the
+target exposes OpenSSH. Built-in template identifiers are `ssh`, `mysql`, `postgresql`, `sqlserver`,
+`s3`, `minio`, `oss`, `redis`, `elasticsearch`, `neo4j`, and `http`. Selecting a non-SSH template
+routes protected fields to the separately signed trusted-local interface; until the local
+configuration client is installed, the Agent-facing command returns `user_action_required` and
+never accepts those fields as flags or stdin.
+
+Saving a service endpoint and credential is not proof that it works. A service remains
+`needs_verification` until its signed protocol adapter records a successful revision-bound check;
+changing its endpoint, username, access method, or credential clears that proof.
 
 ## Reserved approval-required response
 

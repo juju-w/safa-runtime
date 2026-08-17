@@ -1,4 +1,5 @@
 import Testing
+
 @testable import SAFABroker
 
 @Suite("Broker process environment")

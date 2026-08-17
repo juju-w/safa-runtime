@@ -16,6 +16,23 @@ struct ResourceCLIContractTests {
                 "resource", "add", "nas.home", "--from-ssh-config", "home-nas",
             ]) is ResourceAddCommand
         )
+        let serviceAdd = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "add", "mysql.test", "--template", "mysql",
+            ]) as? ResourceAddCommand
+        )
+        let (_, serviceMutation) = try serviceAdd.mutationInput()
+        #expect(serviceMutation.templateID == .mysql)
+        #expect(serviceMutation.resourceType == .databaseMySQL)
+        let mismatchedTemplate = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "add", "mysql.test", "--template", "mysql", "--type",
+                "host.windows",
+            ]) as? ResourceAddCommand
+        )
+        #expect(throws: ResourceMutationInputError.typeDoesNotMatchTemplate) {
+            try mismatchedTemplate.mutationInput()
+        }
         #expect(
             try SAFACommand.parseAsRoot([
                 "resource", "edit", "nas.home", "--from-ssh-config", "home-nas",

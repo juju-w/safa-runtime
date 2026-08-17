@@ -98,7 +98,11 @@ The broker resolves endpoint and username locally through `ssh -G`. Add returns
 `draft/needs_setup` and imports no password, private-key bytes, or host identity. Setup separately
 requires an existing `known_hosts` entry and available OpenSSH identity-file/agent route, verifies
 the direct route, and atomically returns `active`. `ProxyJump` and `ProxyCommand` remain unsupported.
-The adapter accepts only `host.linux`, `host.macos`, and `host.nas`.
+The adapter accepts `host.linux`, `host.macos`, `host.nas`, and `host.windows`; a Windows target must
+already expose OpenSSH and follows the same pinned-host verification path. Service templates can be
+selected with `--template` from the built-in registry. Their protected local configuration client
+is still required, so the Agent-facing CLI fails closed with `user_action_required` rather than
+accepting an endpoint or credential.
 `ResourceLifecycleTests`, `ReadOnlySSHJourneyTests`, and `ResourceOnboardingTests` validate this
 boundary using synthetic fixtures and contact no real host.
 

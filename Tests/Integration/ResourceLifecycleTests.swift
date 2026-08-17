@@ -71,6 +71,38 @@ struct ResourceLifecycleTests {
         #expect(await vault.readDocument().resources.isEmpty)
     }
 
+    @Test("service templates select the protected local setup route before prompting")
+    func serviceTemplateUsesTrustedSetup() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let lifecycle = ResourceLifecycleService(
+            resources: ResourceService(
+                vault: vault,
+                passwordStore: InMemoryPasswordSecretStore()
+            ),
+            sshConfigResolver: FailingSSHConfigResolver(),
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0
+        )
+
+        await #expect(
+            throws: ResourceLifecycleError.trustedServiceSetupRequired("mysql")
+        ) {
+            try await lifecycle.mutate(
+                action: .add,
+                alias: ResourceAlias("mysql.test"),
+                mutation: ResourceMutationV1(
+                    sourceSSHConfigAlias: ResourceAlias("mysql.test"),
+                    resourceType: .databaseMySQL,
+                    templateID: .mysql
+                ),
+                now: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        }
+        #expect(await authorizer.reasons.isEmpty)
+        #expect(await vault.readDocument().resources.isEmpty)
+    }
+
     @Test("mutation actions reject fields owned by a different mutation shape")
     func invalidMutationShapeFailsBeforePrompt() async throws {
         let vault = InMemoryVaultDocumentStore()

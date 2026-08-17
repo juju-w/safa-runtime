@@ -286,6 +286,13 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
   topology without copying endpoints into dependent records.
 - Credential kinds and roles are also extensible identifiers, while secret material stays in
   Keychain/Secure Enclave and the encrypted directory keeps only opaque references.
+- Built-in templates currently cover SSH (including Windows OpenSSH), MySQL, PostgreSQL,
+  SQL Server, S3, MinIO, OSS, Redis, Elasticsearch, Neo4j, and HTTP. Their protected setup payload
+  enters only through the separately signed trusted-local XPC role. Shipping that role's local
+  no-GUI client remains a separate delivery gate; the Agent-facing CLI cannot substitute for it.
+- A stored service connection is `needs_verification`, not `ready`. Only its typed broker adapter
+  may record revision-bound verification evidence. Changing endpoint, username, access method, or
+  credential clears the evidence before the edited revision is returned.
 
 The normative schema and initial host keys are defined in
 `specs/001-secure-agent-access/contracts/resource-directory-v1.md`.
@@ -346,7 +353,7 @@ down, the response directs the user to start it instead of asking for an IP or p
 | Per-host sudo in Keychain | Model only | Separate credential, system approval, protected stdin | P1 |
 | One scoped sudo command | Missing | Broker-owned sudo adapter and exact approval | P1 |
 | Atomic user creation | Missing | Reviewed operational recipe over scoped sudo | P1 |
-| Service credential status/injection | Generic resource/credential schema implemented; adapters missing | Typed service profiles and least-privilege client adapters | P2 |
+| Service credential status/injection | Typed templates, protected Broker commit, and verification evidence implemented; local setup client and protocol adapters missing | Least-privilege client adapters with credential injection and health probes | P2 |
 | Credential discovery/import | External Python tooling | Explicit local migration assistant; never background scanning | P2 |
 | Core Tunnel inventory refresh | External Python tooling | Read-only optional import adapter | P2 |
 | Persistent tamper-evident audit UI | In-memory event sketch | Deferred until core operations are useful and safe | Later |

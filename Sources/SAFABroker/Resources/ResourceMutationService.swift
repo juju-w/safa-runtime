@@ -65,6 +65,20 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 message: "SSH config import supports host resource types only.",
                 details: ["resource_type": .string(resourceType)]
             )
+        } catch ResourceLifecycleError.unsupportedTemplate(let template) {
+            return failure(
+                request,
+                code: "resource_template_unknown",
+                message: "The requested resource template is not installed.",
+                details: ["template": .string(template)]
+            )
+        } catch ResourceLifecycleError.trustedServiceSetupRequired(let template) {
+            return userActionRequired(
+                request,
+                code: "trusted_service_setup_required",
+                message: "This service template needs protected local connection setup.",
+                details: ["template": .string(template)]
+            )
         } catch ResourceLifecycleError.unsupportedAction {
             return userActionRequired(
                 request,
@@ -207,12 +221,18 @@ public actor ResourceMutationService: ResourceMutationHandling {
     private func userActionRequired(
         _ request: ResourceMutationRequestV1,
         code: String,
-        message: String
+        message: String,
+        details: [String: JSONValue] = [:]
     ) -> ResourceMutationReplyV1 {
         ResourceMutationReplyV1(
             messageID: request.header.messageID,
             status: .userActionRequired,
-            error: SAFAErrorPayload(code: code, message: message, retryable: false)
+            error: SAFAErrorPayload(
+                code: code,
+                message: message,
+                retryable: false,
+                details: details
+            )
         )
     }
 

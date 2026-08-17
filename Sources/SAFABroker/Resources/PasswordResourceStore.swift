@@ -142,11 +142,6 @@ extension ResourceService {
         guard draft.alias == alias else {
             throw ResourceServiceError.notFound(alias: alias.rawValue)
         }
-        _ = try Self.ensureTemplateCompatibility(
-            resourceType: draft.resourceType,
-            accessMethods: draft.accessMethods,
-            credentialKind: draft.credentialKind
-        )
         if draft.accessMethods.contains(.ssh), draft.hostIdentity?.status != .trusted {
             throw ResourceServiceError.invalidHostIdentity
         }
@@ -166,6 +161,24 @@ extension ResourceService {
                 to: draft.resourceType.rawValue
             )
         }
+        let previousCredentialID = resource.authRef
+        let existingCredentialKind = previousCredentialID.flatMap { previousID in
+            document.credentialReferences.first(where: { $0.id == previousID })?.kind
+        }
+        let effectiveCredentialKind =
+            replacementPassword == nil
+            ? existingCredentialKind : draft.credentialKind
+        _ = try Self.ensureTemplateCompatibility(
+            resourceType: draft.resourceType,
+            accessMethods: draft.accessMethods,
+            credentialKind: effectiveCredentialKind
+        )
+        if replacementPassword == nil,
+            let requestedKind = draft.credentialKind,
+            requestedKind != existingCredentialKind
+        {
+            throw ResourceServiceError.unexpectedCredential
+        }
         try Self.ensureValidMetadata(draft.metadata)
         try Self.ensureAliasesAvailable(
             canonical: draft.alias,
@@ -178,7 +191,6 @@ extension ResourceService {
             ownerID: resource.id,
             resources: document.resources
         )
-        let previousCredentialID = resource.authRef
         var replacementCredentialID: UUID?
         if let replacementPassword {
             guard let credentialKind = draft.credentialKind else {
@@ -201,6 +213,10 @@ extension ResourceService {
                 )
             )
         }
+        let connectionChanged =
+            resource.endpoint != draft.endpoint
+            || resource.username != draft.username
+            || resource.resolvedAccessMethods != draft.accessMethods
         resource.displayName = draft.displayName
         resource.profile = ResourceProfile(
             resourceType: draft.resourceType,
@@ -221,6 +237,10 @@ extension ResourceService {
         resource.username = draft.username
         resource.securityDomain = draft.securityDomain
         resource.hostIdentity = draft.hostIdentity
+        // A changed service connection must be proved again by its protocol adapter.
+        if connectionChanged || replacementPassword != nil {
+            resource.verification = nil
+        }
         resource.revision += 1
         resource.updatedAt = now
         document.resources[index] = resource
@@ -254,5 +274,46 @@ extension ResourceService {
             try? await passwordStore.deleteSecret(id: previousCredentialID)
         }
         return resource
+    }
+
+    /// Commits only broker-owned adapter evidence. Agent input cannot manufacture
+    /// this transition, and a stale probe cannot bless a changed connection.
+    @discardableResult
+    public func recordServiceVerification(
+        alias: ResourceAlias,
+        expectedRevision: UInt64,
+        adapter: AccessMethodIdentifier,
+        succeeded: Bool,
+        now: Date = Date()
+    ) async throws -> Resource {
+        try await mutationGate.withLock { [self] in
+            var document = try await vault.readDocument()
+            guard
+                let index = document.resources.firstIndex(where: {
+                    $0.alias == alias && $0.state != .deleted
+                })
+            else {
+                throw ResourceServiceError.notFound(alias: alias.rawValue)
+            }
+            var resource = document.resources[index]
+            guard resource.revision == expectedRevision, resource.state == .active else {
+                throw ResourceServiceError.staleResource
+            }
+            guard !resource.resolvedAccessMethods.contains(.ssh),
+                resource.resolvedAccessMethods.contains(adapter)
+            else {
+                throw ResourceServiceError.incompatibleAccessMethod(adapter.rawValue)
+            }
+            resource.verification = ResourceVerification(
+                status: succeeded ? .verified : .failed,
+                adapter: adapter,
+                checkedAt: now
+            )
+            resource.revision += 1
+            resource.updatedAt = now
+            document.resources[index] = resource
+            try await vault.writeDocument(document)
+            return resource
+        }
     }
 }

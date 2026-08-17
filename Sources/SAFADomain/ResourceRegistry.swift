@@ -11,6 +11,7 @@ public enum ResourceRegistryError: Error, Equatable, Sendable {
 public enum ResourceHealth: String, Codable, Sendable {
     case ready
     case needsSetup = "needs_setup"
+    case needsVerification = "needs_verification"
     case disabled
 }
 
@@ -47,16 +48,25 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
                 || !resource.resolvedCredentialBindings.isEmpty
             let credentialReady = !(template?.credentialRequired ?? true) || hasCredential
             let connectionReady: Bool
+            let verificationReady: Bool
             if resource.resolvedAccessMethods.contains(.ssh) {
                 connectionReady =
                     resource.endpoint != nil
                     && resource.hostIdentity?.status == .trusted
+                // SSH setup verifies the pinned host identity and the expected account
+                // before the broker activates the resource.
+                verificationReady = true
             } else {
                 connectionReady = resource.endpoint != nil
+                verificationReady = resource.verification?.status == .verified
             }
-            health =
-                resource.state == .active && connectionReady && credentialReady
-                ? .ready : .needsSetup
+            if resource.state != .active || !connectionReady || !credentialReady {
+                health = .needsSetup
+            } else if !verificationReady {
+                health = .needsVerification
+            } else {
+                health = .ready
+            }
         }
         summaryMetadata = ResourceSummaryDisclosure.publicEntries(from: resource.resolvedMetadata)
     }

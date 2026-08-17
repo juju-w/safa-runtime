@@ -6,18 +6,30 @@ protocol SSHConfigMutationCommand: ResourceDirectoryCommand {
     var alias: String { get }
     var fromSSHConfig: String? { get }
     var resourceType: String? { get }
+    var template: String? { get }
 }
 
 extension SSHConfigMutationCommand {
     func mutationInput() throws -> (ResourceAlias, ResourceMutationV1) {
         let parsedAlias = try ResourceAlias(alias)
         let sourceAlias = try ResourceAlias(fromSSHConfig ?? alias)
-        let parsedType = try resourceType.map { try ResourceTypeIdentifier($0) }
+        let templateID = try template.map { try ResourceTemplateIdentifier($0) }
+        let definition = templateID.flatMap { ResourceTemplateRegistry.builtIn.template(id: $0) }
+        if templateID != nil, definition == nil {
+            throw ResourceMutationInputError.unknownTemplate
+        }
+        let parsedType =
+            try resourceType.map { try ResourceTypeIdentifier($0) }
+            ?? definition?.resourceTypes.first
+        if let definition, let parsedType, !definition.resourceTypes.contains(parsedType) {
+            throw ResourceMutationInputError.typeDoesNotMatchTemplate
+        }
         return (
             parsedAlias,
             ResourceMutationV1(
                 sourceSSHConfigAlias: sourceAlias,
-                resourceType: parsedType
+                resourceType: parsedType,
+                templateID: templateID
             )
         )
     }
@@ -39,10 +51,22 @@ extension SSHConfigMutationCommand {
             try invalidInvocation(command: command, message: "The resource alias is invalid.")
         } catch is ResourceDirectoryValidationError {
             try invalidInvocation(command: command, message: "The resource type is invalid.")
+        } catch ResourceMutationInputError.unknownTemplate {
+            try invalidInvocation(command: command, message: "The resource template is unknown.")
+        } catch ResourceMutationInputError.typeDoesNotMatchTemplate {
+            try invalidInvocation(
+                command: command,
+                message: "The resource type does not belong to the selected template."
+            )
         } catch {
             try brokerFailure(command: command)
         }
     }
+}
+
+enum ResourceMutationInputError: Error {
+    case unknownTemplate
+    case typeDoesNotMatchTemplate
 }
 
 struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
@@ -59,7 +83,13 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         name: .customLong("type"),
         help: "Host type: host.linux, host.macos, host.nas, or host.windows."
     )
-    var importedResourceType = "host.linux"
+    var importedResourceType: String?
+    @Option(
+        name: .customLong("template"),
+        help:
+            "Template: ssh, mysql, postgresql, sqlserver, s3, minio, oss, redis, elasticsearch, neo4j, or http."
+    )
+    var template: String?
     @Flag var json = false
 
     var resourceType: String? { importedResourceType }
@@ -84,6 +114,11 @@ struct ResourceEditCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         help: "New host type; omitted preserves the current type."
     )
     var resourceType: String?
+    @Option(
+        name: .customLong("template"),
+        help: "Existing resource template; SSH is inferred when omitted."
+    )
+    var template: String?
     @Flag var json = false
 
     func run() async throws {
@@ -104,6 +139,7 @@ struct ResourceSetupCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     @Flag var json = false
 
     var resourceType: String? { nil }
+    var template: String? { "ssh" }
 
     func run() async throws {
         try await runMutation(action: .setup, command: "resource.setup")

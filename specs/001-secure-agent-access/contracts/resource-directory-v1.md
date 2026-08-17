@@ -128,7 +128,8 @@ The Agent XPC surface uses separate explicit DTOs instead of the legacy dynamic 
 - `add` / `edit`: require device-owner authentication and accept only logical aliases and an
   optional supported host type. The broker resolves private connection fields locally;
   imports stay `draft/needs_setup`, trusted resources cannot be silently retargeted, and only
-  `host.linux`, `host.macos`, or `host.nas` is accepted by this adapter.
+  `host.linux`, `host.macos`, `host.nas`, or `host.windows` is accepted by this adapter. Windows
+  targets use the same pinned OpenSSH lifecycle rather than a separate password transport.
 - `setup`: requires device-owner authentication, resolves the same explicit OpenSSH alias, imports
   prior `known_hosts` trust plus an available existing identity-file/agent locator, and runs bounded
   direct-route verification. It commits `active` only when the draft revision remains unchanged.
@@ -140,9 +141,11 @@ Denied, rate-limited, malformed, and unknown-resource replies contain no protect
 No resource-directory reply includes a credential ID, Keychain locator, password, token, access
 key, host fingerprint, or private/public key material.
 
-## Future adapters
+## Service adapter boundary
 
-Database, object-storage, cache, and service adapters must add typed operations and policies at the
-broker boundary. They reuse resource aliases and credential bindings but must not interpret metadata
-as executable instructions. Least-privilege accounts remain separate resources or credential roles;
-one generic credential must not become a cross-service superuser.
+Database, object-storage, cache, and service resources reuse the same encrypted CRUD transaction and
+typed template registry. Their signed protocol adapters still own connection and credential
+verification; metadata is never interpreted as executable instructions. The Broker records
+revision-bound verification evidence, exposes `needs_verification` before that proof, and clears the
+proof when connection or credential material changes. Least-privilege accounts remain separate
+credential roles; one generic credential must not become a cross-service superuser.

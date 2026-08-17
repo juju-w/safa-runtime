@@ -8,6 +8,8 @@ public enum ResourceLifecycleError: Error, Equatable, Sendable {
     case mutationRequired
     case invalidRequest
     case unsupportedResourceType(String)
+    case unsupportedTemplate(String)
+    case trustedServiceSetupRequired(String)
     case denied
     case rateLimited
 }
@@ -68,9 +70,21 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
             if action == .setup, mutation.resourceType != nil {
                 throw ResourceLifecycleError.invalidRequest
             }
-            if let resourceType = mutation.resourceType,
-                !Self.isSSHHostType(resourceType)
-            {
+            if let templateID = mutation.templateID {
+                guard let template = ResourceTemplateRegistry.builtIn.template(id: templateID)
+                else {
+                    throw ResourceLifecycleError.unsupportedTemplate(templateID.rawValue)
+                }
+                if let resourceType = mutation.resourceType,
+                    !template.resourceTypes.contains(resourceType)
+                {
+                    throw ResourceLifecycleError.unsupportedResourceType(resourceType.rawValue)
+                }
+                if templateID != .ssh {
+                    throw ResourceLifecycleError.trustedServiceSetupRequired(templateID.rawValue)
+                }
+            }
+            if let resourceType = mutation.resourceType, !Self.isSSHHostType(resourceType) {
                 throw ResourceLifecycleError.unsupportedResourceType(resourceType.rawValue)
             }
         case .disable, .enable, .remove:

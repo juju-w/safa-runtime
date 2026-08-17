@@ -183,6 +183,27 @@ public struct CredentialReference: Codable, Equatable, Sendable {
     }
 }
 
+public enum ResourceVerificationStatus: String, Codable, Sendable {
+    case verified
+    case failed
+}
+
+public struct ResourceVerification: Codable, Equatable, Sendable {
+    public let status: ResourceVerificationStatus
+    public let adapter: AccessMethodIdentifier
+    public let checkedAt: Date
+
+    public init(
+        status: ResourceVerificationStatus,
+        adapter: AccessMethodIdentifier,
+        checkedAt: Date
+    ) {
+        self.status = status
+        self.adapter = adapter
+        self.checkedAt = checkedAt
+    }
+}
+
 public struct Resource: Codable, Equatable, Sendable {
     public let id: UUID
     public let alias: ResourceAlias
@@ -196,6 +217,9 @@ public struct Resource: Codable, Equatable, Sendable {
     public var jumpRoute: [UUID]
     public var securityDomain: String
     public var hostIdentity: HostIdentity?
+    /// Broker-owned proof that a non-SSH adapter reached the expected service.
+    /// Optional for compatibility with vault documents written before service adapters existed.
+    public var verification: ResourceVerification?
     public var authRef: UUID?
     public var sudoRef: UUID?
     public var policyRef: UUID?
@@ -220,6 +244,7 @@ public struct Resource: Codable, Equatable, Sendable {
         jumpRoute: [UUID] = [],
         securityDomain: String,
         hostIdentity: HostIdentity? = nil,
+        verification: ResourceVerification? = nil,
         authRef: UUID? = nil,
         sudoRef: UUID? = nil,
         policyRef: UUID? = nil,
@@ -245,6 +270,7 @@ public struct Resource: Codable, Equatable, Sendable {
         self.jumpRoute = jumpRoute
         self.securityDomain = securityDomain
         self.hostIdentity = hostIdentity
+        self.verification = verification
         self.authRef = authRef
         self.sudoRef = sudoRef
         self.policyRef = policyRef

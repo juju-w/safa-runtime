@@ -99,6 +99,9 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T043c [US1] Implement system-authenticated setup for an existing direct OpenSSH
   identity-file/agent route with prior `known_hosts` trust, bounded verification, and atomic draft
   activation
+- [X] T043d [US1] Extend the signed template registry and encrypted CRUD transaction to Windows
+  OpenSSH, database, object-storage, cache, graph, search, and HTTP resources; require
+  revision-bound protocol verification before a service reports ready
 - [X] T043a [US1] Implement the generic encrypted resource directory, alternate-alias collision
   checks, typed metadata, open credential kinds, typed `list/show/inspect` XPC DTOs, and macOS
   user-presence protection for detailed inspection

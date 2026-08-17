@@ -218,7 +218,7 @@ struct ResourceDirectoryTests {
 
         let projection = SafeResourceProjection(resource: resource)
         #expect(projection.resourceType == .databaseMySQL)
-        #expect(projection.capabilities == ["query", "health"])
+        #expect(projection.capabilities.isEmpty)
         #expect(!projection.capabilities.contains("exec"))
         #expect(projection.health == .needsSetup)
         #expect(projection.summaryMetadata.map(\.key.rawValue) == ["database.engine"])
@@ -291,8 +291,17 @@ struct ResourceDirectoryTests {
             updatedAt: now
         )
 
-        #expect(SafeResourceProjection(resource: unauthenticatedHTTP).health == .ready)
+        #expect(
+            SafeResourceProjection(resource: unauthenticatedHTTP).health == .needsVerification)
         #expect(SafeResourceProjection(resource: mysqlWithoutCredential).health == .needsSetup)
+
+        var verifiedHTTP = unauthenticatedHTTP
+        verifiedHTTP.verification = ResourceVerification(
+            status: .verified,
+            adapter: .http,
+            checkedAt: now
+        )
+        #expect(SafeResourceProjection(resource: verifiedHTTP).health == .ready)
     }
 }
 

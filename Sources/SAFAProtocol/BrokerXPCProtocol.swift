@@ -128,52 +128,6 @@ public struct TrustedLocalMessage: Codable, Equatable, Sendable {
     }
 }
 
-public struct ProtectedResourceSetupPayload: Codable, Equatable, Sendable {
-    public let displayName: String?
-    public let resourceType: String?
-    public let alternateAliases: [String]?
-    public let accessMethods: [String]?
-    public let metadata: [ResourceMetadataEntryV1]?
-    public let host: String
-    public let port: UInt16
-    public let username: String
-    public let securityDomain: String
-    public let hostKeyAlgorithm: String
-    public let hostPublicKey: Data
-    public let hostFingerprint: String
-    public let password: Data
-
-    public init(
-        displayName: String? = nil,
-        resourceType: String? = nil,
-        alternateAliases: [String]? = nil,
-        accessMethods: [String]? = nil,
-        metadata: [ResourceMetadataEntryV1]? = nil,
-        host: String,
-        port: UInt16 = 22,
-        username: String,
-        securityDomain: String,
-        hostKeyAlgorithm: String,
-        hostPublicKey: Data,
-        hostFingerprint: String,
-        password: Data
-    ) {
-        self.displayName = displayName
-        self.resourceType = resourceType
-        self.alternateAliases = alternateAliases
-        self.accessMethods = accessMethods
-        self.metadata = metadata
-        self.host = host
-        self.port = port
-        self.username = username
-        self.securityDomain = securityDomain
-        self.hostKeyAlgorithm = hostKeyAlgorithm
-        self.hostPublicKey = hostPublicKey
-        self.hostFingerprint = hostFingerprint
-        self.password = password
-    }
-}
-
 public enum BrokerReplyStatus: String, Codable, Sendable {
     case completed
     case userActionRequired = "user_action_required"
