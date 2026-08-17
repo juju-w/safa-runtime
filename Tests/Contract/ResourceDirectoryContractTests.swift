@@ -36,7 +36,7 @@ struct ResourceDirectoryContractTests {
             alias: try ResourceAlias("nas.home"),
             mutation: ResourceMutationV1(
                 sourceSSHConfigAlias: try ResourceAlias("home-nas"),
-                resourceType: .hostNAS
+                resourceType: .hostLinux
             )
         )
 
@@ -44,7 +44,7 @@ struct ResourceDirectoryContractTests {
             String(data: CanonicalCodec.encode(request), encoding: .utf8)
         )
         #expect(text.contains("home-nas"))
-        #expect(text.contains("host.nas"))
+        #expect(text.contains("host.linux"))
         #expect(!text.contains("display_name"))
         #expect(!text.contains("endpoint"))
         #expect(!text.contains("username"))
@@ -59,6 +59,11 @@ struct ResourceDirectoryContractTests {
             alias: "gpu.lab",
             displayName: "GPU worker",
             resourceType: "host.linux",
+            kind: "host",
+            templateID: "ssh",
+            templateVersion: 1,
+            hostPlatform: "linux",
+            roles: ["gpu"],
             state: "active",
             health: "ready",
             capabilities: ["exec"],
@@ -86,6 +91,11 @@ struct ResourceDirectoryContractTests {
             alias: "gpu.lab",
             displayName: "GPU worker",
             resourceType: "host.linux",
+            kind: "host",
+            templateID: "ssh",
+            templateVersion: 1,
+            hostPlatform: "linux",
+            roles: ["gpu"],
             alternateAliases: ["gpu-worker"],
             accessMethods: ["ssh"],
             state: "active",

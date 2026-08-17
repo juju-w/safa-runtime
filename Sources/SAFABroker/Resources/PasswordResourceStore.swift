@@ -30,7 +30,7 @@ extension ResourceService {
         now: Date
     ) async throws -> Resource {
         let template = try Self.ensureTemplateCompatibility(
-            resourceType: draft.resourceType,
+            classification: draft.classification,
             accessMethods: draft.accessMethods,
             credentialKind: draft.credentialKind
         )
@@ -76,7 +76,7 @@ extension ResourceService {
         let resource = Resource(
             id: resourceID,
             alias: draft.alias,
-            resourceType: draft.resourceType,
+            classification: draft.classification,
             alternateAliases: draft.alternateAliases,
             accessMethods: draft.accessMethods,
             metadata: draft.metadata,
@@ -155,10 +155,12 @@ extension ResourceService {
         }
 
         var resource = document.resources[index]
-        guard resource.resolvedResourceType == draft.resourceType else {
+        guard resource.resolvedTemplate == draft.classification.template,
+            resource.resolvedKind == draft.classification.kind
+        else {
             throw ResourceServiceError.templateChangeNotAllowed(
-                from: resource.resolvedResourceType.rawValue,
-                to: draft.resourceType.rawValue
+                from: resource.resolvedTemplate.id.rawValue,
+                to: draft.classification.template.id.rawValue
             )
         }
         let previousCredentialID = resource.authRef
@@ -169,7 +171,7 @@ extension ResourceService {
             replacementPassword == nil
             ? existingCredentialKind : draft.credentialKind
         _ = try Self.ensureTemplateCompatibility(
-            resourceType: draft.resourceType,
+            classification: draft.classification,
             accessMethods: draft.accessMethods,
             credentialKind: effectiveCredentialKind
         )
@@ -219,7 +221,7 @@ extension ResourceService {
             || resource.resolvedAccessMethods != draft.accessMethods
         resource.displayName = draft.displayName
         resource.profile = ResourceProfile(
-            resourceType: draft.resourceType,
+            classification: draft.classification,
             alternateAliases: draft.alternateAliases,
             accessMethods: draft.accessMethods,
             metadata: draft.metadata,

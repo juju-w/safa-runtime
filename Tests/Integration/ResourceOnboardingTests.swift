@@ -115,7 +115,7 @@ struct ResourceOnboardingTests {
         let resource = try await service.addDiscoveredResource(
             DiscoveredResourceDraft(
                 alias: ResourceAlias("nas.home"),
-                resourceType: .hostNAS,
+                resourceType: .hostLinux,
                 displayName: "Home NAS",
                 endpoint: ResourceEndpoint(scheme: "ssh", host: "nas.internal", port: 2222),
                 username: "operator",
@@ -148,7 +148,7 @@ struct ResourceOnboardingTests {
                 alias: ResourceAlias("nas.home"),
                 draft: DiscoveredResourceDraft(
                     alias: ResourceAlias("nas.home"),
-                    resourceType: .hostNAS,
+                    resourceType: .hostLinux,
                     displayName: "Retargeted NAS",
                     endpoint: ResourceEndpoint(host: "other.internal", port: 22),
                     username: "operator",

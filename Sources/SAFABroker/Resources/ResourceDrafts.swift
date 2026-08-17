@@ -3,7 +3,7 @@ import SAFADomain
 
 public struct PrivateResourceDraft: Equatable, Sendable {
     public let alias: ResourceAlias
-    public let resourceType: ResourceTypeIdentifier
+    public let classification: ResourceClassification
     public let alternateAliases: [ResourceAlias]
     public let accessMethods: [AccessMethodIdentifier]
     public let metadata: [ResourceMetadataEntry]
@@ -19,6 +19,7 @@ public struct PrivateResourceDraft: Equatable, Sendable {
     public init(
         alias: ResourceAlias,
         resourceType: ResourceTypeIdentifier = .hostLinux,
+        classification: ResourceClassification? = nil,
         alternateAliases: [ResourceAlias] = [],
         accessMethods: [AccessMethodIdentifier] = [.ssh],
         metadata: [ResourceMetadataEntry] = [],
@@ -32,7 +33,7 @@ public struct PrivateResourceDraft: Equatable, Sendable {
         credentialRole: ResourceCredentialRole = .primary
     ) {
         self.alias = alias
-        self.resourceType = resourceType
+        self.classification = classification ?? .migratingLegacyType(resourceType)
         self.alternateAliases = alternateAliases
         self.accessMethods = accessMethods
         self.metadata = metadata
@@ -44,6 +45,10 @@ public struct PrivateResourceDraft: Equatable, Sendable {
         self.hostIdentity = hostIdentity
         self.credentialKind = credentialKind
         self.credentialRole = credentialRole
+    }
+
+    public var resourceType: ResourceTypeIdentifier {
+        classification.compatibilityResourceType
     }
 }
 

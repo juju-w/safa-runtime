@@ -145,7 +145,6 @@ public actor ResourceLifecycleService: ResourceLifecycleHandling {
     private static func isSSHHostType(_ resourceType: ResourceTypeIdentifier) -> Bool {
         resourceType == .hostLinux
             || resourceType == .hostMacOS
-            || resourceType == .hostNAS
             || resourceType == .hostWindows
     }
 

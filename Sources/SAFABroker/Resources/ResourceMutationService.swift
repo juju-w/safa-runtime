@@ -121,6 +121,12 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 code: "transport_failure",
                 message: "OpenSSH verification did not complete successfully."
             )
+        } catch ResourceSetupError.platformMismatch {
+            return failure(
+                request,
+                code: "host_platform_mismatch",
+                message: "The probed host platform does not match the registered platform."
+            )
         } catch ResourceSetupError.invalidCredentialLocator {
             return failure(
                 request,

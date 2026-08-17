@@ -11,6 +11,11 @@ struct ResourceCLIContractTests {
     func cliFirstCommandSurface() throws {
         #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
         #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
+        let detailedShow = try #require(
+            try SAFACommand.parseAsRoot(["resource", "show", "nas.home", "--details"])
+                as? ResourceShowCommand
+        )
+        #expect(detailedShow.details)
         #expect(
             try SAFACommand.parseAsRoot([
                 "resource", "add", "nas.home", "--from-ssh-config", "home-nas",

@@ -23,8 +23,7 @@ safa setup activate --json
 safa setup deactivate --json
 
 safa resource list|ls --json [--state active]
-safa resource show ALIAS --json
-safa resource inspect ALIAS --json
+safa resource show ALIAS --json [--details]
 safa resource add ALIAS --json [--from-ssh-config SSH_ALIAS]
   [--template TEMPLATE] [--type RESOURCE_TYPE]
 safa resource edit ALIAS --json [--from-ssh-config SSH_ALIAS]
@@ -117,12 +116,17 @@ overloaded as the SAFA process exit code.
       {
         "alias": "nas.home",
         "display_name": null,
-        "resource_type": "host.nas",
+        "resource_type": "host.linux",
+        "kind": "host",
+        "template_id": "ssh",
+        "template_version": 1,
+        "host_platform": "linux",
+        "roles": ["nas"],
         "state": "active",
         "capabilities": ["exec"],
         "health": "ready",
         "metadata": {
-          "host.os.family": "truenas",
+          "host.os.family": "linux",
           "host.docker.available": false
         }
       }
@@ -137,9 +141,9 @@ overloaded as the SAFA process exit code.
 `resource list` and `resource show` never include host, port, username, alternate alias, jump route,
 Keychain locator, host fingerprint, or credential identifier. Unknown metadata keys remain private.
 
-`resource inspect ALIAS` is an explicit protected read. It triggers a macOS-owned Touch ID/login
+`resource show ALIAS --details` is an explicit protected read. It triggers a macOS-owned Touch ID/login
 prompt and, only after approval, may return non-secret endpoint and inventory details. A denial or
-rate-limit response contains no resource detail object. Inspect never returns a password, token,
+rate-limit response contains no resource detail object. Detailed show never returns a password, token,
 private/public key, host fingerprint, credential identifier, or Keychain locator.
 
 `resource add/edit/setup/disable/enable/remove` are protected mutations and each triggers a
@@ -147,22 +151,25 @@ macOS-owned Touch ID/login prompt. Add/edit send only logical aliases and resour
 broker. The broker resolves OpenSSH connection settings locally. A new import is always
 `draft/needs_setup`; it contains no credential or trusted host identity. Editing cannot retarget a
 resource that already carries either one. Setup imports a prior `known_hosts` trust entry plus an
-available existing OpenSSH identity/agent locator, verifies `hostname` and the expected `id -un`,
-and commits `active` only if the draft revision is unchanged. `ProxyJump` and `ProxyCommand` return
+available existing OpenSSH identity/agent locator, verifies the expected account and registered
+platform, runs a bounded read-only hardware/system probe, and commits `active` with validated
+inventory only if the draft revision is unchanged. `ProxyJump` and `ProxyCommand` return
 `user_action_required` until
 their route can be reviewed and snapshotted. Disable/enable/remove use the same serialized revisioned
 resource transaction. Enable accepts only a disabled resource; removal is rejected while another
 live resource references the target.
-The SSH config adapter accepts `host.linux`, `host.macos`, `host.nas`, and `host.windows` when the
-target exposes OpenSSH. Built-in template identifiers are `ssh`, `mysql`, `postgresql`, `sqlserver`,
-`s3`, `minio`, `oss`, `redis`, `elasticsearch`, `neo4j`, and `http`. Selecting a non-SSH template
-routes protected fields to the separately signed trusted-local interface; until the local
-configuration client is installed, the Agent-facing command returns `user_action_required` and
-never accepts those fields as flags or stdin.
+The SSH config adapter accepts `host.linux`, `host.macos`, and `host.windows` when the
+target exposes OpenSSH. This does not claim that a Windows-native SAFA Runtime exists. Built-in
+resource template identifiers are `ssh`, `mysql`, `postgresql`, `sqlserver`, `mongodb`, `s3`,
+`minio`, `oss`, `redis`, `kafka`, `rabbitmq`, `elasticsearch`, `neo4j`, and `http`. Selecting a non-SSH template routes protected fields
+to the separately signed trusted-local interface; until the local configuration client is shipped,
+the Agent-facing command returns `user_action_required` and never accepts those fields as flags or
+stdin.
 
 Saving a service endpoint and credential is not proof that it works. A service remains
 `needs_verification` until its signed protocol adapter records a successful revision-bound check;
-changing its endpoint, username, access method, or credential clears that proof.
+changing its endpoint, username, access method, or credential clears that proof. Unimplemented
+protocol operations are omitted from `capabilities` rather than advertised speculatively.
 
 ## Reserved approval-required response
 

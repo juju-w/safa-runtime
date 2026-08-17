@@ -143,7 +143,12 @@ public struct SSHConfigurationBuilder: Sendable {
             }
             try writePrivate(Data(config.utf8), to: configURL)
 
-            let remoteCommand = commandArguments.map(Self.posixQuote).joined(separator: " ")
+            let remoteCommand: String
+            if resource.resolvedHostPlatform == .windows {
+                remoteCommand = try Self.windowsPowerShellCommand(commandArguments)
+            } else {
+                remoteCommand = commandArguments.map(Self.posixQuote).joined(separator: " ")
+            }
             let invocation = ProcessInvocation(
                 executableURL: URL(fileURLWithPath: "/usr/bin/ssh"),
                 arguments: ["-F", configURL.path, "-T", "--", opaqueAlias, remoteCommand],
@@ -168,6 +173,31 @@ public struct SSHConfigurationBuilder: Sendable {
     public static func posixQuote(_ argument: String) -> String {
         if argument.isEmpty { return "''" }
         return "'" + argument.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    public static func windowsPowerShellCommand(_ arguments: [String]) throws -> String {
+        guard !arguments.isEmpty,
+            let argumentData = try? JSONEncoder().encode(arguments)
+        else {
+            throw SSHConfigurationError.unsupportedCommand
+        }
+        let encodedArguments = argumentData.base64EncodedString()
+        let script = """
+            $ErrorActionPreference = 'Stop'
+            $values = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\(encodedArguments)')) | ConvertFrom-Json
+            $program = [string]$values[0]
+            $programArguments = @()
+            if ($values.Count -gt 1) {
+              $programArguments = @($values | Select-Object -Skip 1 | ForEach-Object { [string]$_ })
+            }
+            & $program @programArguments
+            if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }
+            """
+        guard let scriptData = script.data(using: .utf16LittleEndian) else {
+            throw SSHConfigurationError.unsupportedCommand
+        }
+        return
+            "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand \(scriptData.base64EncodedString())"
     }
 
     static func quoteConfig(_ value: String) -> String {

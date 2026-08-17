@@ -88,7 +88,7 @@ extension ResourceService {
         }
 
         resource.profile = ResourceProfile(
-            resourceType: resourceType,
+            classification: .migratingLegacyType(resourceType),
             alternateAliases: resource.resolvedAlternateAliases,
             accessMethods: [.ssh],
             metadata: resource.resolvedMetadata,
@@ -111,6 +111,7 @@ extension ResourceService {
         expectedRevision: UInt64,
         hostIdentity: HostIdentity,
         credentialLocator: Data,
+        inventory: HostInventorySnapshot,
         now: Date = Date()
     ) async throws -> Resource {
         try await mutationGate.withLock { [self] in
@@ -119,6 +120,7 @@ extension ResourceService {
                 expectedRevision: expectedRevision,
                 hostIdentity: hostIdentity,
                 credentialLocator: credentialLocator,
+                inventory: inventory,
                 now: now
             )
         }
@@ -129,6 +131,7 @@ extension ResourceService {
         expectedRevision: UInt64,
         hostIdentity: HostIdentity,
         credentialLocator: Data,
+        inventory: HostInventorySnapshot,
         now: Date
     ) async throws -> Resource {
         guard hostIdentity.status == .trusted else {
@@ -148,6 +151,15 @@ extension ResourceService {
         else {
             throw ResourceServiceError.staleResource
         }
+        guard resource.resolvedKind == .host,
+            resource.resolvedTemplate == .sshV1,
+            resource.resolvedHostPlatform == inventory.platform
+        else {
+            throw ResourceServiceError.unsupportedDiscoveredResourceType(
+                resource.resolvedResourceType.rawValue
+            )
+        }
+        try Self.ensureValidMetadata(inventory.metadata)
 
         let credentialID = UUID()
         document.credentialReferences.append(
@@ -163,6 +175,18 @@ extension ResourceService {
         )
         resource.hostIdentity = hostIdentity
         resource.authRef = credentialID
+        let inventoryKeys = Set(inventory.metadata.map(\.key))
+        let metadata =
+            resource.resolvedMetadata.filter { !inventoryKeys.contains($0.key) }
+            + inventory.metadata
+        resource.profile = ResourceProfile(
+            classification: resource.resolvedClassification,
+            alternateAliases: resource.resolvedAlternateAliases,
+            accessMethods: resource.resolvedAccessMethods,
+            metadata: metadata,
+            relationships: resource.resolvedRelationships,
+            credentialBindings: resource.resolvedCredentialBindings
+        )
         resource.state = .active
         resource.revision += 1
         resource.updatedAt = now

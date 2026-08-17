@@ -120,7 +120,7 @@ flowchart LR
 ### Boundary rules
 
 - Agent/CLI data may choose a resource alias and command, but cannot provide an endpoint,
-  credential reference, approval decision, or trusted identity. `resource inspect` is the one
+  credential reference, approval decision, or trusted identity. `resource show --details` is the one
   read-only disclosure path: after a macOS-owned user-presence prompt, it may return non-secret
   connection and inventory metadata. It never returns a credential reference, Keychain locator,
   private/public key material, host fingerprint, password, or token.
@@ -240,11 +240,14 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 ### Discover and inspect a resource
 
 1. `safa resource list --json` and `resource show ALIAS --json` return a safe summary: canonical
-   alias, resource type, state, health, capabilities, and only source-code-allowlisted metadata.
+   alias, resource kind, template/version, host platform when applicable, safe roles, state, health,
+   capabilities, and only source-code-allowlisted metadata. `resource_type` remains an additive v1
+   compatibility projection, not the internal template key.
 2. Unknown or newly imported metadata keys fail closed as private. A configuration file cannot mark
    its own field public.
-3. `safa resource inspect ALIAS --json` asks macOS to verify the local user with Touch ID or login
-   credentials. Denial and prompt-rate-limiting return no detail object.
+3. `safa resource show ALIAS --details --json` asks macOS to verify the local user with Touch ID or
+   login credentials. Denial and prompt-rate-limiting return no detail object. The hidden `inspect`
+   command remains a compatibility alias during the preview.
 4. An approved inspection may return alternate aliases, access methods, endpoint, username,
    security domain, non-secret typed metadata, relationships by alias, and identity status. It never
    returns secrets or credential/key locators.
@@ -260,8 +263,9 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
    connection values never become CLI arguments or mutation DTO fields.
 3. Imports are `draft/needs_setup`: discovery alone does not create a credential or trusted host
    identity. `resource setup` separately authenticates the local user, imports a previously trusted
-   `known_hosts` identity and an available existing OpenSSH identity/agent route, then verifies
-   `hostname` and the exact remote username before committing `active`.
+   `known_hosts` identity and an available existing OpenSSH identity/agent route, verifies the exact
+   remote username and registered Linux/macOS/Windows platform, and runs a bounded read-only host
+   inventory probe before atomically committing `active` with the probe metadata.
 4. Setup currently accepts direct routes, including a local Core Tunnel listener expressed as the
    resolved endpoint. `ProxyJump` and `ProxyCommand` fail with `user_action_required` until SAFA can
    review and snapshot their complete route rather than inherit mutable SSH configuration.
@@ -274,8 +278,11 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 
 ### Resource directory extension model
 
-- Types are open validated identifiers such as `host.linux`, `host.nas`, `database.mysql`,
-  `database.postgresql`, `object-storage.s3`, `cache.redis`, and `service.http`.
+- Classification has independent validated dimensions: resource kind (`host`, `database`,
+  `object-storage`, `cache`, `messaging`, `search`, `graph`, or `service`), immutable template ID and
+  version, optional host platform (`linux`, `macos`, or `windows`), and safe roles such as `nas`.
+  `host.nas` is not a platform; legacy vault records migrate to a Linux SSH host with the `nas`
+  role, and new mutations reject that retired value.
 - Access methods are independent identifiers such as `ssh`, `database.mysql`, `object-storage.s3`,
   `cache.redis`, and `http`. Supporting an identifier in storage does not claim its adapter is
   implemented.
@@ -287,7 +294,7 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 - Credential kinds and roles are also extensible identifiers, while secret material stays in
   Keychain/Secure Enclave and the encrypted directory keeps only opaque references.
 - Built-in templates currently cover SSH (including Windows OpenSSH), MySQL, PostgreSQL,
-  SQL Server, S3, MinIO, OSS, Redis, Elasticsearch, Neo4j, and HTTP. Their protected setup payload
+  SQL Server, MongoDB, S3, MinIO, OSS, Redis, Kafka, RabbitMQ, Elasticsearch, Neo4j, and HTTP. Their protected setup payload
   enters only through the separately signed trusted-local XPC role. Shipping that role's local
   no-GUI client remains a separate delivery gate; the Agent-facing CLI cannot substitute for it.
 - A stored service connection is `needs_verification`, not `ready`. Only its typed broker adapter
@@ -305,13 +312,15 @@ The normative schema and initial host keys are defined in
    `known_hosts` files. Absence is not silently accepted: the command returns
    `host_identity_setup_required`.
 3. Setup references only existing readable identity-file paths or an existing SSH-agent socket. The
-   path/socket locator remains encrypted in the broker vault and is never returned by list, show, or
-   inspect. Private-key bytes do not enter SAFA storage.
-4. The broker constructs an isolated, pinned OpenSSH configuration and runs non-destructive
-   `hostname` and `id -un` checks. Authentication as a username other than the imported username
-   fails setup.
-5. Only after successful verification does a revision-checked transaction add the OpenSSH
-   credential reference and mark the resource active.
+   path/socket locator remains encrypted in the broker vault and is never returned by list, default
+   show, or protected details. Private-key bytes do not enter SAFA storage.
+4. The broker constructs an isolated, pinned OpenSSH configuration, verifies the expected account,
+   and runs one fixed read-only platform probe. Linux/macOS report architecture, OS/kernel, CPU,
+   memory, root-filesystem capacity, hardware model, and Docker availability; Windows reports the
+   equivalent bounded CIM data. Authentication or platform mismatch fails setup; unavailable
+   optional fields are omitted.
+5. Only after successful verification does one revision-checked transaction add the OpenSSH
+   credential reference, persist validated inventory metadata, and mark the resource active.
 
 Execution snapshots the direct endpoint, remote username, trusted host key, and approved local
 OpenSSH credential locator. Later retargeting through `~/.ssh/config` is rejected. Managed Secure

@@ -86,7 +86,7 @@ authorization. Add/edit/setup accept only logical aliases and an optional suppor
 
 ```bash
 safa resource add nas.home --from-ssh-config home-nas \
-  --type host.nas --json
+  --type host.linux --json
 safa resource edit nas.home --from-ssh-config home-nas --json
 safa resource setup nas.home --from-ssh-config home-nas --json
 safa resource disable nas.home --json
@@ -97,10 +97,11 @@ safa resource remove nas.home --json
 The broker resolves endpoint and username locally through `ssh -G`. Add returns
 `draft/needs_setup` and imports no password, private-key bytes, or host identity. Setup separately
 requires an existing `known_hosts` entry and available OpenSSH identity-file/agent route, verifies
-the direct route, and atomically returns `active`. `ProxyJump` and `ProxyCommand` remain unsupported.
-The adapter accepts `host.linux`, `host.macos`, `host.nas`, and `host.windows`; a Windows target must
+the account and declared platform, writes a bounded read-only hardware/system probe into the
+encrypted directory, and atomically returns `active`. `ProxyJump` and `ProxyCommand` remain unsupported.
+The adapter accepts `host.linux`, `host.macos`, and `host.windows`; a Windows target must
 already expose OpenSSH and follows the same pinned-host verification path. Service templates can be
-selected with `--template` from the built-in registry. Their protected local configuration client
+selected with `--template` from the built-in registry, including Kafka, RabbitMQ, and MongoDB. Their protected local configuration client
 is still required, so the Agent-facing CLI fails closed with `user_action_required` rather than
 accepting an endpoint or credential.
 `ResourceLifecycleTests`, `ReadOnlySSHJourneyTests`, and `ResourceOnboardingTests` validate this
@@ -118,7 +119,7 @@ allowlisted summary metadata only. It must not contain host, port, username, hos
 credential reference or Keychain locator.
 
 Use `resource show nas.home --json` for the same non-interactive safe projection. Use
-`resource inspect nas.home --json` only when protected endpoint or inventory metadata is needed;
+`resource show nas.home --details --json` only when protected endpoint or probed inventory metadata is needed;
 macOS asks the local user for Touch ID/login authentication. A denial returns no detail object, and
 an approval still returns no credential, key material, Keychain locator, or host fingerprint.
 

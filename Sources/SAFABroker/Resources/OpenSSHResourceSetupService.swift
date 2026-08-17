@@ -12,6 +12,7 @@ enum ResourceSetupError: Error, Equatable, Sendable {
     case hostIdentityUnavailable
     case authenticationUnavailable
     case verificationFailed
+    case platformMismatch
     case invalidCredentialLocator
 }
 
@@ -69,7 +70,11 @@ protocol OpenSSHCredentialSourceResolving: Sendable {
 }
 
 protocol OpenSSHSetupVerifying: Sendable {
-    func verify(resource: Resource, locator: OpenSSHCredentialLocatorV1) async throws
+    func verify(
+        resource: Resource,
+        locator: OpenSSHCredentialLocatorV1,
+        observedAt: Date
+    ) async throws -> HostInventorySnapshot
 }
 
 struct OpenSSHResourceSetupService: ResourceSetupHandling {
@@ -116,13 +121,18 @@ struct OpenSSHResourceSetupService: ResourceSetupHandling {
         var candidate = existing
         candidate.hostIdentity = identity
         candidate.state = .active
-        try await verifier.verify(resource: candidate, locator: locator)
+        let inventory = try await verifier.verify(
+            resource: candidate,
+            locator: locator,
+            observedAt: now
+        )
 
         return try await resources.activateDiscoveredResource(
             alias: alias,
             expectedRevision: existing.revision,
             hostIdentity: identity,
             credentialLocator: try CanonicalCodec.encode(locator),
+            inventory: inventory,
             now: now
         )
     }
@@ -261,16 +271,28 @@ struct LocalOpenSSHCredentialSourceResolver: OpenSSHCredentialSourceResolving {
 struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
     private let transport: SSHTransport
     private let workingDirectory: URL
+    private let inventoryProbe: any OpenSSHHostInventoryProbing
 
     init(
         transport: SSHTransport = SSHTransport(),
-        workingDirectory: URL
+        workingDirectory: URL,
+        inventoryProbe: (any OpenSSHHostInventoryProbing)? = nil
     ) {
         self.transport = transport
         self.workingDirectory = workingDirectory
+        self.inventoryProbe =
+            inventoryProbe
+            ?? OpenSSHHostInventoryProbe(
+                transport: transport,
+                workingDirectory: workingDirectory
+            )
     }
 
-    func verify(resource: Resource, locator: OpenSSHCredentialLocatorV1) async throws {
+    func verify(
+        resource: Resource,
+        locator: OpenSSHCredentialLocatorV1,
+        observedAt: Date
+    ) async throws -> HostInventorySnapshot {
         let credential = try locator.credentialContext()
         let checks: [([String], @Sendable (String) -> Bool)]
         if resource.resolvedResourceType == .hostWindows {
@@ -310,6 +332,11 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
                 throw ResourceSetupError.verificationFailed
             }
         }
+        return try await inventoryProbe.probe(
+            resource: resource,
+            locator: locator,
+            observedAt: observedAt
+        )
     }
 
     private static func windowsAccount(_ output: String, matches expected: String?) -> Bool {

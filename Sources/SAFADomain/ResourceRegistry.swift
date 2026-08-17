@@ -19,6 +19,10 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
     public let alias: ResourceAlias
     public let displayName: String?
     public let resourceType: ResourceTypeIdentifier
+    public let kind: ResourceKindIdentifier
+    public let template: ResourceTemplateBinding
+    public let hostPlatform: HostPlatform?
+    public let roles: [ResourceRoleIdentifier]
     public let transport: TransportKind?
     public let state: ResourceState
     public let capabilities: [String]
@@ -30,12 +34,16 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
         // Display names remain encrypted detail unless a separate disclosure policy is introduced.
         displayName = nil
         resourceType = resource.resolvedResourceType
+        kind = resource.resolvedKind
+        template = resource.resolvedTemplate
+        hostPlatform = resource.resolvedHostPlatform
+        roles = resource.resolvedRoles.sorted { $0.rawValue < $1.rawValue }
         transport = resource.transport
         state = resource.state
-        let template = ResourceTemplateRegistry.builtIn.template(
-            resourceType: resource.resolvedResourceType
+        let definition = ResourceTemplateRegistry.builtIn.template(
+            classification: resource.resolvedClassification
         )
-        var values = template?.capabilities ?? []
+        var values = definition?.capabilities ?? []
         if resource.resolvedAccessMethods.contains(.ssh), resource.sudoRef != nil {
             values.append("sudo")
         }
@@ -46,7 +54,7 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
             let hasCredential =
                 resource.authRef != nil
                 || !resource.resolvedCredentialBindings.isEmpty
-            let credentialReady = !(template?.credentialRequired ?? true) || hasCredential
+            let credentialReady = !(definition?.credentialRequired ?? true) || hasCredential
             let connectionReady: Bool
             let verificationReady: Bool
             if resource.resolvedAccessMethods.contains(.ssh) {

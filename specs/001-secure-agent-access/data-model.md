@@ -7,7 +7,8 @@ unless stated otherwise.
 
 ## Resource
 
-Represents any logical resource. SSH hosts and NAS devices are the first executable profile;
+Represents any logical resource. SSH hosts are the first executable profile; NAS is a host role,
+not a platform or a separate host type.
 databases, object storage, caches, and services reuse the same aggregate as adapters are added.
 
 | Field | Type | Rules |
@@ -15,12 +16,16 @@ databases, object storage, caches, and services reuse the same aggregate as adap
 | `id` | UUID | Stable, never reused |
 | `alias` | String | 1-64 chars; lowercase letters, digits, dots and hyphens; unique |
 | `alternateAliases` | String list | Shares the canonical collision namespace; encrypted |
-| `resourceType` | Namespaced identifier | Examples: `host.linux`, `database.mysql`, `object-storage.s3` |
+| `kind` | Namespaced identifier | `host`, `database`, `object-storage`, `cache`, `messaging`, `search`, `graph`, or `service` |
+| `template` | ID + version | Immutable adapter/configuration schema binding such as `ssh@1` or `mysql@1` |
+| `hostPlatform` | Enum? | Hosts only: `linux`, `macos`, or `windows` |
+| `roles` | Identifier list | Orthogonal purposes such as `nas`, `gpu`, or `jump-server` |
+| `resourceType` | Namespaced identifier | Additive CLI v1 compatibility projection; not an internal template key |
 | `displayName` | String? | Protected detail; encrypted and not in the default summary |
 | `accessMethods` | Identifier list | Stored profile; an adapter must still implement execution |
 | `transport` | Enum? | Legacy/MVP compatibility value: `ssh`; non-SSH profiles leave it absent |
-| `endpoint` | Scheme + host + port + path | Encrypted; disclosed only by authorized inspect |
-| `username` | String | Encrypted; disclosed only by authorized inspect |
+| `endpoint` | Scheme + host + port + path | Encrypted; disclosed only by authorized detailed show |
+| `username` | String | Encrypted; disclosed only by authorized detailed show |
 | `metadata` | Typed entry list | Non-secret profile data; unknown keys default private |
 | `relationships` | Kind + target ID list | Encrypted topology; exposed by target alias only after authorization |
 | `credentialBindings` | Role + CredentialReference ID list | Encrypted; never Agent-visible |
@@ -53,7 +58,13 @@ non-interactive summary uses a source-code allowlist; configuration and imported
 declare their own keys public. The initial safe keys are `host.os.family`,
 `host.docker.available`, `database.engine`, `object-storage.provider`, `cache.engine`, and
 `service.protocol`. IP addresses, kernel releases, CPU/memory/disk details, Docker versions, routes,
-and all unknown keys require `resource inspect` user presence.
+and all unknown keys require `resource show --details` user presence.
+
+Successful initial SSH setup records a bounded read-only inventory snapshot in the same transaction
+that activates the resource. It includes platform, architecture, OS/kernel version, CPU model/count,
+total memory, root-filesystem capacity/free space, hardware vendor/model, and Docker availability or
+version when present. Missing optional values do not block activation; account or platform mismatch
+does.
 
 ## CredentialReference
 

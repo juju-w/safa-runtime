@@ -196,6 +196,33 @@ struct ResourceDirectoryTests {
                 == .sshPassword)
     }
 
+    @Test("legacy NAS type migrates to a Linux SSH host with a NAS role")
+    func legacyNASTypeMigration() throws {
+        let resource = TestDirectoryResourceFactory.make(alias: "nas.home")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(resource))
+                as? [String: Any]
+        )
+        var profile = try #require(object["profile"] as? [String: Any])
+        profile.removeValue(forKey: "classification")
+        profile["resourceType"] = "host.nas"
+        object["profile"] = profile
+
+        let migrated = try JSONDecoder().decode(
+            Resource.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        #expect(migrated.resolvedKind == .host)
+        #expect(migrated.resolvedTemplate == .sshV1)
+        #expect(migrated.resolvedHostPlatform == .linux)
+        #expect(migrated.resolvedRoles == [.nas])
+        #expect(migrated.resolvedResourceType == .hostLinux)
+        #expect(
+            !String(decoding: try JSONEncoder().encode(migrated), as: UTF8.self).contains(
+                "host.nas"))
+    }
+
     @Test("non-SSH profiles expose only their template capabilities")
     func nonSSHProfile() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -224,16 +251,19 @@ struct ResourceDirectoryTests {
         #expect(projection.summaryMetadata.map(\.key.rawValue) == ["database.engine"])
     }
 
-    @Test("built-in templates cover Windows and predecessor service families")
+    @Test("built-in templates cover the three host platforms and common middleware")
     func builtInTemplateCoverage() throws {
         let registry = ResourceTemplateRegistry.builtIn
         let expectedTemplateIDs = [
-            "elasticsearch", "http", "minio", "mysql", "neo4j", "oss", "postgresql",
-            "redis", "s3", "sqlserver", "ssh",
+            "elasticsearch", "http", "kafka", "minio", "mongodb", "mysql", "neo4j", "oss",
+            "postgresql", "rabbitmq", "redis", "s3", "sqlserver", "ssh",
         ]
 
         #expect(registry.templates.map(\.id.rawValue) == expectedTemplateIDs)
         #expect(registry.template(resourceType: .hostWindows)?.id == .ssh)
+        #expect(registry.template(resourceType: .messagingKafka)?.id == .kafka)
+        #expect(registry.template(resourceType: .messagingRabbitMQ)?.id == .rabbitMQ)
+        #expect(registry.template(resourceType: .databaseMongoDB)?.id == .mongodb)
         #expect(registry.template(resourceType: .databaseSQLServer)?.id == .sqlServer)
         #expect(registry.template(resourceType: .objectStorageMinIO)?.id == .minio)
         #expect(registry.template(resourceType: .objectStorageOSS)?.id == .oss)

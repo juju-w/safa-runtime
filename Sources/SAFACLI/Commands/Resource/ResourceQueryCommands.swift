@@ -39,6 +39,10 @@ struct ResourceListCommand: AsyncParsableCommand, ResourceDirectoryCommand {
 struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
     static let configuration = CommandConfiguration(commandName: "show")
     @Argument var alias: String
+    @Flag(
+        name: .customLong("details"),
+        help: "Show protected connection and probed inventory after macOS authorization."
+    ) var details = false
     @Flag var json = false
 
     func run() async throws {
@@ -46,7 +50,7 @@ struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
             try emitDirectory(
                 command: "resource.show",
                 reply: try await XPCBrokerAgentClient().queryResourceDirectory(
-                    action: .show,
+                    action: details ? .inspect : .show,
                     alias: try ResourceAlias(alias),
                     state: nil
                 )
@@ -65,7 +69,8 @@ struct ResourceShowCommand: AsyncParsableCommand, ResourceDirectoryCommand {
 struct ResourceInspectCommand: AsyncParsableCommand, ResourceDirectoryCommand {
     static let configuration = CommandConfiguration(
         commandName: "inspect",
-        abstract: "Inspect protected resource details after macOS user authorization."
+        abstract: "Compatibility alias for resource show --details.",
+        shouldDisplay: false
     )
     @Argument var alias: String
     @Flag var json = false

@@ -23,7 +23,7 @@ SSH-config import, tunnel preflight, public-key execution, strict host identity,
 diagnostics, Keychain-backed sudo migration, encrypted inventory, and compact CLI contracts.
 Arbitrary mutation, general execution authorization/audit, team vaults, non-SSH execution adapters,
 and custom GUI are deferred until parity and security gates are complete. A narrowly scoped macOS
-user-presence gate for protected resource inspection is included.
+user-presence gate for protected resource details is included.
 
 ## Technical Context
 

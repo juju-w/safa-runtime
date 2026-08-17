@@ -232,6 +232,7 @@ public struct Resource: Codable, Equatable, Sendable {
         id: UUID,
         alias: ResourceAlias,
         resourceType: ResourceTypeIdentifier = .hostLinux,
+        classification: ResourceClassification? = nil,
         alternateAliases: [ResourceAlias] = [],
         accessMethods: [AccessMethodIdentifier] = [.ssh],
         metadata: [ResourceMetadataEntry] = [],
@@ -256,7 +257,7 @@ public struct Resource: Codable, Equatable, Sendable {
         self.id = id
         self.alias = alias
         self.profile = ResourceProfile(
-            resourceType: resourceType,
+            classification: classification ?? .migratingLegacyType(resourceType),
             alternateAliases: alternateAliases,
             accessMethods: accessMethods,
             metadata: metadata,
@@ -282,6 +283,26 @@ public struct Resource: Codable, Equatable, Sendable {
 
     public var resolvedResourceType: ResourceTypeIdentifier {
         profile?.resourceType ?? .hostLinux
+    }
+
+    public var resolvedClassification: ResourceClassification {
+        profile?.classification ?? .host(platform: .linux)
+    }
+
+    public var resolvedKind: ResourceKindIdentifier {
+        resolvedClassification.kind
+    }
+
+    public var resolvedTemplate: ResourceTemplateBinding {
+        resolvedClassification.template
+    }
+
+    public var resolvedHostPlatform: HostPlatform? {
+        resolvedClassification.hostPlatform
+    }
+
+    public var resolvedRoles: [ResourceRoleIdentifier] {
+        resolvedClassification.roles
     }
 
     public var resolvedAlternateAliases: [ResourceAlias] {

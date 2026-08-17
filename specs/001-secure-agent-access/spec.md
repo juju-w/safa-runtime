@@ -197,8 +197,10 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **FR-002**: The system MUST expose registered infrastructure through logical resource aliases and
   MUST allow the Agent to discover only non-secret metadata needed to select a resource.
 - **FR-002a**: The encrypted resource directory MUST support validated, extensible resource types,
-  access methods, typed metadata, alternate aliases, relationships, credential kinds, and
-  credential roles without accepting arbitrary JSON or embedded secrets.
+  independently versioned templates, host platforms, roles, access methods, typed metadata,
+  alternate aliases, relationships, credential kinds, and credential roles without accepting
+  arbitrary JSON or embedded secrets. Resource kind, host platform, and role MUST remain separate
+  dimensions; NAS is a host role rather than a host platform.
 - **FR-002b**: List/default-show MUST expose only source-code-allowlisted summary fields. Protected
   show MUST require macOS device-owner authentication, rate-limit prompts, return no details when
   denied, and never disclose credentials, credential locators, key material, or host fingerprints.
@@ -277,8 +279,11 @@ then confirm that the user can reconstruct the sequence without finding credenti
   tokens, access keys, and private keys are secrets and MUST only enter the trusted local flow.
 - **FR-003n**: The first built-in `ssh` template MUST collect, in one trusted local add/edit flow,
   endpoint, port with default 22, existing remote username, route mode, authentication mode and
-  device-protected credential, and verified host identity. Operating-system and inventory values
-  SHOULD be discovered after connection rather than required from the Agent. Sudo capability and
+  device-protected credential, and verified host identity. Initial setup MUST verify the declared
+  Linux, macOS, or Windows platform and collect a bounded read-only inventory snapshot including
+  architecture, OS/kernel, CPU, memory, root storage, hardware model, and Docker availability when
+  present. Validated inventory MUST be committed atomically with activation and MUST remain
+  protected detail except for explicitly allowlisted summary keys. Sudo capability and
   any sudo credential remain separate from SSH registration. The first `sqlserver` template MUST
   similarly collect endpoint, port with default 1433, optional database, username, password,
   connection route, encryption enabled by default, certificate-verification choice, and connection
@@ -320,9 +325,9 @@ then confirm that the user can reconstruct the sequence without finding credenti
   notes. Database templates (`mysql`, `sqlserver`, and `postgresql`) share endpoint, port, optional
   database or schema, username, route, TLS policy, credential role, and privilege tier. Object-store
   templates (`s3`, `minio`, and `oss`) share endpoint, region, optional bucket, TLS policy, access-key
-  credential, and privilege tier. `redis`, `elasticsearch`, `neo4j`, and `http` templates MUST define
-  only their protocol-specific additions while reusing the common route, credential, health, and
-  relationship model.
+  credential, and privilege tier. `redis`, `kafka`, `rabbitmq`, `mongodb`, `elasticsearch`, `neo4j`,
+  and `http` templates MUST define only their protocol-specific additions while reusing the common
+  route, credential, health, and relationship model.
 - **FR-003u**: A service resource MUST be able to reference a host or tunnel resource as its route
   and MAY have multiple separately scoped credential roles such as read-only and administrator.
   Selection MUST default to the least-privileged healthy role sufficient for the requested action;
@@ -410,7 +415,8 @@ then confirm that the user can reconstruct the sequence without finding credenti
 
 - **Resource**: A logical infrastructure target with an immutable identifier, one catalog-wide unique
   canonical alias, optional catalog-wide unique alternate aliases, an optional non-unique display
-  label, an extensible type, typed encrypted metadata, access methods, relationships, security-domain
+  label, an extensible kind, immutable template ID/version, optional host platform, orthogonal roles,
+  typed encrypted metadata, access methods, relationships, security-domain
   membership, opaque credential references, and lifecycle state. Host identity applies to SSH
   profiles.
 - **Credential Reference**: An opaque link to protected authentication material; it exposes type,

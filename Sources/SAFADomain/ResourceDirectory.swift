@@ -14,8 +14,8 @@ enum NamespacedIdentifier {
     }
 }
 
-/// An open, validated identifier such as `host.linux`, `database.mysql`, or
-/// `object-storage.s3`. New resource profiles do not require a vault schema change.
+/// Compatibility identifier retained for the additive CLI v1 `resource_type` field and old vault
+/// records. New runtime decisions use ResourceClassification instead.
 public struct ResourceTypeIdentifier: RawRepresentable, Codable, Hashable, Sendable {
     public let rawValue: String
 
@@ -32,7 +32,6 @@ public struct ResourceTypeIdentifier: RawRepresentable, Codable, Hashable, Senda
 
     public static let hostLinux = try! Self("host.linux")
     public static let hostMacOS = try! Self("host.macos")
-    public static let hostNAS = try! Self("host.nas")
     public static let hostWindows = try! Self("host.windows")
     public static let databaseMySQL = try! Self("database.mysql")
     public static let databasePostgreSQL = try! Self("database.postgresql")
@@ -43,6 +42,9 @@ public struct ResourceTypeIdentifier: RawRepresentable, Codable, Hashable, Senda
     public static let cacheRedis = try! Self("cache.redis")
     public static let searchElasticsearch = try! Self("search.elasticsearch")
     public static let graphNeo4j = try! Self("graph.neo4j")
+    public static let messagingKafka = try! Self("messaging.kafka")
+    public static let messagingRabbitMQ = try! Self("messaging.rabbitmq")
+    public static let databaseMongoDB = try! Self("database.mongodb")
     public static let serviceHTTP = try! Self("service.http")
 }
 
@@ -70,6 +72,9 @@ public struct AccessMethodIdentifier: RawRepresentable, Codable, Hashable, Senda
     public static let redis = try! Self("cache.redis")
     public static let elasticsearch = try! Self("search.elasticsearch")
     public static let neo4j = try! Self("graph.neo4j")
+    public static let kafka = try! Self("messaging.kafka")
+    public static let rabbitMQ = try! Self("messaging.rabbitmq")
+    public static let mongodb = try! Self("database.mongodb")
     public static let http = try! Self("http")
 }
 
@@ -242,12 +247,28 @@ public struct ResourceCredentialBinding: Codable, Equatable, Sendable {
 /// profile is reserved for vault records written before the resource-directory
 /// migration and resolves to the legacy SSH-host defaults.
 public struct ResourceProfile: Codable, Equatable, Sendable {
-    public let resourceType: ResourceTypeIdentifier
+    public let classification: ResourceClassification
     public var alternateAliases: [ResourceAlias]
     public var accessMethods: [AccessMethodIdentifier]
     public var metadata: [ResourceMetadataEntry]
     public var relationships: [ResourceRelationship]
     public var credentialBindings: [ResourceCredentialBinding]
+
+    public init(
+        classification: ResourceClassification,
+        alternateAliases: [ResourceAlias] = [],
+        accessMethods: [AccessMethodIdentifier] = [],
+        metadata: [ResourceMetadataEntry] = [],
+        relationships: [ResourceRelationship] = [],
+        credentialBindings: [ResourceCredentialBinding] = []
+    ) {
+        self.classification = classification
+        self.alternateAliases = alternateAliases
+        self.accessMethods = accessMethods
+        self.metadata = metadata
+        self.relationships = relationships
+        self.credentialBindings = credentialBindings
+    }
 
     public init(
         resourceType: ResourceTypeIdentifier,
@@ -257,11 +278,80 @@ public struct ResourceProfile: Codable, Equatable, Sendable {
         relationships: [ResourceRelationship] = [],
         credentialBindings: [ResourceCredentialBinding] = []
     ) {
-        self.resourceType = resourceType
-        self.alternateAliases = alternateAliases
-        self.accessMethods = accessMethods
-        self.metadata = metadata
-        self.relationships = relationships
-        self.credentialBindings = credentialBindings
+        self.init(
+            classification: .migratingLegacyType(resourceType),
+            alternateAliases: alternateAliases,
+            accessMethods: accessMethods,
+            metadata: metadata,
+            relationships: relationships,
+            credentialBindings: credentialBindings
+        )
+    }
+
+    public var resourceType: ResourceTypeIdentifier {
+        classification.compatibilityResourceType
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case classification
+        case resourceType
+        case alternateAliases
+        case accessMethods
+        case metadata
+        case relationships
+        case credentialBindings
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let classification = try container.decodeIfPresent(
+            ResourceClassification.self,
+            forKey: .classification
+        ) {
+            self.classification = classification
+        } else {
+            let legacyType = try container.decode(
+                ResourceTypeIdentifier.self,
+                forKey: .resourceType
+            )
+            classification = .migratingLegacyType(legacyType)
+        }
+        alternateAliases =
+            try container.decodeIfPresent(
+                [ResourceAlias].self,
+                forKey: .alternateAliases
+            ) ?? []
+        accessMethods =
+            try container.decodeIfPresent(
+                [AccessMethodIdentifier].self,
+                forKey: .accessMethods
+            ) ?? []
+        metadata =
+            try container.decodeIfPresent(
+                [ResourceMetadataEntry].self,
+                forKey: .metadata
+            ) ?? []
+        relationships =
+            try container.decodeIfPresent(
+                [ResourceRelationship].self,
+                forKey: .relationships
+            ) ?? []
+        credentialBindings =
+            try container.decodeIfPresent(
+                [ResourceCredentialBinding].self,
+                forKey: .credentialBindings
+            ) ?? []
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(classification, forKey: .classification)
+        // Older pre-release runtimes ignore the additive classification and can still decode this.
+        try container.encode(resourceType, forKey: .resourceType)
+        try container.encode(alternateAliases, forKey: .alternateAliases)
+        try container.encode(accessMethods, forKey: .accessMethods)
+        try container.encode(metadata, forKey: .metadata)
+        try container.encode(relationships, forKey: .relationships)
+        try container.encode(credentialBindings, forKey: .credentialBindings)
     }
 }

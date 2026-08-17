@@ -27,7 +27,6 @@ extension ResourceService {
     static func isSSHHostType(_ resourceType: ResourceTypeIdentifier) -> Bool {
         resourceType == .hostLinux
             || resourceType == .hostMacOS
-            || resourceType == .hostNAS
             || resourceType == .hostWindows
     }
 
@@ -47,16 +46,16 @@ extension ResourceService {
     }
 
     static func ensureTemplateCompatibility(
-        resourceType: ResourceTypeIdentifier,
+        classification: ResourceClassification,
         accessMethods: [AccessMethodIdentifier],
         credentialKind: CredentialKind?
     ) throws -> ResourceTemplateDefinition {
         guard
-            let template = ResourceTemplateRegistry.builtIn.template(
-                resourceType: resourceType
-            )
+            let template = ResourceTemplateRegistry.builtIn.template(classification: classification)
         else {
-            throw ResourceServiceError.unsupportedTemplate(resourceType.rawValue)
+            throw ResourceServiceError.unsupportedTemplate(
+                classification.template.id.rawValue
+            )
         }
         let allowedMethods = Set(template.accessMethods)
         guard !accessMethods.isEmpty,

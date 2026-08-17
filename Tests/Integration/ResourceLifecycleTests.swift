@@ -31,7 +31,7 @@ struct ResourceLifecycleTests {
                 alias: ResourceAlias("nas.home"),
                 mutation: ResourceMutationV1(
                     sourceSSHConfigAlias: ResourceAlias("home-nas"),
-                    resourceType: .hostNAS
+                    resourceType: .hostLinux
                 ),
                 now: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -63,6 +63,37 @@ struct ResourceLifecycleTests {
                 mutation: ResourceMutationV1(
                     sourceSSHConfigAlias: ResourceAlias("mysql-host"),
                     resourceType: .databaseMySQL
+                ),
+                now: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        }
+        #expect(await authorizer.reasons.isEmpty)
+        #expect(await vault.readDocument().resources.isEmpty)
+    }
+
+    @Test("new SSH resources reject the retired NAS pseudo-platform")
+    func retiredNASTypeIsRejectedBeforePrompt() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let authorizer = LifecyclePresenceAuthorizer(result: true)
+        let lifecycle = ResourceLifecycleService(
+            resources: ResourceService(
+                vault: vault,
+                passwordStore: InMemoryPasswordSecretStore()
+            ),
+            sshConfigResolver: FailingSSHConfigResolver(),
+            userPresenceAuthorizer: authorizer,
+            cooldown: 0
+        )
+
+        await #expect(
+            throws: ResourceLifecycleError.unsupportedResourceType("host.nas")
+        ) {
+            try await lifecycle.mutate(
+                action: .add,
+                alias: ResourceAlias("nas.home"),
+                mutation: ResourceMutationV1(
+                    sourceSSHConfigAlias: ResourceAlias("home-nas"),
+                    resourceType: ResourceTypeIdentifier("host.nas")
                 ),
                 now: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -168,13 +199,13 @@ struct ResourceLifecycleTests {
             alias: ResourceAlias("nas.home"),
             mutation: ResourceMutationV1(
                 sourceSSHConfigAlias: ResourceAlias("home-nas"),
-                resourceType: .hostNAS
+                resourceType: .hostLinux
             ),
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
         #expect(resource.alias.rawValue == "nas.home")
-        #expect(resource.resolvedResourceType == .hostNAS)
+        #expect(resource.resolvedResourceType == .hostLinux)
         #expect(resource.endpoint?.host == "nas.internal")
         #expect(resource.username == "operator")
         #expect(resource.state == .draft)
@@ -231,7 +262,7 @@ struct ResourceLifecycleTests {
         _ = try await resources.addDiscoveredResource(
             DiscoveredResourceDraft(
                 alias: ResourceAlias("nas.home"),
-                resourceType: .hostNAS,
+                resourceType: .hostLinux,
                 endpoint: ResourceEndpoint(host: "nas.internal", port: 22),
                 username: "operator",
                 securityDomain: "local-ssh-config"
@@ -258,7 +289,7 @@ struct ResourceLifecycleTests {
             now: Date(timeIntervalSince1970: 1_700_000_001)
         )
 
-        #expect(edited.resolvedResourceType == .hostNAS)
+        #expect(edited.resolvedResourceType == .hostLinux)
         #expect(edited.displayName == nil)
     }
 
@@ -413,7 +444,8 @@ struct ResourceLifecycleTests {
                 locator: OpenSSHCredentialLocatorV1(
                     identityFiles: ["/synthetic/id_ed25519"],
                     identityAgent: nil
-                )
+                ),
+                observedAt: now
             )
         }
     }
@@ -455,20 +487,79 @@ struct ResourceLifecycleTests {
         )
         let verifier = OpenSSHSetupVerifier(
             transport: SSHTransport(runner: runner),
-            workingDirectory: FileManager.default.temporaryDirectory
+            workingDirectory: FileManager.default.temporaryDirectory,
+            inventoryProbe: StaticHostInventoryProbe(platform: .windows)
         )
 
-        try await verifier.verify(
+        let inventory = try await verifier.verify(
             resource: resource,
             locator: OpenSSHCredentialLocatorV1(
                 identityFiles: ["/synthetic/id_ed25519"],
                 identityAgent: nil
-            )
+            ),
+            observedAt: now
         )
         let invocation = try #require(await runner.lastInvocation())
         let remoteCommand = try #require(invocation.arguments.last)
-        #expect(remoteCommand.contains("whoami"))
-        #expect(!remoteCommand.contains("id -un"))
+        #expect(try decodeWindowsRemoteArguments(remoteCommand) == ["whoami"])
+        #expect(inventory.platform == .windows)
+    }
+
+    @Test("POSIX inventory parser normalizes bounded hardware facts")
+    func parsePOSIXInventory() throws {
+        let observedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = try OpenSSHHostInventoryProbe.parsePOSIX(
+            Data(
+                """
+                platform=linux
+                architecture=x86_64
+                os_version=Ubuntu 24.04 LTS
+                kernel_release=6.8.0
+                cpu_logical_count=64
+                cpu_model=AMD EPYC 7543
+                memory_total_bytes=274877906944
+                storage_total_bytes=1099511627776
+                storage_available_bytes=549755813888
+                hardware_vendor=Supermicro
+                hardware_model=H12SSL
+                docker_available=true
+                docker_version=Docker version 27.1.1
+                """.utf8
+            ),
+            observedAt: observedAt
+        )
+
+        #expect(snapshot.platform == .linux)
+        #expect(
+            snapshot.metadata.first { $0.key.rawValue == "host.architecture" }?.value
+                == .text("x86_64"))
+        #expect(
+            snapshot.metadata.first { $0.key.rawValue == "host.cpu.logical-count" }?.value
+                == .integer(64))
+        #expect(
+            snapshot.metadata.first { $0.key.rawValue == "host.memory.total-bytes" }?.value
+                == .byteCount(274_877_906_944))
+        #expect(snapshot.metadata.allSatisfy { $0.observedAt == observedAt })
+    }
+
+    @Test("Windows inventory parser accepts typed CIM JSON")
+    func parseWindowsInventory() throws {
+        let observedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = try OpenSSHHostInventoryProbe.parseWindows(
+            Data(
+                #"{"platform":"windows","architecture":"AMD64","os_version":"Windows Server 2022","kernel_release":"20348","cpu_model":"AMD EPYC","cpu_logical_count":32,"memory_total_bytes":137438953472,"storage_total_bytes":1099511627776,"storage_available_bytes":549755813888,"hardware_vendor":"Synthetic","hardware_model":"Server","docker_available":false,"docker_version":""}"#
+                    .utf8
+            ),
+            observedAt: observedAt
+        )
+
+        #expect(snapshot.platform == .windows)
+        #expect(
+            snapshot.metadata.first { $0.key.rawValue == "host.architecture" }?.value
+                == .text("AMD64"))
+        #expect(
+            snapshot.metadata.first { $0.key.rawValue == "host.docker.available" }?.value
+                == .boolean(false))
     }
 
     @Test("setup activates a draft with trusted known-host and OpenSSH references")
@@ -481,7 +572,7 @@ struct ResourceLifecycleTests {
         let draft = try await resources.addDiscoveredResource(
             DiscoveredResourceDraft(
                 alias: ResourceAlias("nas.home"),
-                resourceType: .hostNAS,
+                resourceType: .hostLinux,
                 endpoint: ResourceEndpoint(host: "nas.internal", port: 2222),
                 username: "operator",
                 securityDomain: "local-ssh-config"
@@ -538,6 +629,8 @@ struct ResourceLifecycleTests {
 
         #expect(active.state == .active)
         #expect(active.hostIdentity?.verificationMethod == .trustedImport)
+        #expect(active.resolvedHostPlatform == .linux)
+        #expect(active.resolvedMetadata.contains { $0.key.rawValue == "host.os.family" })
         #expect(reference.kind == .sshOpenSSH)
         #expect(reference.storageLocator != Data("/synthetic/id_ed25519".utf8))
         #expect(await authorizer.reasons == ["Set up SAFA resource nas.home"])
@@ -633,6 +726,18 @@ struct ResourceLifecycleTests {
     }
 }
 
+private func decodeWindowsRemoteArguments(_ remoteCommand: String) throws -> [String] {
+    let encodedScript = try #require(remoteCommand.split(separator: " ").last.map(String.init))
+    let scriptData = try #require(Data(base64Encoded: encodedScript))
+    let script = try #require(String(data: scriptData, encoding: .utf16LittleEndian))
+    let prefix = "FromBase64String('"
+    let payloadStart = try #require(script.range(of: prefix)?.upperBound)
+    let payloadEnd = try #require(script[payloadStart...].range(of: "')")?.lowerBound)
+    let payload = String(script[payloadStart..<payloadEnd])
+    let argumentData = try #require(Data(base64Encoded: payload))
+    return try JSONDecoder().decode([String].self, from: argumentData)
+}
+
 private struct StaticSSHConfigResolver: SSHConfigResolving {
     let value: ResolvedSSHConfig
 
@@ -664,7 +769,43 @@ private struct StaticCredentialSourceResolver: OpenSSHCredentialSourceResolving 
 }
 
 private struct AcceptingSetupVerifier: OpenSSHSetupVerifying {
-    func verify(resource _: Resource, locator _: OpenSSHCredentialLocatorV1) async throws {}
+    func verify(
+        resource _: Resource,
+        locator _: OpenSSHCredentialLocatorV1,
+        observedAt: Date
+    ) async throws -> HostInventorySnapshot {
+        HostInventorySnapshot(
+            platform: .linux,
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "host.os.family",
+                    value: .text("linux"),
+                    observedAt: observedAt
+                )
+            ]
+        )
+    }
+}
+
+private struct StaticHostInventoryProbe: OpenSSHHostInventoryProbing {
+    let platform: HostPlatform
+
+    func probe(
+        resource _: Resource,
+        locator _: OpenSSHCredentialLocatorV1,
+        observedAt: Date
+    ) async throws -> HostInventorySnapshot {
+        HostInventorySnapshot(
+            platform: platform,
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "host.os.family",
+                    value: .text(platform.rawValue),
+                    observedAt: observedAt
+                )
+            ]
+        )
+    }
 }
 
 private actor LifecyclePresenceAuthorizer: UserPresenceAuthorizing {

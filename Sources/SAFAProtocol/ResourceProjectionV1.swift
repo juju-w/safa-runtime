@@ -4,6 +4,11 @@ public struct ResourceSummaryV1: Codable, Equatable, Sendable {
     public let alias: String
     public let displayName: String?
     public let resourceType: String
+    public let kind: String
+    public let templateID: String
+    public let templateVersion: UInt
+    public let hostPlatform: String?
+    public let roles: [String]
     public let state: String
     public let health: String
     public let capabilities: [String]
@@ -13,6 +18,11 @@ public struct ResourceSummaryV1: Codable, Equatable, Sendable {
         alias: String,
         displayName: String?,
         resourceType: String,
+        kind: String,
+        templateID: String,
+        templateVersion: UInt,
+        hostPlatform: String?,
+        roles: [String],
         state: String,
         health: String,
         capabilities: [String],
@@ -21,6 +31,11 @@ public struct ResourceSummaryV1: Codable, Equatable, Sendable {
         self.alias = alias
         self.displayName = displayName
         self.resourceType = resourceType
+        self.kind = kind
+        self.templateID = templateID
+        self.templateVersion = templateVersion
+        self.hostPlatform = hostPlatform
+        self.roles = roles
         self.state = state
         self.health = health
         self.capabilities = capabilities
@@ -31,6 +46,11 @@ public struct ResourceSummaryV1: Codable, Equatable, Sendable {
         case alias
         case displayName = "display_name"
         case resourceType = "resource_type"
+        case kind
+        case templateID = "template_id"
+        case templateVersion = "template_version"
+        case hostPlatform = "host_platform"
+        case roles
         case state
         case health
         case capabilities
@@ -42,6 +62,11 @@ public struct ResourceDetailsV1: Codable, Equatable, Sendable {
     public let alias: String
     public let displayName: String?
     public let resourceType: String
+    public let kind: String
+    public let templateID: String
+    public let templateVersion: UInt
+    public let hostPlatform: String?
+    public let roles: [String]
     public let alternateAliases: [String]
     public let accessMethods: [String]
     public let state: String
@@ -59,6 +84,11 @@ public struct ResourceDetailsV1: Codable, Equatable, Sendable {
         alias: String,
         displayName: String?,
         resourceType: String,
+        kind: String,
+        templateID: String,
+        templateVersion: UInt,
+        hostPlatform: String?,
+        roles: [String],
         alternateAliases: [String],
         accessMethods: [String],
         state: String,
@@ -75,6 +105,11 @@ public struct ResourceDetailsV1: Codable, Equatable, Sendable {
         self.alias = alias
         self.displayName = displayName
         self.resourceType = resourceType
+        self.kind = kind
+        self.templateID = templateID
+        self.templateVersion = templateVersion
+        self.hostPlatform = hostPlatform
+        self.roles = roles
         self.alternateAliases = alternateAliases
         self.accessMethods = accessMethods
         self.state = state
@@ -93,6 +128,11 @@ public struct ResourceDetailsV1: Codable, Equatable, Sendable {
         case alias
         case displayName = "display_name"
         case resourceType = "resource_type"
+        case kind
+        case templateID = "template_id"
+        case templateVersion = "template_version"
+        case hostPlatform = "host_platform"
+        case roles
         case alternateAliases = "alternate_aliases"
         case accessMethods = "access_methods"
         case state

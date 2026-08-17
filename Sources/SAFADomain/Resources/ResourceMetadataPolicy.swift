@@ -26,10 +26,13 @@ public enum ResourceMetadataPolicy {
             return ResourceSummaryDisclosure.isApprovedPublicEntry(entry)
         }
         switch (entry.key.rawValue, entry.value) {
-        case ("host.os.version", .text(let value)),
+        case ("host.architecture", .text(let value)),
+            ("host.os.version", .text(let value)),
             ("host.kernel.release", .text(let value)),
             ("host.cpu.model", .text(let value)),
-            ("host.docker.version", .text(let value)):
+            ("host.docker.version", .text(let value)),
+            ("host.hardware.vendor", .text(let value)),
+            ("host.hardware.model", .text(let value)):
             return isSafeOperationalText(value)
         case ("host.cpu.logical-count", .integer(let value)):
             return (1...65_536).contains(value)
@@ -591,10 +594,7 @@ public enum ResourceSummaryDisclosure {
         case ("host.docker.available", .boolean):
             return true
         case ("host.os.family", .text(let value)):
-            return [
-                "aix", "freebsd", "illumos", "linux", "macos", "netbsd", "openbsd", "truenas",
-                "windows",
-            ].contains(value)
+            return ["linux", "macos", "windows"].contains(value)
         case ("database.engine", .text(let value)):
             return ["mariadb", "mysql", "oracle", "postgresql", "sql-server", "sqlite"]
                 .contains(value)

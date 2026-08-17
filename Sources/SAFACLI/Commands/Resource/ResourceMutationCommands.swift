@@ -81,13 +81,13 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     ) var fromSSHConfig: String?
     @Option(
         name: .customLong("type"),
-        help: "Host type: host.linux, host.macos, host.nas, or host.windows."
+        help: "Host platform: host.linux, host.macos, or host.windows."
     )
     var importedResourceType: String?
     @Option(
         name: .customLong("template"),
         help:
-            "Template: ssh, mysql, postgresql, sqlserver, s3, minio, oss, redis, elasticsearch, neo4j, or http."
+            "Template: ssh, mysql, postgresql, sqlserver, mongodb, s3, minio, oss, redis, kafka, rabbitmq, elasticsearch, neo4j, or http."
     )
     var template: String?
     @Flag var json = false
