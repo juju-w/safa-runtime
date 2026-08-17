@@ -263,6 +263,45 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **FR-003k**: Alias changes through `edit` MUST preserve the immutable resource identifier and its
   credential bindings, and MUST pass the same atomic catalog-wide collision check as `add`. Display
   labels MAY repeat because they are descriptive and MUST NOT be accepted as execution selectors.
+- **FR-003l**: Resource-template schemas and adapter bindings MUST be versioned built-ins owned and
+  validated by the signed Runtime. The Agent Skill MAY contain only concise template-selection
+  guidance and stable template identifiers; it MUST NOT define, inject, override, or transmit a
+  template's protected fields, validation rules, adapter, or health check. Adding a template in MVP
+  therefore requires reviewed Runtime code, tests, and a Runtime release rather than editing
+  `SKILL.md` or loading an arbitrary local template file.
+- **FR-003m**: Every template MUST reuse the same small common resource model: generated immutable
+  identifier; unique canonical alias; optional non-unique display label and safe tags; immutable
+  template identifier and version; lifecycle and health state; protected notes and route; and typed
+  template fields. Alias, display label, safe tags, and template selection are Agent-safe. Endpoint,
+  route, username, database or bucket names, topology, and inventory are protected. Passwords,
+  tokens, access keys, and private keys are secrets and MUST only enter the trusted local flow.
+- **FR-003n**: The first built-in `ssh` template MUST collect, in one trusted local add/edit flow,
+  endpoint, port with default 22, existing remote username, route mode, authentication mode and
+  device-protected credential, and verified host identity. Operating-system and inventory values
+  SHOULD be discovered after connection rather than required from the Agent. Sudo capability and
+  any sudo credential remain separate from SSH registration. The first `sqlserver` template MUST
+  similarly collect endpoint, port with default 1433, optional database, username, password,
+  connection route, encryption enabled by default, certificate-verification choice, and connection
+  identity verification. Unsupported authentication modes or instance discovery MUST fail with a
+  clear limitation rather than exposing additional ad hoc fields.
+- **FR-003o**: `resource add [ALIAS] [--template TEMPLATE]` MUST be usable when the Agent supplies
+  only a safe alias, or no alias when the trusted local flow is responsible for choosing one. An
+  obvious template MAY be selected by the Agent; otherwise the template selector MUST appear in the
+  trusted local flow. That single flow MUST collect all remaining fields, verify the target and
+  credential, and activate the resource. Normal success MUST NOT require the Agent to understand or
+  invoke setup, verification, enable, or credential commands.
+- **FR-003p**: `resource edit ALIAS` MUST open the same trusted template form with existing
+  non-secret protected values available locally and secret fields represented only as
+  configured/missing. The user MUST be able to keep or replace a credential without revealing its
+  current value. Edit MUST cover alias and display changes, connection changes, credential rotation,
+  and enabled/disabled state. It MUST verify a changed active configuration before atomic commit and
+  preserve the prior working revision on cancellation or failure.
+- **FR-003q**: The Skill's Agent workflow for resource creation MUST remain deterministic and short:
+  list safe aliases; invoke one `resource add` only after an explicit user request; follow only the
+  Runtime's structured safe next action; then show the resulting safe summary. The Agent MUST NOT
+  ask which protected fields a template contains, collect those values in conversation, or invent a
+  secondary setup step. Runtime errors MUST say whether the user should retry `add`, use `edit` for
+  an existing alias, or take a trusted local remediation.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private
@@ -401,6 +440,12 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **SC-015**: Default list/show responses contain zero protected fields without prompting; authorized
   protected show tests return only allowlisted non-secret details, and denied or cancelled prompts
   return no partial protected data or reusable authorization.
+- **SC-016**: A basic Agent that knows only `list`, `add`, `show`, `edit`, and `remove` can register
+  and later update synthetic SSH and SQL Server resources without learning either template's field
+  schema and without requesting a protected value in conversation.
+- **SC-017**: One successful add produces an active verified resource; one cancelled or failed add
+  produces no ambiguous selectable resource, and one failed edit leaves the previously active
+  revision executable and unchanged.
 
 ### Post-MVP Sync Outcomes
 
