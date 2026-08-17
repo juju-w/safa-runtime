@@ -46,6 +46,16 @@ arguments, environment, output, and audit record contain no credential.
    **Then** SAFA returns a non-secret not-found result and the Agent does not ask for a password.
 4. **Given** a resource is unreachable or has a changed host identity, **When** a check is attempted,
    **Then** SAFA fails closed and returns an actionable diagnostic without retrying insecurely.
+5. **Given** a new host is not yet present in OpenSSH configuration, **When** the local user creates
+   its resource profile, **Then** a trusted local configuration flow collects the endpoint, port,
+   username, and route without placing those values in Agent-visible arguments, input, output, or
+   logs.
+6. **Given** a draft resolves to an existing remote username, **When** managed-key setup is chosen,
+   **Then** SAFA enrolls a device public key for that exact user, verifies the new key before
+   activation, and neither creates a remote user nor silently replaces the bootstrap credential.
+7. **Given** the configured remote user may have sudo capability, **When** SSH setup completes,
+   **Then** sudo discovery or enrollment remains a separate operation and setup neither requests a
+   sudo password nor modifies the user's password or sudo policy.
 
 ---
 
@@ -174,6 +184,9 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - The user deletes a resource while a grant or command is active.
 - System time changes while a time-limited grant exists.
 - The Mac is offline during installation, approval, audit, or normal execution.
+- A second Mac receives synchronized resource configuration before it has a local device credential.
+- The user signs out of iCloud, disables iCloud Keychain, resets encrypted CloudKit data, or creates
+  conflicting resource edits on two devices while one is offline.
 
 ## Requirements *(mandatory)*
 
@@ -192,6 +205,23 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **FR-003**: The system MUST collect and update endpoints, usernames, routes, passwords, private-key
   references, sudo credentials, and recovery material through a trusted flow outside Agent-visible
   input and output.
+- **FR-003a**: Agent-facing SSH-config import and refresh operations MUST accept only logical aliases
+  and non-secret profile selections. They MUST NOT accept an endpoint, port, username, password,
+  key path, or sudo password.
+- **FR-003b**: A trusted local configuration flow MUST allow the user to create a resource for a new
+  host without first adding an OpenSSH configuration entry. It MUST deliver protected connection
+  fields directly to the Broker without echoing them to Agent-visible output or logs.
+- **FR-003c**: The product MUST distinguish initial import, draft refresh, and protected direct
+  configuration as separate user intents. Refreshing an OpenSSH alias MUST NOT silently retarget an
+  active resource with an established credential or trusted host identity.
+- **FR-003d**: Setup MUST bind authentication to the existing username stored in the draft and MUST
+  verify that the remote session resolves to that username. A managed-key setup mode MAY enroll a
+  device-generated public key for that user, but MUST NOT create a remote user, MUST verify the new
+  identity before activation, and MUST preserve the prior bootstrap path on failure.
+- **FR-003e**: SSH setup and sudo enrollment MUST remain separate capabilities. Setup MUST NOT accept
+  or change a sudo password or sudo policy. Passwordless sudo MAY be detected non-interactively;
+  any sudo secret MUST be enrolled through a distinct trusted local flow and stored as a separate
+  device-protected credential.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private
@@ -242,6 +272,29 @@ then confirm that the user can reconstruct the sequence without finding credenti
   release, but their resource profiles MUST fit the common encrypted directory rather than require a
   second inventory or credential architecture.
 
+### Post-MVP Same-User Device Sync Requirements
+
+- **FR-F01**: Same-user iCloud synchronization MUST be optional. Local resource discovery and
+  execution MUST continue to work without an iCloud account or network connection.
+- **FR-F02**: Synchronization MUST transfer only an authenticated, encrypted resource catalog such
+  as aliases, protected endpoints, ports, usernames, host identities, relationships, and policy.
+  It MUST NOT synchronize the live local `vault.json` file, its device rollback marker, or a
+  `ThisDeviceOnly` vault key as an opaque shared filesystem artifact.
+- **FR-F03**: Secure Enclave keys, device-bound SSH credentials, sudo passwords, and other
+  device-protected credentials MUST remain local by default. A resource discovered on another Mac
+  MUST be non-executable with local credential health `reenroll_required` until that device enrolls
+  and verifies its own credential.
+- **FR-F04**: A new Mac signed into the same authorized iCloud account MUST be able to recover the
+  resource catalog without re-entering endpoints, ports, usernames, or topology. Device enrollment
+  MAY add that Mac's public key to the already configured remote user but MUST NOT create another
+  remote user or copy an exportable private key from an existing Mac.
+- **FR-F05**: Synchronization MUST define deterministic conflict resolution, authenticated revision
+  handling, deletion semantics, offline reconciliation, and fail-closed behavior for iCloud logout,
+  keychain reset, encrypted-data reset, or an unavailable synchronization service.
+- **FR-F06**: Synchronizable credentials, if ever offered as an explicit convenience mode, MUST be
+  separately consented, clearly distinguish their larger multi-device blast radius, and MUST NOT
+  weaken the default device-bound credential mode.
+
 ### Key Entities
 
 - **Resource**: A logical infrastructure target with canonical/alternate aliases, an extensible type,
@@ -259,6 +312,10 @@ then confirm that the user can reconstruct the sequence without finding credenti
   revocation, or security-state change.
 - **Runtime Package**: The versioned and verified macOS companion components associated with a Skill
   release.
+- **Device Enrollment**: The local credential and verification state that authorizes one Mac to use
+  a synchronized resource. It is distinct from the resource's portable encrypted configuration.
+- **Synchronized Resource Catalog**: The optional same-user encrypted representation of resource
+  configuration and topology. It excludes device-bound credentials and local rollback state.
 
 ## Success Criteria *(mandatory)*
 
@@ -284,6 +341,22 @@ then confirm that the user can reconstruct the sequence without finding credenti
   policy decision, while audit records contain no unredacted test secrets.
 - **SC-010**: A clean installation on unsupported platforms or with an unverifiable runtime performs
   zero remote actions and returns a clear remediation path.
+- **SC-011**: A user can configure a new synthetic host without placing its endpoint, username, or
+  credential in Agent-visible arguments, standard streams, logs, or conversation.
+- **SC-012**: Managed-key setup for a synthetic existing user changes no remote account identity or
+  sudo policy, preserves the bootstrap path until verification succeeds, and activates only after
+  the device-generated key authenticates as that same user.
+
+### Post-MVP Sync Outcomes
+
+- **SC-F01**: A second Mac signed into the authorized iCloud account discovers 100% of synchronized
+  resource aliases and protected configuration without re-entry while receiving zero reusable
+  credential material from the first Mac.
+- **SC-F02**: Before local enrollment, every synchronized resource on the second Mac is
+  non-executable and reports credential health `reenroll_required`; after enrollment, execution is
+  possible only with that Mac's verified credential.
+- **SC-F03**: Concurrent edits, offline recovery, iCloud logout, and encrypted-key reset never
+  silently roll back a newer resource revision or fall back to an unauthenticated local copy.
 
 ## Assumptions
 
