@@ -2,8 +2,8 @@
 
 These instructions apply to the native runtime repository. SAFA is security-sensitive: prefer small,
 reviewable changes; fail closed; never weaken a trust boundary to make development or CI easier.
-The working runtime is Swift/macOS. Rust is the future Linux/Windows runtime core and must remain
-truthful about its incomplete support.
+The only implemented runtime is Swift/macOS. Do not add speculative platform scaffolding before a
+concrete platform implementation is approved.
 
 ## Mandatory project skills
 
@@ -21,18 +21,14 @@ truthful about its incomplete support.
 - `juju-w/safa` owns the Agent Skill, public CLI/JSON/resource contracts, runtime manifests, and
   product documentation. Do not independently redefine those external contracts here.
 - The root Swift package and `Apps/SAFA` own the current macOS runtime.
-- `Platforms/Rust` owns the future Rust runtime core and platform adapters. Do not copy macOS XPC,
-  Keychain, or authorization assumptions into the platform-neutral Rust core.
-- A Rust scaffold is not a supported Linux or Windows runtime. Do not publish a binary, add a
-  platform manifest, or advertise support before conformance and security gates exist.
+- Future platform runtimes belong in isolated platform directories only when their implementation
+  starts. Do not copy macOS XPC, Keychain, or authorization assumptions into another platform.
+- Do not publish a binary, add a platform manifest, or advertise support before that platform's
+  conformance and security gates exist.
 - Keep platform credential stores and IPC behind narrow adapters. Never add a plaintext credential
   fallback for portability.
 - Each platform publishes one Runtime package, but the Agent-facing CLI and vault-authoritative
   Broker/daemon remain separate processes inside it.
-
-For Rust changes, run `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-and `cargo test --workspace` from `Platforms/Rust`. Prefer the standard library until a dependency
-has a concrete security or maintenance benefit.
 
 ## Development workflow
 

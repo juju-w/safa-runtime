@@ -5,14 +5,12 @@ trusted local boundary that owns resource metadata, credential use, user authori
 remote transport, and bounded output.
 
 [![CI](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml)
-[![Rust scaffold](https://github.com/juju-w/safa-runtime/actions/workflows/rust.yml/badge.svg)](https://github.com/juju-w/safa-runtime/actions/workflows/rust.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > [!IMPORTANT]
 > The Swift/macOS diagnostic Runtime is an implementation preview. No signed/notarized public
-> Runtime package, tag, GitHub Release, or Skill package has been published. The Rust workspace
-> contains a non-shipping, fail-closed CLI contract shell; it is not Linux or Windows support and
-> does not replace the working Swift/macOS CLI.
+> Runtime package, tag, GitHub Release, or Skill package has been published. Other platform Runtimes
+> are planned but are not scaffolded or claimed as supported yet.
 
 ## One Runtime package, isolated internal authority
 
@@ -62,9 +60,6 @@ must pair Broker policy with a reviewed native authorization mechanism for prote
 Package.swift, Sources/, Apps/, Tests/
     Swift/macOS Runtime implementation and security tests
 
-Platforms/Rust/
-    Non-shipping Rust CLI contract shell, platform-neutral core, and future adapters
-
 specs/001-secure-agent-access/
     Runtime implementation history, threat decisions, and macOS development journey
 ```
@@ -91,21 +86,6 @@ xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
 
 For a signed development journey, see
 [`specs/001-secure-agent-access/quickstart.md`](specs/001-secure-agent-access/quickstart.md).
-
-## Rust boundary validation
-
-```bash
-cd Platforms/Rust
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-The Rust `safa` executable currently implements only local `version`, fail-closed `doctor`, stable
-JSON envelopes, and invocation errors. It consumes a pinned copy of the canonical product fixture.
-It has no Broker client, credential access, authorization, daemon, or remote transport and is not
-assembled into `SAFA.app`. Protected commands remain on the Swift/macOS Runtime until a native
-Broker client and the full platform gates are complete.
 
 ## Architecture and contribution rules
 

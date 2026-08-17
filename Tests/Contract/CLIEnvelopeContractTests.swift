@@ -4,8 +4,8 @@ import Testing
 
 @Suite("CLI v1 envelope contract")
 struct CLIEnvelopeContractTests {
-    @Test("Swift and Rust share the canonical version fixture")
-    func sharedVersionFixture() throws {
+    @Test("Swift matches the canonical version fixture")
+    func canonicalVersionFixture() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()

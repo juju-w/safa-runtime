@@ -19,5 +19,3 @@ xcuserdata/
 *.vault
 *.vault.*
 audit*.jsonl
-
-/Platforms/Rust/target/
