@@ -112,6 +112,21 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T044 [US1] Implement argument-based `exec` submission and result rendering in `Sources/SAFACLI/SAFACommand.swift`
 - [X] T045 [US1] Add request/decision/execution audit emission for the MVP path in `Sources/SAFABroker/AuditService.swift`
 - [X] T046 [US1] Complete the synthetic end-to-end MVP and leakage assertions in `Tests/Integration/ReadOnlySSHJourneyTests.swift`
+- [ ] T046a [P] [US1] Add permutation-invariance, parallel-edge, provenance, freshness, visibility,
+  and no-secret topology domain tests in `Tests/Unit/TopologyGraphTests.swift` and
+  `Tests/Security/TopologyProjectionLeakageTests.swift`
+- [ ] T046b [P] [US1] Add contract fixtures for node/edge tables, reachability adjacency,
+  dependency-impact reverse adjacency, bounded dense matrices, proofs, and truncation in
+  `Tests/Contract/TopologyProjectionContractTests.swift`
+- [ ] T046c [US1] Implement the revisioned desired/observed/derived topology domain and relation
+  validation in `Sources/SAFADomain/TopologyGraph.swift`
+- [ ] T046d [US1] Implement deterministic bounded neighborhood, path, reachability, cycle, and
+  dependency-set operations with proof edge IDs in `Sources/SAFABroker/TopologyGraphService.swift`
+- [ ] T046e [US1] Implement task-specific safe projections and stable ordering in
+  `Sources/SAFAProtocol/TopologyProjectionV1.swift`; diagrams remain derived non-authoritative
+  output and are not required for this task
+- [ ] T046f [US1] Bind Agent proposals only to desired/asserted edges and require signed adapter or
+  Broker evidence for verified observed/derived edges in `Sources/SAFABroker/TopologyService.swift`
 
 **Checkpoint**: User Story 1 is independently demonstrable and is the first releasable diagnostic
 MVP, even before arbitrary elevated command approval is added.

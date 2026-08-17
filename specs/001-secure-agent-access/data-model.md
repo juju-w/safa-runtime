@@ -66,6 +66,40 @@ total memory, root-filesystem capacity/free space, hardware vendor/model, and Do
 version when present. Missing optional values do not block activation; account or platform mismatch
 does.
 
+## TopologyGraph
+
+Represents relationships that cannot be faithfully modeled by a tree. The graph is directed, typed,
+attributed, and permits parallel edges. It is versioned independently from individual resources.
+
+| Field | Type | Rules |
+|---|---|---|
+| `revision` | UInt64 | Changes on every graph mutation or verification-state change |
+| `nodes` | `TopologyNode` list | Stable identity; storage order is non-semantic |
+| `edges` | `TopologyEdge` list | Explicit direction; storage order is non-semantic |
+
+A `TopologyNode` has an immutable ID, kind (`resource`, `site`, `security-domain`,
+`network-segment`, `runtime`, or `route`), optional Resource ID, stable semantic alias, visibility,
+and bounded typed attributes. Resource aliases reuse the directory selector; context aliases occupy
+reviewed namespaces. Raw network coordinates never become Agent-visible node attributes.
+
+A `TopologyEdge` has an immutable ID, source/target IDs, relation, layer (`desired`, `observed`, or
+`derived`), verification (`asserted`, `verified`, `stale`, or `failed`), origin, visibility,
+observation/expiry timestamps, Broker-only evidence reference, and revision. Initial relations are
+`located-in`, `member-of`, `runs-on`, `depends-on`, `backed-by`, `replicates-to`, `routed-via`, and
+`can-reach`.
+
+Agent proposals may create or update only desired/asserted logical edges. A signed adapter or probe
+owns observed evidence; deterministic Broker graph operations own derived edges and proof paths.
+Credential bindings are not graph nodes or Agent-visible edge properties.
+
+## TopologyProjection
+
+A transient, bounded Agent DTO derived from one graph revision. It contains safe semantic aliases,
+a node table, typed directed edge table, task, declared ordering, roots, Broker-computed proofs, and
+a truncation flag. Inventory, reachability, dependency-impact, and dense-comparison tasks select
+different views; there is deliberately no universal serialization. Visual diagrams are derived
+artifacts and cannot be read back as trusted graph state.
+
 ## CredentialReference
 
 Opaque metadata pointing to protected material held by Keychain or Secure Enclave.

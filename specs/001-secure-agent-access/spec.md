@@ -56,6 +56,16 @@ arguments, environment, output, and audit record contain no credential.
 7. **Given** the configured remote user may have sudo capability, **When** SSH setup completes,
    **Then** sudo discovery or enrollment remains a separate operation and setup neither requests a
    sudo password nor modifies the user's password or sudo policy.
+8. **Given** resources span hosts, services, storage, network segments, and routes, **When** the
+   Agent asks where a service runs or whether one resource can reach another, **Then** SAFA returns
+   a bounded task-specific topology projection with stable aliases and a Broker-computed proof
+   rather than requiring the Agent to infer the answer from a diagram or full graph dump.
+9. **Given** the Agent proposes that two resources are connected, **When** the proposal is stored,
+   **Then** it remains a desired/asserted claim and cannot select a route, credential, or execution
+   authority until a trusted adapter or Broker probe independently verifies the actual relationship.
+10. **Given** the same topology is persisted with nodes and edges in a different order, **When** the
+    same topology query is run, **Then** normalized projections, exact results, and proof paths are
+    identical.
 
 ---
 
@@ -248,7 +258,7 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **FR-003h**: `show` MUST return a non-interactive safe summary by default. Its allowlisted summary
   MAY include canonical alias, display label, template and version, safe tags, lifecycle and health
   state, declared capabilities, and last-check time; it MUST exclude endpoints, ports, usernames,
-  routes, database or bucket names, topology, credential references, and secrets. A protected-details
+  routes, database or bucket names, unreviewed topology, credential references, and secrets. A protected-details
   option MAY disclose the configured non-secret connection and inventory fields needed for local
   diagnosis only after macOS device-owner authorization. Denial, cancellation, or prompt rate limits
   MUST return no protected fields. Even after authorization, `show` MUST never disclose a password,
@@ -275,7 +285,9 @@ then confirm that the user can reconstruct the sequence without finding credenti
   identifier; unique canonical alias; optional non-unique display label and safe tags; immutable
   template identifier and version; lifecycle and health state; protected notes and route; and typed
   template fields. Alias, display label, safe tags, and template selection are Agent-safe. Endpoint,
-  route, username, database or bucket names, topology, and inventory are protected. Passwords,
+  route, username, database or bucket names, physical topology, and inventory are protected. A
+  separately reviewed logical-topology projection MAY expose only safe aliases, abstract node
+  kinds, allowlisted relations, verification state, and evidence freshness. Passwords,
   tokens, access keys, and private keys are secrets and MUST only enter the trusted local flow.
 - **FR-003n**: The first built-in `ssh` template MUST collect, in one trusted local add/edit flow,
   endpoint, port with default 22, existing remote username, route mode, authentication mode and
@@ -338,6 +350,35 @@ then confirm that the user can reconstruct the sequence without finding credenti
   tunnel readiness checks, and sanitized credential-health checks without returning credential
   values. User creation, credential discovery from source trees, and bulk credential import remain
   explicit high-risk local workflows and MUST NOT run automatically during ordinary resource add.
+- **FR-003w**: Infrastructure topology MUST be represented canonically as a directed, typed,
+  attributed multigraph with immutable node and edge identities, explicit edge direction, parallel
+  edge support, revisions, visibility, provenance, verification state, and evidence freshness. The
+  canonical graph MUST NOT be a Mermaid document, rendered image, hierarchy, prose description, or
+  serialization whose list order carries hidden meaning.
+- **FR-003x**: Topology MUST separate `desired`, `observed`, and `derived` layers. A user or Agent MAY
+  propose a desired/asserted logical edge. Only a signed Runtime adapter or Broker probe MAY create
+  observed verification evidence, and only the Broker graph engine MAY create a verified derived
+  path. No proposal, natural-language statement, or visual interpretation may self-promote to
+  verified state, bind a credential, or authorize execution.
+- **FR-003y**: Agent-facing topology output MUST use a bounded `dev.safa.topology/v1` projection
+  containing a safe node table, typed directed edge table, task, declared ordering, graph revision,
+  roots, Broker-computed proofs, and explicit truncation state. The Runtime MUST choose the view by
+  task: node/edge tables for inventory and placement, adjacency plus proof paths for reachability,
+  reverse adjacency plus an affected set for dependency impact, and a bounded relation matrix only
+  for a small homogeneous dense comparison. A human diagram MAY accompany the projection but MUST
+  NOT be its substitute or carry authority through layout, color, proximity, or arrow routing.
+- **FR-003z**: Exact neighborhood, reachability, path, cycle, and dependency-set results MUST be
+  computed by deterministic Broker graph operations against one explicit graph revision. Queries
+  MUST bound roots, relations, direction, hops, nodes, and edges and SHOULD return a connected
+  question-relevant subgraph instead of the complete catalog. Semantic or embedding retrieval MAY
+  locate candidate roots but MUST NOT establish connectivity, trust, credential selection, or
+  execution authority.
+- **FR-003aa**: Agent-visible logical topology MUST be an explicit trusted-local allowlist. It MAY
+  expose resource/context aliases, abstract site or network labels, placement, dependencies,
+  sanitized reachability result, verification state, and freshness. It MUST exclude IPs, CIDRs,
+  DNS endpoints, ports, usernames, database or bucket names, physical route coordinates, host
+  identities, raw probe evidence, policy internals, credential roles, credential references, and
+  secret values.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private
@@ -438,6 +479,11 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **Resource Template**: A versioned schema and adapter binding that defines how one resource kind
   is configured, validated, authenticated, health-checked, displayed, and edited while reusing the
   common resource lifecycle.
+- **Topology Graph**: The revisioned directed typed multigraph that links resources and abstract
+  context nodes while separating desired claims, observed facts, and Broker-derived results.
+- **Topology Projection**: A transient bounded, task-specific Agent DTO containing only reviewed
+  aliases and relations plus Broker-computed proofs. It is not the protected graph or an execution
+  authorization.
 
 ## Success Criteria *(mandatory)*
 
@@ -487,6 +533,17 @@ then confirm that the user can reconstruct the sequence without finding credenti
   alias, route relationship, service relationship, and credential role in the encrypted directory
   while leakage tests find zero real endpoint, username, credential locator, or secret in repository
   changes, Agent-visible output, logs, and process arguments.
+- **SC-019**: Permuting storage order and replacing fixture UUID ordering across at least 100
+  synthetic topology cases changes zero normalized query results, proof paths, or projection hashes.
+- **SC-020**: Reachability, placement, and dependency-impact tests return the correct Broker-computed
+  result and supporting edge IDs without asking the Agent to derive connectivity from prose, a
+  full graph dump, or a rendered image.
+- **SC-021**: Security tests prove that an Agent-created desired edge, a stale observation, a forged
+  diagram, and an embedding-retrieved candidate each create zero route, credential, grant, or
+  execution authority.
+- **SC-022**: Topology disclosure tests find zero protected endpoint, route coordinate, username,
+  host identity, raw evidence, policy, credential reference, or secret in every Agent projection,
+  including truncated and failed-query responses.
 
 ### Post-MVP Sync Outcomes
 
@@ -505,8 +562,10 @@ then confirm that the user can reconstruct the sequence without finding credenti
   require a separate future specification.
 - Target servers already expose SSH through the user's existing network path. SAFA does not create
   VPNs, firewall rules, JumpServer accounts, or remote hosts in the initial release.
-- Resource aliases such as `nas.home` are considered safe for Agent discovery; endpoints, routes,
-  usernames, credential material, and infrastructure topology are sensitive.
+- Resource aliases such as `nas.home` are considered safe for Agent discovery. A trusted local flow
+  may additionally classify abstract logical topology among safe aliases as Agent-visible;
+  endpoints, physical routes, network coordinates, usernames, credential material, and all
+  unreviewed topology remain sensitive.
 - Read-only versus state-changing behavior can be conservatively classified; ambiguous requests are
   escalated rather than silently approved.
 - Users may deliberately choose temporary full access after a clear warning; SAFA limits and audits

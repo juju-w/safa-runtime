@@ -249,8 +249,7 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 2. Unknown or newly imported metadata keys fail closed as private. A configuration file cannot mark
    its own field public.
 3. `safa resource show ALIAS --details --json` asks macOS to verify the local user with Touch ID or
-   login credentials. Denial and prompt-rate-limiting return no detail object. The hidden `inspect`
-   command remains a compatibility alias during the preview.
+   login credentials. Denial and prompt-rate-limiting return no detail object.
 4. An approved inspection may return alternate aliases, access methods, endpoint, username,
    security domain, non-secret typed metadata, relationships by alias, and identity status. It never
    returns secrets or credential/key locators.
@@ -305,6 +304,35 @@ SAFA uses Apple's `swift-argument-parser` and follows these rules:
 - A stored service connection is `needs_verification`, not `ready`. Only its typed broker adapter
   may record revision-bound verification evidence. Changing endpoint, username, access method, or
   credential clears the evidence before the edited revision is returned.
+
+### Topology graph and LLM projection
+
+Resource placement, dependencies, storage relationships, network membership, routes, and
+reachability form a directed typed multigraph. They are not stored as a tree or inferred from a
+Mermaid/SVG layout. The graph separates desired claims, Broker-observed evidence, and deterministic
+derived paths; only the latter two may be verified.
+
+The Agent never receives the whole protected graph. A task projector returns a bounded connected
+subgraph using stable aliases:
+
+| Task | Projection |
+|---|---|
+| inventory and placement | node table plus typed edge list |
+| reachability and route explanation | adjacency list plus Broker-computed proof paths |
+| dependency impact | reverse adjacency plus computed affected set |
+| small homogeneous dense comparison | bounded relation matrix plus stable legend |
+
+Persisted ordering is normalized before projection. Reachability views use source-rooted
+breadth-first order, dependency views use target-rooted reverse order, and every projection declares
+its ordering and graph revision. The Broker computes exact graph operations; the LLM plans,
+explains, and may propose desired logical edges but does not calculate or self-verify operational
+authority.
+
+Abstract aliases and reviewed logical edges may be Agent-visible. IPs, CIDRs, ports, usernames,
+physical route coordinates, evidence records, security policy, and credential bindings remain
+protected. Human diagrams and optional multimodal views are derived from the same projection and
+cannot be parsed back into verified graph state. The normative DTO and trust rules are in
+`specs/001-secure-agent-access/contracts/topology-projection-v1.md`.
 
 The normative schema and initial host keys are defined in
 `specs/001-secure-agent-access/contracts/resource-directory-v1.md`.

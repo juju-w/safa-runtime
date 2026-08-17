@@ -290,3 +290,45 @@ Behaviors to replace:
 
 The migration rule is behavioral compatibility, not code compatibility: no production alias,
 endpoint, username, Keychain account, or credential is copied into this repository or its tests.
+
+## 12. Infrastructure topology representation for Agents
+
+**Decision**: Store topology as a directed, typed, attributed multigraph and generate a bounded,
+task-specific textual projection for the Agent. Do not choose a tree, Mermaid diagram, screenshot,
+or one fixed serialization as the universal representation.
+
+The evidence does not support a universal best graph encoding:
+
+- [Talk like a Graph](https://arxiv.org/abs/2310.04560) finds that results vary materially with the
+  encoder, graph task, and graph structure.
+- [Can Graph Descriptive Order Affect Solving Graph Problems with LLMs?](https://aclanthology.org/2025.acl-long.321/)
+  finds that ordering changes performance and that the effect is task-dependent.
+- [GraCoRe](https://aclanthology.org/2025.coling-main.531/) also reports effects from semantic
+  enrichment and node ordering, while a longer context alone does not guarantee better graph
+  understanding.
+- [G-Retriever](https://proceedings.neurips.cc/paper_files/paper/2024/hash/efaf1c9726648c8ba363a5c927440529-Abstract-Conference.html)
+  retrieves a connected question-relevant subgraph and returns its supporting nodes and edges,
+  avoiding whole-graph flattening and reducing hallucination.
+- [GITA](https://proceedings.neurips.cc/paper_files/paper/2024/hash/00295cede6e1600d344b5cd6d9fd4640-Abstract-Conference.html)
+  shows benefits from combined visual and textual graph input in a purpose-trained multimodal
+  framework. Conversely, [Visual Graph Arena](https://openreview.net/forum?id=BCJPAmlfxv) reports
+  severe layout sensitivity in current vision and multimodal models.
+
+**Projection policy**:
+
+- inventory and placement use a node table plus typed edge list;
+- reachability and path questions use source-rooted adjacency plus Broker-computed proof paths;
+- dependency impact uses reverse adjacency plus a computed affected set;
+- a small, homogeneous dense relation may use a bounded matrix with a stable alias legend;
+- visual diagrams are generated for people or as auxiliary multimodal context only and always ship
+  beside the canonical textual projection and Broker proof.
+
+The Runtime canonicalizes stored node/edge identity before projection and declares the task and
+ordering in every projection. Large graphs are reduced with explicit hop/node/edge limits. MVP uses
+deterministic graph traversal instead of embedding retrieval so exact connectivity remains
+reproducible and auditable.
+
+**Trust decision**: Split logical maintenance from operational truth. A user or Agent may propose a
+desired/asserted logical edge. Only signed adapters and Broker probes create observed evidence, and
+only the Broker graph engine creates derived paths. No Agent claim, diagram, or natural-language
+interpretation can mark an edge verified, select a credential, or authorize execution.
