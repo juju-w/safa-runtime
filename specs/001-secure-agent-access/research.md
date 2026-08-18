@@ -224,6 +224,13 @@ Agent review remains bounded advisory text. The existing runtime still executes 
 allowlist until request state, trusted approval, grant binding, and sudo isolation are implemented;
 the classifier alone does not grant new authority.
 
+`GrantMatcher` now implements the pure authorization half of scoped grants. It validates request
+lifecycle, caller, resource/revision, privilege ceiling, policy version, use count, revocation,
+exact/prefix/full-access scope, wall expiry, monotonic expiry, and clock rollback. Exact grants are
+one-shot; prefix grants do not inherit stdin, TTY, or working-directory authority. Atomic grant
+selection/consumption remains owned by the future Broker request service rather than this pure
+matcher.
+
 ## 8. Output, redaction, and audit
 
 **Decision**: Stream output through the broker, cap Agent-visible stdout and stderr independently,

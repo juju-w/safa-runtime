@@ -247,6 +247,18 @@ hard blocks for integrity failure, identity mismatch, invalid caller, and unsupp
 Any resource revision, caller mismatch, privilege escalation, scope mismatch, expiry, use exhaustion,
 or revocation prevents use.
 
+Grant matching is pure and fail-closed. Exact scope stores the `dev.safa.command/v1` fingerprint and
+is valid only as a one-use grant. Prefix scope compares complete `exec` argument boundaries and does
+not implicitly cover Agent stdin, TTY, or a selected working directory. Full access may cover shell
+mode but remains bound to the same caller, resource revision, privilege ceiling, policy version,
+expiry, and use limit. Matching never consumes a grant; the Broker request service must re-check and
+increment usage in one serialized transaction before execution.
+
+Both wall-clock and continuous monotonic deadlines must remain valid. Issuance derives them from the
+same bounded duration; matching reconstructs the monotonic issue point, rejects a reset/rollback,
+and rejects wall-clock elapsed time that falls materially behind monotonic elapsed time. A Broker
+restart therefore cannot silently extend a persisted grant by resetting the monotonic clock.
+
 ## Policy
 
 | Field | Type | Rules |
