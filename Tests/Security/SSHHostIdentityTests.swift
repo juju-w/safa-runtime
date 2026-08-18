@@ -27,13 +27,25 @@ struct SSHHostIdentityTests {
         let argv = prepared.invocation.arguments.joined(separator: " ")
 
         #expect(config.contains("StrictHostKeyChecking yes"))
-        #expect(config.contains("UserKnownHostsFile"))
+        #expect(config.contains("UserKnownHostsFile \"\(prepared.knownHostsURL.path)\""))
         #expect(config.contains("GlobalKnownHostsFile /dev/null"))
+        let hostKeyAlias = "[\(prepared.opaqueHostAlias)]:2222"
+        #expect(config.contains("HostKeyAlias \(hostKeyAlias)"))
         #expect(!config.contains("StrictHostKeyChecking no"))
         #expect(knownHosts.contains("ssh-ed25519"))
+        #expect(!knownHosts.contains("203.0.113.10"))
         #expect(!argv.contains("203.0.113.10"))
         #expect(!argv.contains("diagnostic-user"))
         #expect(!argv.contains("synthetic-password"))
+
+        let lookup = Process()
+        lookup.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        lookup.arguments = ["-F", hostKeyAlias, "-f", prepared.knownHostsURL.path]
+        lookup.standardOutput = FileHandle.nullDevice
+        lookup.standardError = FileHandle.nullDevice
+        try lookup.run()
+        lookup.waitUntilExit()
+        #expect(lookup.terminationStatus == 0)
     }
 
     @Test("a changed host key fails closed before process launch")
@@ -77,14 +89,82 @@ struct SSHHostIdentityTests {
         #expect(!argv.contains("id with space"))
         #expect(!argv.contains("agent.sock"))
     }
+
+    @Test("Windows arguments are transported as data instead of shell syntax")
+    func windowsArgumentsAreEncoded() throws {
+        let resource = SyntheticSSHResource.make(status: .trusted, platform: .windows)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("safa-windows-ssh-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let prepared = try SSHConfigurationBuilder().prepare(
+            resource: resource,
+            command: try CommandSpec.exec(arguments: ["diagnose.exe", "a&whoami", "$env:PATH"]),
+            credential: .openSSH(
+                identityFiles: [URL(fileURLWithPath: "/synthetic/id")],
+                identityAgent: nil
+            ),
+            rootDirectory: root,
+            randomBytes: Data(repeating: 6, count: 20)
+        )
+        let remoteCommand = try #require(prepared.invocation.arguments.last)
+
+        #expect(remoteCommand.hasPrefix("powershell.exe -NoLogo -NoProfile -NonInteractive"))
+        #expect(!remoteCommand.contains("a&whoami"))
+        #expect(!remoteCommand.contains("$env:PATH"))
+    }
+
+    @Test("single-element Windows commands remain arrays after JSON decoding")
+    func singleWindowsArgumentRemainsAnArray() throws {
+        let remoteCommand = try SSHConfigurationBuilder.windowsPowerShellCommand(["whoami"])
+        let encodedScript = try #require(remoteCommand.split(separator: " ").last)
+        let scriptData = try #require(Data(base64Encoded: String(encodedScript)))
+        let script = try #require(String(data: scriptData, encoding: .utf16LittleEndian))
+
+        #expect(script.contains("$values = @("))
+        #expect(script.contains("ConvertFrom-Json"))
+    }
+
+    @Test("trusted Windows probes use one bounded PowerShell encoding layer")
+    func trustedWindowsPowerShellProbeIsSingleLayer() throws {
+        let resource = SyntheticSSHResource.make(status: .trusted, platform: .windows)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("safa-windows-probe-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let script = "Write-Output 'synthetic'"
+        let encoded = try #require(script.data(using: .utf16LittleEndian)?.base64EncodedString())
+
+        let prepared = try SSHConfigurationBuilder().prepareWindowsPowerShell(
+            resource: resource,
+            encodedScript: encoded,
+            credential: .openSSH(
+                identityFiles: [URL(fileURLWithPath: "/synthetic/id")],
+                identityAgent: nil
+            ),
+            rootDirectory: root,
+            timeoutSeconds: 15,
+            outputLimitBytes: 32 * 1_024,
+            randomBytes: Data(repeating: 7, count: 20)
+        )
+        let remoteCommand = try #require(prepared.invocation.arguments.last)
+
+        #expect(
+            remoteCommand
+                == "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand \(encoded)")
+        #expect(!remoteCommand.contains("FromBase64String"))
+    }
 }
 
 enum SyntheticSSHResource {
-    static func make(status: HostIdentityStatus) -> Resource {
+    static func make(
+        status: HostIdentityStatus,
+        platform: HostPlatform = .linux
+    ) -> Resource {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         return Resource(
             id: UUID(),
             alias: try! ResourceAlias("nas.home"),
+            classification: .host(platform: platform),
             endpoint: ResourceEndpoint(host: "203.0.113.10", port: 2222),
             username: "diagnostic-user",
             securityDomain: "synthetic",

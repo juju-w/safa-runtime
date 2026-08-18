@@ -11,7 +11,12 @@ enum ResourceSetupError: Error, Equatable, Sendable {
     case unsupportedRoute
     case hostIdentityUnavailable
     case authenticationUnavailable
-    case verificationFailed
+    case accountVerificationFailed
+    case authenticationRejected
+    case hostIdentityRejected
+    case routeUnavailable
+    case inventoryProbeFailed
+    case platformMismatch
     case invalidCredentialLocator
 }
 
@@ -69,7 +74,11 @@ protocol OpenSSHCredentialSourceResolving: Sendable {
 }
 
 protocol OpenSSHSetupVerifying: Sendable {
-    func verify(resource: Resource, locator: OpenSSHCredentialLocatorV1) async throws
+    func verify(
+        resource: Resource,
+        locator: OpenSSHCredentialLocatorV1,
+        observedAt: Date
+    ) async throws -> HostInventorySnapshot
 }
 
 struct OpenSSHResourceSetupService: ResourceSetupHandling {
@@ -116,13 +125,18 @@ struct OpenSSHResourceSetupService: ResourceSetupHandling {
         var candidate = existing
         candidate.hostIdentity = identity
         candidate.state = .active
-        try await verifier.verify(resource: candidate, locator: locator)
+        let inventory = try await verifier.verify(
+            resource: candidate,
+            locator: locator,
+            observedAt: now
+        )
 
         return try await resources.activateDiscoveredResource(
             alias: alias,
             expectedRevision: existing.revision,
             hostIdentity: identity,
             credentialLocator: try CanonicalCodec.encode(locator),
+            inventory: inventory,
             now: now
         )
     }
@@ -261,21 +275,40 @@ struct LocalOpenSSHCredentialSourceResolver: OpenSSHCredentialSourceResolving {
 struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
     private let transport: SSHTransport
     private let workingDirectory: URL
+    private let inventoryProbe: any OpenSSHHostInventoryProbing
 
     init(
         transport: SSHTransport = SSHTransport(),
-        workingDirectory: URL
+        workingDirectory: URL,
+        inventoryProbe: (any OpenSSHHostInventoryProbing)? = nil
     ) {
         self.transport = transport
         self.workingDirectory = workingDirectory
+        self.inventoryProbe =
+            inventoryProbe
+            ?? OpenSSHHostInventoryProbe(
+                transport: transport,
+                workingDirectory: workingDirectory
+            )
     }
 
-    func verify(resource: Resource, locator: OpenSSHCredentialLocatorV1) async throws {
+    func verify(
+        resource: Resource,
+        locator: OpenSSHCredentialLocatorV1,
+        observedAt: Date
+    ) async throws -> HostInventorySnapshot {
         let credential = try locator.credentialContext()
-        let checks: [([String], @Sendable (String) -> Bool)] = [
-            (["hostname"], { !$0.isEmpty }),
-            (["id", "-un"], { $0 == resource.username }),
-        ]
+        let checks: [([String], @Sendable (String) -> Bool)]
+        if resource.resolvedResourceType == .hostWindows {
+            checks = [
+                (["whoami"], { Self.windowsAccount($0, matches: resource.username) })
+            ]
+        } else {
+            checks = [
+                (["uname", "-n"], { !$0.isEmpty }),
+                (["id", "-un"], { $0 == resource.username }),
+            ]
+        }
         for (arguments, accepts) in checks {
             let result: ProcessExecutionResult
             do {
@@ -293,15 +326,59 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
                     )
                 )
             } catch {
-                throw ResourceSetupError.verificationFailed
+                throw ResourceSetupError.accountVerificationFailed
             }
             let output = String(decoding: result.stdout, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            if result.termination == .exit, result.exitCode == 255 {
+                throw Self.classifySSHFailure(result.stderr)
+            }
             guard result.termination == .exit, result.exitCode == 0,
                 !result.stdoutTruncated, accepts(output)
             else {
-                throw ResourceSetupError.verificationFailed
+                throw ResourceSetupError.accountVerificationFailed
             }
         }
+        return try await inventoryProbe.probe(
+            resource: resource,
+            credential: locator.credentialContext(),
+            observedAt: observedAt,
+            didLaunch: nil
+        )
+    }
+
+    static func classifySSHFailure(_ stderr: Data) -> ResourceSetupError {
+        let message = String(decoding: stderr.prefix(16 * 1_024), as: UTF8.self).lowercased()
+        if message.contains("host key verification failed")
+            || message.contains("remote host identification has changed")
+        {
+            return .hostIdentityRejected
+        }
+        if message.contains("permission denied")
+            || message.contains("no mutual signature")
+            || message.contains("not accessible: no such file")
+        {
+            return .authenticationRejected
+        }
+        if message.contains("connection refused")
+            || message.contains("operation timed out")
+            || message.contains("connection timed out")
+            || message.contains("no route to host")
+            || message.contains("connection reset")
+            || message.contains("connection closed")
+            || message.contains("could not resolve hostname")
+        {
+            return .routeUnavailable
+        }
+        return .accountVerificationFailed
+    }
+
+    private static func windowsAccount(_ output: String, matches expected: String?) -> Bool {
+        guard let expected, !expected.isEmpty else { return false }
+        let account = output.lowercased()
+            .split(whereSeparator: { $0 == "\\" || $0 == "/" })
+            .last
+            .map(String.init)
+        return account == expected.lowercased()
     }
 }

@@ -1,0 +1,10 @@
+{
+  "schema": "dev.safa.cli/v1",
+  "command": "resource.list",
+  "status": "completed",
+  "request_id": null,
+  "timestamp": "2026-04-18T09:30:00Z",
+  "data": { "resources": [], "next_cursor": null },
+  "warnings": [],
+  "next_action": null
+}

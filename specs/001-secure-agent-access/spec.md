@@ -1,5 +1,8 @@
 # Feature Specification: Secure Agent Access
 
+> Repository split: the canonical Agent Skill, public contracts, resolver, and distribution model
+> now live in `juju-w/safa`. This document remains the macOS Runtime implementation history.
+
 **Feature Branch**: `feat/001-secure-agent-access`
 
 **Created**: 2026-08-16
@@ -15,7 +18,8 @@ open or a managed server is compromised."
 **Delivery sequencing update**: The current phase is CLI-first. Match `ssh-hosts` behavior and prove
 the broker/Keychain/XPC/SSH security boundary without a custom product GUI. System Touch ID,
 Keychain, LocalAuthentication, and Authorization Services dialogs remain permitted security
-controls.
+controls. Before publication, replace the temporary JSON/human presentation with the Agent-only
+AXI/TOON `dev.safa.cli/v2` contract; internal IPC and persistence are not part of that public format.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -43,6 +47,26 @@ arguments, environment, output, and audit record contain no credential.
    **Then** SAFA returns a non-secret not-found result and the Agent does not ask for a password.
 4. **Given** a resource is unreachable or has a changed host identity, **When** a check is attempted,
    **Then** SAFA fails closed and returns an actionable diagnostic without retrying insecurely.
+5. **Given** a new host is not yet present in OpenSSH configuration, **When** the local user runs one
+   add workflow with the SSH template, **Then** that workflow collects configuration, verifies the
+   connection, and activates the resource without requiring a separate setup command or placing
+   protected values in Agent-visible arguments, input, output, or logs.
+6. **Given** a draft resolves to an existing remote username, **When** managed-key setup is chosen,
+   **Then** SAFA enrolls a device public key for that exact user, verifies the new key before
+   activation, and neither creates a remote user nor silently replaces the bootstrap credential.
+7. **Given** the configured remote user may have sudo capability, **When** SSH setup completes,
+   **Then** sudo discovery or enrollment remains a separate operation and setup neither requests a
+   sudo password nor modifies the user's password or sudo policy.
+8. **Given** resources span hosts, services, storage, network segments, and routes, **When** the
+   Agent asks where a service runs or whether one resource can reach another, **Then** SAFA returns
+   a bounded task-specific topology projection with stable aliases and a Broker-computed proof
+   rather than requiring the Agent to infer the answer from a diagram or full graph dump.
+9. **Given** the Agent proposes that two resources are connected, **When** the proposal is stored,
+   **Then** it remains a desired/asserted claim and cannot select a route, credential, or execution
+   authority until a trusted adapter or Broker probe independently verifies the actual relationship.
+10. **Given** the same topology is persisted with nodes and edges in a different order, **When** the
+    same topology query is run, **Then** normalized projections, exact results, and proof paths are
+    identical.
 
 ---
 
@@ -131,6 +155,23 @@ clearly, and subsequently uses the companion CLI without an external package man
 4. **Given** remote output contains text instructing the Agent to reveal credentials or run another
    command, **When** the Skill processes the output, **Then** it treats the content only as untrusted
    data and does not follow those instructions.
+5. **Given** any supported command succeeds, returns no rows, performs an idempotent no-op, or fails,
+   **When** the Agent reads stdout, **Then** it receives exactly one canonical TOON v4.1 document and
+   never has to select JSON or a human output mode.
+6. **Given** the Agent invokes the root or a command noun without a deeper verb, **When** safe live
+   state is available, **Then** SAFA returns a bounded content-first view with aggregates and relevant
+   command templates instead of a full manual.
+7. **Given** a list has many records, **When** the Agent uses the default view, **Then** each row has
+   no more than four reviewed fields, the output declares total/returned counts and truncation, and
+   additional fields require an allowlisted `--fields` request.
+8. **Given** output contains a large log or remote stream, **When** the soft limit is reached, **Then**
+   SAFA returns a preview, original size, and a parameterized `--full` next command while preserving
+   the Broker's hard limit and redaction.
+9. **Given** the Agent misspells a flag, **When** SAFA validates argv, **Then** it returns a structured
+   TOON usage error with the valid local flags and exit `2` before contacting the Broker or target.
+10. **Given** a user explicitly enables ambient Agent context, **When** a new session starts, **Then**
+    the integration injects only the bounded safe home view and captures no transcript, protected
+    topology, command history, or remote output for reuse.
 
 ---
 
@@ -171,6 +212,9 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - The user deletes a resource while a grant or command is active.
 - System time changes while a time-limited grant exists.
 - The Mac is offline during installation, approval, audit, or normal execution.
+- A second Mac receives synchronized resource configuration before it has a local device credential.
+- The user signs out of iCloud, disables iCloud Keychain, resets encrypted CloudKit data, or creates
+  conflicting resource edits on two devices while one is offline.
 
 ## Requirements *(mandatory)*
 
@@ -181,14 +225,189 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **FR-002**: The system MUST expose registered infrastructure through logical resource aliases and
   MUST allow the Agent to discover only non-secret metadata needed to select a resource.
 - **FR-002a**: The encrypted resource directory MUST support validated, extensible resource types,
-  access methods, typed metadata, alternate aliases, relationships, credential kinds, and
-  credential roles without accepting arbitrary JSON or embedded secrets.
-- **FR-002b**: List/show MUST expose only source-code-allowlisted summary fields. Protected inspect
-  MUST require macOS device-owner authentication, rate-limit prompts, return no details when denied,
-  and never disclose credentials, credential locators, key material, or host fingerprints.
+  independently versioned templates, host platforms, roles, access methods, typed metadata,
+  alternate aliases, relationships, credential kinds, and credential roles without accepting
+  arbitrary JSON or embedded secrets. Resource kind, host platform, and role MUST remain separate
+  dimensions; NAS is a host role rather than a host platform.
+- **FR-002b**: List/default-show MUST expose only source-code-allowlisted summary fields. Protected
+  show MUST require macOS device-owner authentication, rate-limit prompts, return no details when
+  denied, and never disclose credentials, credential locators, key material, or host fingerprints.
+- **FR-002c**: Every resource MUST have an immutable internal identifier and one canonical logical
+  alias. Canonical and alternate aliases MUST be unique across the complete local catalog, not only
+  within one template or resource type. Alias comparison MUST use a documented canonical form so
+  case or Unicode normalization cannot create two visually equivalent selectable resources.
+- **FR-002d**: `add` MUST reserve the canonical alias atomically before collecting protected values.
+  If that alias or any proposed alternate alias already belongs to an active, disabled, or draft
+  resource, the operation MUST return a conflict without overwriting or merging either resource and
+  MUST direct the user to `edit` or explicitly remove the existing resource. Concurrent adds MUST
+  produce at most one successful resource.
 - **FR-003**: The system MUST collect and update endpoints, usernames, routes, passwords, private-key
   references, sudo credentials, and recovery material through a trusted flow outside Agent-visible
   input and output.
+- **FR-003a**: The public resource-management surface MUST use the CRUD-oriented commands `list`,
+  `show`, `add`, `edit`, and `remove`. Adapter setup, verification, activation, disabling, enabling,
+  and protected inspection MUST be expressed as stages or options of those operations rather than
+  separate top-level resource commands.
+- **FR-003b**: A trusted local configuration flow MUST allow the user to create a resource for a new
+  host without first adding an OpenSSH configuration entry. It MUST deliver protected connection
+  fields directly to the Broker without echoing them to Agent-visible output or logs.
+- **FR-003c**: `add` MUST own template selection, protected configuration collection, credential and
+  identity verification, and activation as one user workflow. An interrupted or remediable add MAY
+  preserve an internal draft, but the user MUST resume it through `edit` rather than a separate
+  setup command.
+- **FR-003d**: The SSH setup stage inside `add` or `edit` MUST bind authentication to the existing
+  username stored in the draft and MUST verify that the remote session resolves to that username. A
+  managed-key mode MAY enroll a device-generated public key for that user, but MUST NOT create a
+  remote user, MUST verify the new identity before activation, and MUST preserve the prior bootstrap
+  path on failure.
+- **FR-003e**: SSH setup and sudo enrollment MUST remain separate capabilities. Setup MUST NOT accept
+  or change a sudo password or sudo policy. Passwordless sudo MAY be detected non-interactively;
+  any sudo secret MUST be enrolled through a distinct trusted local flow and stored as a separate
+  device-protected credential.
+- **FR-003f**: `add` and `edit` MUST select a versioned resource template that defines protected and
+  public fields, defaults, validation, credential roles, health checks, and the corresponding
+  adapter. The template registry MUST be extensible to profiles such as SSH host, SQL Server,
+  MySQL, PostgreSQL, S3-compatible object storage, Redis, and HTTP service without adding another
+  resource lifecycle.
+- **FR-003g**: `edit` MUST own configuration refresh, protected field changes, credential rotation,
+  and enabled/disabled state changes. Updates to an active resource MUST verify the proposed target
+  and credential before atomically replacing the previous working revision; failure MUST preserve
+  the prior active configuration.
+- **FR-003h**: `show` MUST return a non-interactive safe summary by default. Its allowlisted summary
+  MAY include canonical alias, display label, template and version, safe tags, lifecycle and health
+  state, declared capabilities, and last-check time; it MUST exclude endpoints, ports, usernames,
+  routes, database or bucket names, unreviewed topology, credential references, and secrets. A protected-details
+  option MAY disclose the configured non-secret connection and inventory fields needed for local
+  diagnosis only after macOS device-owner authorization. Denial, cancellation, or prompt rate limits
+  MUST return no protected fields. Even after authorization, `show` MUST never disclose a password,
+  token, private or public key material, recovery value, Keychain locator, or exportable credential.
+  `list` MUST remain a safe summary and MUST NOT trigger user-presence prompts.
+- **FR-003i**: Agent-facing `add` and `edit` inputs MUST contain only logical aliases, template names,
+  safe state choices, and other non-secret selections. They MUST NOT accept endpoints, ports,
+  usernames, passwords, key paths, tokens, or sudo passwords; those values belong to the trusted
+  local configuration flow.
+- **FR-003j**: Agent access to the default `show` summary MUST be read-only and require no disclosure
+  grant. An Agent MAY request protected details only when the user explicitly asks for connection,
+  inventory, or topology details; the Broker MUST independently enforce macOS user presence and MUST
+  NOT treat Agent intent, an audit string, or a previous execution approval as disclosure authority.
+- **FR-003k**: Alias changes through `edit` MUST preserve the immutable resource identifier and its
+  credential bindings, and MUST pass the same atomic catalog-wide collision check as `add`. Display
+  labels MAY repeat because they are descriptive and MUST NOT be accepted as execution selectors.
+- **FR-003l**: Resource-template schemas and adapter bindings MUST be versioned built-ins owned and
+  validated by the signed Runtime. The Agent Skill MAY contain only concise template-selection
+  guidance and stable template identifiers; it MUST NOT define, inject, override, or transmit a
+  template's protected fields, validation rules, adapter, or health check. Adding a template in MVP
+  therefore requires reviewed Runtime code, tests, and a Runtime release rather than editing
+  `SKILL.md` or loading an arbitrary local template file.
+- **FR-003m**: Every template MUST reuse the same small common resource model: generated immutable
+  identifier; unique canonical alias; optional non-unique display label and safe tags; immutable
+  template identifier and version; lifecycle and health state; protected notes and route; and typed
+  template fields. Alias, display label, safe tags, and template selection are Agent-safe. Endpoint,
+  route, username, database or bucket names, physical topology, and inventory are protected. A
+  separately reviewed logical-topology projection MAY expose only safe aliases, abstract node
+  kinds, allowlisted relations, verification state, and evidence freshness. Passwords,
+  tokens, access keys, and private keys are secrets and MUST only enter the trusted local flow.
+- **FR-003n**: The first built-in `ssh` template MUST collect, in one trusted local add/edit flow,
+  endpoint, port with default 22, existing remote username, route mode, authentication mode and
+  device-protected credential, and verified host identity. Initial setup MUST verify the declared
+  Linux, macOS, or Windows platform and collect a bounded read-only inventory snapshot including
+  architecture, OS/kernel, CPU, memory, root storage, hardware model, and Docker availability when
+  present. Validated inventory MUST be committed atomically with activation and MUST remain
+  protected detail except for explicitly allowlisted summary keys. Sudo capability and
+  any sudo credential remain separate from SSH registration. The first `sqlserver` template MUST
+  similarly collect endpoint, port with default 1433, optional database, username, password,
+  connection route, encryption enabled by default, certificate-verification choice, and connection
+  identity verification. Unsupported authentication modes or instance discovery MUST fail with a
+  clear limitation rather than exposing additional ad hoc fields.
+- **FR-003o**: `resource add [ALIAS] [--template TEMPLATE]` MUST be usable when the Agent supplies
+  only a safe alias, or no alias when the trusted local flow is responsible for choosing one. An
+  obvious template MAY be selected by the Agent; otherwise the template selector MUST appear in the
+  trusted local flow. That single flow MUST collect all remaining fields, verify the target and
+  credential, and activate the resource. Normal success MUST NOT require the Agent to understand or
+  invoke setup, verification, enable, or credential commands.
+- **FR-003p**: `resource edit ALIAS` MUST open the same trusted template form with existing
+  non-secret protected values available locally and secret fields represented only as
+  configured/missing. The user MUST be able to keep or replace a credential without revealing its
+  current value. Edit MUST cover alias and display changes, connection changes, credential rotation,
+  and enabled/disabled state. It MUST verify a changed active configuration before atomic commit and
+  preserve the prior working revision on cancellation or failure.
+- **FR-003q**: The Skill's Agent workflow for resource creation MUST remain deterministic and short:
+  list safe aliases; invoke one `resource add` only after an explicit user request; follow only the
+  Runtime's structured safe next action; then show the resulting safe summary. The Agent MUST NOT
+  ask which protected fields a template contains, collect those values in conversation, or invent a
+  secondary setup step. Runtime errors MUST say whether the user should retry `add`, use `edit` for
+  an existing alias, or take a trusted local remediation.
+- **FR-003r**: Migration from the predecessor local `ssh-hosts` Skill MUST occur through a trusted
+  local import into the encrypted resource directory. The importer MAY read logical SSH aliases,
+  resolved OpenSSH configuration, non-secret Core Tunnel routing metadata, alternate aliases,
+  resource roles, and the existence and privilege role of matching Keychain items. It MUST NOT read
+  or copy a Keychain value, private key, password, token, source `.env` value, or recovery secret.
+  Real infrastructure inventory and topology MUST NOT be copied into the public Skill, source tree,
+  fixtures, logs, command output, or conversation.
+- **FR-003s**: SSH migration and the built-in `ssh` template MUST preserve the predecessor workflow's
+  useful semantics: direct and loopback-tunnel routes, optional reviewed jump relationships,
+  alternate business aliases, expected existing username, strict host-identity verification,
+  non-interactive key or agent authentication, host role and caution metadata, execution capability,
+  and a separate optional sudo credential role. A route preflight MUST distinguish an unavailable
+  local tunnel from an authentication failure and MUST flag wildcard local binds as potentially
+  LAN-exposed rather than silently treating them as loopback-only.
+- **FR-003t**: Service-resource parity MUST be delivered through typed templates rather than SSH
+  notes. Database templates (`mysql`, `sqlserver`, and `postgresql`) share endpoint, port, optional
+  database or schema, username, route, TLS policy, credential role, and privilege tier. Object-store
+  templates (`s3`, `minio`, and `oss`) share endpoint, region, optional bucket, TLS policy, access-key
+  credential, and privilege tier. `redis`, `kafka`, `rabbitmq`, `mongodb`, `elasticsearch`, `neo4j`,
+  and `http` templates MUST define only their protocol-specific additions while reusing the common
+  route, credential, health, and relationship model.
+- **FR-003u**: A service resource MUST be able to reference a host or tunnel resource as its route
+  and MAY have multiple separately scoped credential roles such as read-only and administrator.
+  Selection MUST default to the least-privileged healthy role sufficient for the requested action;
+  an administrator or production-data role requires explicit user intent and policy evaluation.
+  SSH usernames and service usernames MUST never be inferred from one another.
+- **FR-003v**: The Runtime replacement for predecessor helper scripts MUST provide broker-mediated
+  command execution, bounded sudo, direct credential injection into an intended child client,
+  tunnel readiness checks, and sanitized credential-health checks without returning credential
+  values. User creation, credential discovery from source trees, and bulk credential import remain
+  explicit high-risk local workflows and MUST NOT run automatically during ordinary resource add.
+- **FR-003w**: Infrastructure topology MUST be represented canonically as a directed, typed,
+  attributed multigraph with immutable node and edge identities, explicit edge direction, parallel
+  edge support, revisions, visibility, provenance, verification state, and evidence freshness. The
+  canonical graph MUST NOT be a Mermaid document, rendered image, hierarchy, prose description, or
+  serialization whose list order carries hidden meaning.
+- **FR-003x**: Topology MUST separate `desired`, `observed`, and `derived` layers. A user or Agent MAY
+  propose a desired/asserted logical edge. Only a signed Runtime adapter or Broker probe MAY create
+  observed verification evidence, and only the Broker graph engine MAY create a verified derived
+  path. No proposal, natural-language statement, or visual interpretation may self-promote to
+  verified state, bind a credential, or authorize execution.
+- **FR-003y**: Agent-facing topology output MUST use a bounded `dev.safa.topology/v1` projection
+  containing a safe node table, typed directed edge table, task, declared ordering, graph revision,
+  roots, Broker-computed proofs, and explicit truncation state. The Runtime MUST choose the view by
+  task: node/edge tables for inventory and placement, adjacency plus proof paths for reachability,
+  reverse adjacency plus an affected set for dependency impact, and a bounded relation matrix only
+  for a small homogeneous dense comparison. A human diagram MAY accompany the projection but MUST
+  NOT be its substitute or carry authority through layout, color, proximity, or arrow routing.
+- **FR-003z**: Exact neighborhood, reachability, path, cycle, and dependency-set results MUST be
+  computed by deterministic Broker graph operations against one explicit graph revision. Queries
+  MUST bound roots, relations, direction, hops, nodes, and edges and SHOULD return a connected
+  question-relevant subgraph instead of the complete catalog. Semantic or embedding retrieval MAY
+  locate candidate roots but MUST NOT establish connectivity, trust, credential selection, or
+  execution authority.
+- **FR-003aa**: Agent-visible logical topology MUST be an explicit trusted-local allowlist. It MAY
+  expose resource/context aliases, abstract site or network labels, placement, dependencies,
+  sanitized reachability result, verification state, and freshness. It MUST exclude IPs, CIDRs,
+  DNS endpoints, ports, usernames, database or bucket names, physical route coordinates, host
+  identities, raw probe evidence, policy internals, credential roles, credential references, and
+  secret values.
+- **FR-003ab**: Resource-to-resource `hosted-on`, `depends-on`, and `backed-by` declarations MUST
+  have one canonical encrypted source and MUST reconcile deterministically to desired/asserted graph
+  edges. Resource CRUD and matching topology link/unlink mutations MUST update the resource profile
+  and graph in one serialized Broker transaction. Successful bounded SSH setup or execution MAY
+  refresh short-lived observed/verified reachability evidence, but a transport/authentication
+  failure MUST NOT create evidence, and evidence MUST NOT authorize execution or credential use.
+- **FR-003ac**: The macOS Runtime MAY reuse a successful user-presence decision for at most five
+  minutes only within the same Broker process and operation class for resource add/edit/setup or
+  desired topology link. Such a lease MUST be memory-only, MUST clear on denial or a sensitive state
+  action, and MUST NOT cover remove, disable, enable, unlink, protected disclosure, credential use,
+  sudo, or arbitrary execution.
 - **FR-004**: The system MUST encrypt and authenticate the complete sensitive resource inventory at
   rest with installation-specific protection.
 - **FR-005**: The system MUST never return stored secret values or exportable device-bound private
@@ -225,6 +444,45 @@ then confirm that the user can reconstruct the sequence without finding credenti
   policy decisions, approvals, revocations, executions, failures, and security-state changes.
 - **FR-021**: Agent-facing commands MUST provide stable machine-readable output, deterministic exit
   codes, bounded fields, versioned schemas, and actionable next steps.
+- **FR-021a**: Before first publication, every non-version Agent CLI invocation MUST emit exactly one
+  canonical UTF-8 TOON v4.1 document using schema `dev.safa.cli/v2`. Success, explicit zero results,
+  idempotent no-ops, and errors MUST share that encoding. The public CLI MUST NOT expose human,
+  JSON, color, or output-format modes.
+- **FR-021b**: TOON MUST be produced only at the final CLI presentation boundary from explicit
+  versioned public DTOs after Broker policy, authorization, redaction, and output bounding. TOON
+  MUST NOT become the Agent input language, Broker IPC contract, vault representation, or approval
+  channel.
+- **FR-021c**: Default collection rows MUST contain no more than four source-reviewed fields.
+  `--fields` MAY expand a command projection only through a command-specific safe allowlist and MUST
+  reject protected, unknown, or dynamically public metadata before Broker or remote work begins.
+- **FR-021d**: Long content MUST include a bounded preview, original size, and explicit truncation
+  state. A suggested `--full` invocation MAY raise a soft output limit but MUST NOT bypass the
+  Broker hard limit, redaction, binary-output policy, or authorization.
+- **FR-021e**: Collection results MUST provide total, returned, and truncation aggregates where
+  applicable. Successful empty results MUST declare zero explicitly and MUST NOT use empty stdout.
+  Cheap Broker-computed health, topology, remote-exit, and status summaries SHOULD be included when
+  they eliminate a predictable follow-up request.
+- **FR-021f**: Errors MUST be redacted, structured TOON on stdout with a stable code and specific
+  remediation. stderr MUST contain only redacted debug/progress diagnostics. Exit codes MUST be
+  `0` for completed/accepted/unambiguous no-op, `1` when the operation did not complete in the
+  invocation, and `2` for invalid argv detected before Broker or remote work.
+- **FR-021g**: The CLI MUST reject unknown commands, arguments, and flags before side effects and
+  MUST NOT prompt through stdin or a terminal. macOS-owned user-presence UI MAY appear only for an
+  explicitly requested protected operation, and its outcome MUST return through the same TOON
+  contract.
+- **FR-021h**: Root and noun-only invocations MUST return the smallest useful bounded safe live view
+  rather than a usage dump. Every command MUST still provide concise local `--help` containing its
+  arguments, valid flags/defaults, and representative examples.
+- **FR-021i**: Results MAY include a few context-relevant parameterized next commands. Every next
+  action MUST state whether it is safe for Agent invocation; suggestions MUST NOT invent an alias,
+  protected value, approval, or fixed dynamic identifier.
+- **FR-021j**: An Agent session integration MAY be installed only through explicit setup and MUST be
+  idempotent, path-repairing, directory-scoped, and limited to the non-interactive safe home view.
+  It MUST NOT capture or replay transcripts, command history, protected resource/topology data, or
+  remote output.
+- **FR-021k**: Bare `-v`, `-V`, and `--version` MUST return only the Runtime SemVer with exit `0`
+  before Broker activation or construction of the full command graph. This is the only public
+  non-TOON output path.
 - **FR-022**: The system MUST verify the platform, runtime version, package integrity, and publisher
   identity before activating the companion runtime, and MUST fail closed on verification failure.
 - **FR-023**: The system MUST work without a cloud account or public network service after Skill and
@@ -239,11 +497,37 @@ then confirm that the user can reconstruct the sequence without finding credenti
   release, but their resource profiles MUST fit the common encrypted directory rather than require a
   second inventory or credential architecture.
 
+### Post-MVP Same-User Device Sync Requirements
+
+- **FR-F01**: Same-user iCloud synchronization MUST be optional. Local resource discovery and
+  execution MUST continue to work without an iCloud account or network connection.
+- **FR-F02**: Synchronization MUST transfer only an authenticated, encrypted resource catalog such
+  as aliases, protected endpoints, ports, usernames, host identities, relationships, and policy.
+  It MUST NOT synchronize the live local `vault.json` file, its device rollback marker, or a
+  `ThisDeviceOnly` vault key as an opaque shared filesystem artifact.
+- **FR-F03**: Secure Enclave keys, device-bound SSH credentials, sudo passwords, and other
+  device-protected credentials MUST remain local by default. A resource discovered on another Mac
+  MUST be non-executable with local credential health `reenroll_required` until that device enrolls
+  and verifies its own credential.
+- **FR-F04**: A new Mac signed into the same authorized iCloud account MUST be able to recover the
+  resource catalog without re-entering endpoints, ports, usernames, or topology. Device enrollment
+  MAY add that Mac's public key to the already configured remote user but MUST NOT create another
+  remote user or copy an exportable private key from an existing Mac.
+- **FR-F05**: Synchronization MUST define deterministic conflict resolution, authenticated revision
+  handling, deletion semantics, offline reconciliation, and fail-closed behavior for iCloud logout,
+  keychain reset, encrypted-data reset, or an unavailable synchronization service.
+- **FR-F06**: Synchronizable credentials, if ever offered as an explicit convenience mode, MUST be
+  separately consented, clearly distinguish their larger multi-device blast radius, and MUST NOT
+  weaken the default device-bound credential mode.
+
 ### Key Entities
 
-- **Resource**: A logical infrastructure target with canonical/alternate aliases, an extensible type,
-  typed encrypted metadata, access methods, relationships, security-domain membership, opaque
-  credential references, and lifecycle state. Host identity applies to SSH profiles.
+- **Resource**: A logical infrastructure target with an immutable identifier, one catalog-wide unique
+  canonical alias, optional catalog-wide unique alternate aliases, an optional non-unique display
+  label, an extensible kind, immutable template ID/version, optional host platform, orthogonal roles,
+  typed encrypted metadata, access methods, relationships, security-domain
+  membership, opaque credential references, and lifecycle state. Host identity applies to SSH
+  profiles.
 - **Credential Reference**: An opaque link to protected authentication material; it exposes type,
   health, and scope but never its secret value.
 - **Execution Request**: A proposed action containing the caller, resource, command representation,
@@ -256,6 +540,18 @@ then confirm that the user can reconstruct the sequence without finding credenti
   revocation, or security-state change.
 - **Runtime Package**: The versioned and verified macOS companion components associated with a Skill
   release.
+- **Device Enrollment**: The local credential and verification state that authorizes one Mac to use
+  a synchronized resource. It is distinct from the resource's portable encrypted configuration.
+- **Synchronized Resource Catalog**: The optional same-user encrypted representation of resource
+  configuration and topology. It excludes device-bound credentials and local rollback state.
+- **Resource Template**: A versioned schema and adapter binding that defines how one resource kind
+  is configured, validated, authenticated, health-checked, displayed, and edited while reusing the
+  common resource lifecycle.
+- **Topology Graph**: The revisioned directed typed multigraph that links resources and abstract
+  context nodes while separating desired claims, observed facts, and Broker-derived results.
+- **Topology Projection**: A transient bounded, task-specific Agent DTO containing only reviewed
+  aliases and relations plus Broker-computed proofs. It is not the protected graph or an execution
+  authorization.
 
 ## Success Criteria *(mandatory)*
 
@@ -281,6 +577,64 @@ then confirm that the user can reconstruct the sequence without finding credenti
   policy decision, while audit records contain no unredacted test secrets.
 - **SC-010**: A clean installation on unsupported platforms or with an unverifiable runtime performs
   zero remote actions and returns a clear remediation path.
+- **SC-011**: A user can add and activate a new synthetic host through one `resource add` workflow
+  without a separate setup command and without placing its endpoint, username, or credential in
+  Agent-visible arguments, standard streams, logs, or conversation.
+- **SC-012**: Managed-key setup for a synthetic existing user changes no remote account identity or
+  sudo policy, preserves the bootstrap path until verification succeeds, and activates only after
+  the device-generated key authenticates as that same user.
+- **SC-013**: SSH and SQL Server synthetic templates both complete add, show, edit, state-change,
+  and remove journeys through the same five-command resource surface while rejecting fields and
+  credential roles that do not belong to the selected template.
+- **SC-014**: Exact, case-variant, normalization-equivalent, alternate-alias, and concurrent duplicate
+  add tests never overwrite a resource and yield exactly one selectable resource for each alias.
+- **SC-015**: Default list/show responses contain zero protected fields without prompting; authorized
+  protected show tests return only allowlisted non-secret details, and denied or cancelled prompts
+  return no partial protected data or reusable authorization.
+- **SC-016**: A basic Agent that knows only `list`, `add`, `show`, `edit`, and `remove` can register
+  and later update synthetic SSH and SQL Server resources without learning either template's field
+  schema and without requesting a protected value in conversation.
+- **SC-017**: One successful add produces an active verified resource; one cancelled or failed add
+  produces no ambiguous selectable resource, and one failed edit leaves the previously active
+  revision executable and unchanged.
+- **SC-018**: Importing a synthetic predecessor inventory recreates every supported alias, alternate
+  alias, route relationship, service relationship, and credential role in the encrypted directory
+  while leakage tests find zero real endpoint, username, credential locator, or secret in repository
+  changes, Agent-visible output, logs, and process arguments.
+- **SC-019**: Permuting storage order and replacing fixture UUID ordering across at least 100
+  synthetic topology cases changes zero normalized query results, proof paths, or projection hashes.
+- **SC-020**: Reachability, placement, and dependency-impact tests return the correct Broker-computed
+  result and supporting edge IDs without asking the Agent to derive connectivity from prose, a
+  full graph dump, or a rendered image.
+- **SC-021**: Security tests prove that an Agent-created desired edge, a stale observation, a forged
+  diagram, and an embedding-retrieved candidate each create zero route, credential, grant, or
+  execution authority.
+- **SC-022**: Topology disclosure tests find zero protected endpoint, route coordinate, username,
+  host identity, raw evidence, policy, credential reference, or secret in every Agent projection,
+  including truncated and failed-query responses.
+- **SC-023**: All canonical v2 fixtures strict-decode under the pinned TOON v4.1 implementation to
+  the expected typed data model, preserve stable field order, and reject malformed array widths,
+  counts, duplicate keys, unsafe control characters, and hostile remote strings.
+- **SC-024**: Across representative home, resource, topology, execution, zero-result, and failure
+  tasks, Agents complete at least as many tasks as with compact JSON v1 while median Agent-visible
+  tokens decrease; results are recorded per tested model rather than inferred from third-party
+  aggregate benchmarks.
+- **SC-025**: Contract tests prove every default list row has at most four fields, every bounded list
+  declares total/returned/truncated state, every truncated text includes size and a safe next step,
+  and every empty success is explicit.
+- **SC-026**: Unknown commands, arguments, and flags produce exit `2`, one TOON usage error, and zero
+  Broker/remote calls; all other non-version paths emit one and only one TOON document on stdout.
+
+### Post-MVP Sync Outcomes
+
+- **SC-F01**: A second Mac signed into the authorized iCloud account discovers 100% of synchronized
+  resource aliases and protected configuration without re-entry while receiving zero reusable
+  credential material from the first Mac.
+- **SC-F02**: Before local enrollment, every synchronized resource on the second Mac is
+  non-executable and reports credential health `reenroll_required`; after enrollment, execution is
+  possible only with that Mac's verified credential.
+- **SC-F03**: Concurrent edits, offline recovery, iCloud logout, and encrypted-key reset never
+  silently roll back a newer resource revision or fall back to an unauthenticated local copy.
 
 ## Assumptions
 
@@ -288,8 +642,10 @@ then confirm that the user can reconstruct the sequence without finding credenti
   require a separate future specification.
 - Target servers already expose SSH through the user's existing network path. SAFA does not create
   VPNs, firewall rules, JumpServer accounts, or remote hosts in the initial release.
-- Resource aliases such as `nas.home` are considered safe for Agent discovery; endpoints, routes,
-  usernames, credential material, and infrastructure topology are sensitive.
+- Resource aliases such as `nas.home` are considered safe for Agent discovery. A trusted local flow
+  may additionally classify abstract logical topology among safe aliases as Agent-visible;
+  endpoints, physical routes, network coordinates, usernames, credential material, and all
+  unreviewed topology remain sensitive.
 - Read-only versus state-changing behavior can be conservatively classified; ambiguous requests are
   escalated rather than silently approved.
 - Users may deliberately choose temporary full access after a clear warning; SAFA limits and audits

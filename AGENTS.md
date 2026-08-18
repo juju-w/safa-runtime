@@ -1,8 +1,9 @@
-# SAFA Repository Instructions
+# SAFA Runtime Repository Instructions
 
-These instructions apply to the entire repository. SAFA is a security-sensitive macOS product:
-prefer small, reviewable changes; fail closed; never weaken a trust boundary to make development or
-CI easier.
+These instructions apply to the native runtime repository. SAFA is security-sensitive: prefer small,
+reviewable changes; fail closed; never weaken a trust boundary to make development or CI easier.
+The only implemented runtime is Swift/macOS. Do not add speculative platform scaffolding before a
+concrete platform implementation is approved.
 
 ## Mandatory project skills
 
@@ -10,10 +11,27 @@ CI easier.
   concurrency, Codable, process-runtime, test, or refactoring change.
 - Also read and follow `.agents/skills/build-macos-cli/SKILL.md` for CLI, broker, AskPass, Keychain,
   LocalAuthentication, XPC, Secure Enclave, SSH, signing, packaging, or macOS lifecycle work.
+- Read and follow the installed `axi` Skill for every Agent-facing CLI command, TOON projection,
+  structured error, help response, truncation rule, or CLI refactor. `juju-w/safa` owns the target
+  `contracts/cli-v2.md`; this Runtime must implement it rather than redefining an output format.
 - The current product phase is CLI-first. Do not add a window, menu-bar feature, dashboard, custom
   approval UI, or new SwiftUI surface unless the repository owner explicitly changes scope.
   System-provided Touch ID, Keychain, LocalAuthentication, and Authorization Services prompts remain
   allowed security primitives.
+
+## Cross-platform ownership
+
+- `juju-w/safa` owns the Agent Skill, public Agent-CLI/TOON/resource contracts, runtime manifests, and
+  product documentation. Do not independently redefine those external contracts here.
+- The root Swift package and `Apps/SAFA` own the current macOS runtime.
+- Future platform runtimes belong in isolated platform directories only when their implementation
+  starts. Do not copy macOS XPC, Keychain, or authorization assumptions into another platform.
+- Do not publish a binary, add a platform manifest, or advertise support before that platform's
+  conformance and security gates exist.
+- Keep platform credential stores and IPC behind narrow adapters. Never add a plaintext credential
+  fallback for portability.
+- Each platform publishes one Runtime package, but the Agent-facing CLI and vault-authoritative
+  Broker/daemon remain separate processes inside it.
 
 ## Development workflow
 
@@ -58,7 +76,7 @@ release. A release-policy change requires matching policy tests.
   publish a GitHub Release, upload a signed/notarized distribution, or publish a Skill package until
   the repository owner explicitly lifts this hold.
 - CI on pull requests and `main` must remain validation-only while the hold is active. It may compile
-  and test the app and Skill sources, but it must not upload or publish distributable artifacts.
+  and test runtime sources, but it must not upload or publish distributable artifacts.
 
 - `VERSION` is the canonical source version once automatic publishing is enabled.
 - A release workflow may run only after CI succeeds for the exact `main` commit being released.

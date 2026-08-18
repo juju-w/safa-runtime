@@ -18,6 +18,7 @@ struct ProcessRunnerTests {
         #expect(result.exitCode == 7)
         #expect(result.stdout == Data("12345".utf8))
         #expect(result.stdoutTruncated)
+        #expect(result.stdoutTotalBytes > result.stdout.count)
     }
 
     @Test("deadline stops a child")

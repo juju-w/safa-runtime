@@ -7,33 +7,88 @@ import Testing
 
 @Suite("Safe resource CLI projection")
 struct ResourceCLIContractTests {
-    @Test("resource CLI exposes the complete lifecycle and an ls alias")
+    @Test("resource alias completion is sorted, prefix filtered, and duplicate free")
+    func resourceAliasCompletion() {
+        #expect(
+            ResourceCLICompletion.filterAliases(
+                ["hm-105", "home-nec-win", "hm-104", "hm-105"],
+                prefix: "hm-"
+            ) == ["hm-104", "hm-105"]
+        )
+    }
+
+    @Test("resource CLI exposes only the five CRUD commands and an ls alias")
     func cliFirstCommandSurface() throws {
+        let publicCommands = ResourceCommand.configuration.subcommands
+            .compactMap { $0.configuration.commandName }
+        #expect(publicCommands == ["list", "show", "add", "edit", "remove"])
+
+        #expect(ResourceShowCommand.configuration.abstract.contains("--details"))
         #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
         #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
+        let activeList = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "list", "--state", "active", "--limit", "25", "--fields",
+                "alias,state,resource_type",
+            ])
+                as? ResourceListCommand
+        )
+        #expect(try activeList.requestedState() == .active)
+        #expect(try activeList.requestedLimit() == 25)
+        #expect(try activeList.requestedFields() == [.alias, .state, .resourceType])
+        let detailedShow = try #require(
+            try SAFACommand.parseAsRoot(["resource", "show", "nas.home", "--details"])
+                as? ResourceShowCommand
+        )
+        #expect(detailedShow.details)
         #expect(
             try SAFACommand.parseAsRoot([
                 "resource", "add", "nas.home", "--from-ssh-config", "home-nas",
             ]) is ResourceAddCommand
         )
-        #expect(
+        let serviceAdd = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "add", "mysql.test", "--template", "mysql",
+            ]) as? ResourceAddCommand
+        )
+        let (_, serviceMutation) = try serviceAdd.mutationInput()
+        #expect(serviceMutation.templateID == .mysql)
+        #expect(serviceMutation.resourceType == .databaseMySQL)
+        let mismatchedTemplate = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "add", "mysql.test", "--template", "mysql", "--type",
+                "host.windows",
+            ]) as? ResourceAddCommand
+        )
+        #expect(throws: ResourceMutationInputError.typeDoesNotMatchTemplate) {
+            try mismatchedTemplate.mutationInput()
+        }
+        let edit = try #require(
             try SAFACommand.parseAsRoot([
                 "resource", "edit", "nas.home", "--from-ssh-config", "home-nas",
-            ]) is ResourceEditCommand
+            ]) as? ResourceEditCommand
         )
-        #expect(
+        let (_, editMutation) = try edit.mutationInput()
+        #expect(editMutation.desiredState == nil)
+
+        let disable = try #require(
             try SAFACommand.parseAsRoot([
-                "resource", "setup", "nas.home", "--from-ssh-config", "home-nas",
-            ]) is ResourceSetupCommand
+                "resource", "edit", "nas.home", "--state", "disabled",
+            ]) as? ResourceEditCommand
         )
-        #expect(
-            try SAFACommand.parseAsRoot(["resource", "disable", "nas.home"])
-                is ResourceDisableCommand
+        let (_, disableMutation) = try disable.mutationInput()
+        #expect(disableMutation.desiredState == .disabled)
+
+        let enable = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--state", "active",
+                "--from-ssh-config", "home-nas",
+            ]) as? ResourceEditCommand
         )
-        #expect(
-            try SAFACommand.parseAsRoot(["resource", "enable", "nas.home"])
-                is ResourceEnableCommand
-        )
+        let (_, enableMutation) = try enable.mutationInput()
+        #expect(enableMutation.desiredState == .active)
+        #expect(enableMutation.sourceSSHConfigAlias.rawValue == "home-nas")
+
         #expect(
             try SAFACommand.parseAsRoot(["resource", "remove", "nas.home"])
                 is ResourceRemoveCommand
@@ -41,6 +96,12 @@ struct ResourceCLIContractTests {
         #expect(try SAFACommand.parseAsRoot(["setup", "status"]) is SetupStatusCommand)
         #expect(try SAFACommand.parseAsRoot(["setup", "activate"]) is SetupActivateCommand)
         #expect(try SAFACommand.parseAsRoot(["setup", "deactivate"]) is SetupDeactivateCommand)
+
+        for retiredLifecycleCommand in ["inspect", "setup", "disable", "enable"] {
+            #expect(
+                commandParsingFails(["resource", retiredLifecycleCommand, "nas.home"])
+            )
+        }
 
         for forbiddenSecretInput in [
             ["resource", "add", "nas.home", "--password", "secret"],
@@ -54,6 +115,92 @@ struct ResourceCLIContractTests {
         ] {
             #expect(commandParsingFails(forbiddenSecretInput))
         }
+    }
+
+    @Test("resource list rejects unknown and deleted state filters")
+    func listStateValidation() throws {
+        for state in ["unknown", "deleted"] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot(["resource", "list", "--state", state])
+                    as? ResourceListCommand
+            )
+            #expect(throws: ResourceListInputError.invalidState) {
+                try command.requestedState()
+            }
+        }
+    }
+
+    @Test("resource list bounds rows and rejects unsafe field selections")
+    func listProjectionValidation() throws {
+        for arguments in [
+            ["resource", "list", "--limit", "0"],
+            ["resource", "list", "--limit", "501"],
+        ] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot(arguments) as? ResourceListCommand
+            )
+            #expect(throws: ResourceListInputError.invalidLimit) {
+                try command.requestedLimit()
+            }
+        }
+
+        for fields in ["state,health", "alias,endpoint", "alias,alias"] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot([
+                    "resource", "list", "--fields", fields,
+                ]) as? ResourceListCommand
+            )
+            #expect(throws: ResourceListInputError.invalidFields) {
+                try command.requestedFields()
+            }
+        }
+    }
+
+    @Test("resource edit rejects unsupported or ambiguous state changes")
+    func editStateValidation() throws {
+        let draft = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--state", "draft",
+            ]) as? ResourceEditCommand
+        )
+        #expect(throws: ResourceMutationInputError.unsupportedDesiredState) {
+            try draft.mutationInput()
+        }
+
+        let combined = try #require(
+            try SAFACommand.parseAsRoot([
+                "resource", "edit", "nas.home", "--state", "disabled",
+                "--type", "host.linux",
+            ]) as? ResourceEditCommand
+        )
+        #expect(throws: ResourceMutationInputError.stateCannotCombineWithConfiguration) {
+            try combined.mutationInput()
+        }
+    }
+
+    @Test("add launches trusted setup only for safe remediable SSH failures")
+    func trustedSetupRemediationSelection() {
+        #expect(
+            ResourceAddCommand.shouldLaunchTrustedSetup(
+                errorCode: "ssh_config_alias_not_found",
+                usesSSH: true,
+                hasExplicitSSHConfigAlias: false
+            )
+        )
+        #expect(
+            ResourceAddCommand.shouldLaunchTrustedSetup(
+                errorCode: "ssh_authentication_setup_required",
+                usesSSH: true,
+                hasExplicitSSHConfigAlias: true
+            )
+        )
+        #expect(
+            !ResourceAddCommand.shouldLaunchTrustedSetup(
+                errorCode: "host_identity_setup_required",
+                usesSSH: true,
+                hasExplicitSSHConfigAlias: false
+            )
+        )
     }
 
     @Test("resource list exposes only logical operational metadata")

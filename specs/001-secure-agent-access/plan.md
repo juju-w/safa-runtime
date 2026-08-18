@@ -1,5 +1,8 @@
 # Implementation Plan: Secure Agent Access
 
+> Repository split: Skill/resolver/manifest ownership moved to `juju-w/safa`. Runtime source,
+> platform security, packaging inputs, and native validation remain in this repository.
+
 **Branch**: `001-secure-agent-access` | **Date**: 2026-08-16 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature specification from `specs/001-secure-agent-access/spec.md`
@@ -9,40 +12,51 @@
 Build SAFA as a macOS-only Agent Skill backed by a signed native CLI and companion runtime. The runtime
 keeps the encrypted resource registry and credentials outside the Agent process, evaluates scoped
 execution policy, obtains trusted local approval for elevated operations, invokes the system SSH
-client, and returns a compact versioned JSON envelope. Arbitrary command and shell execution remain
-a target capability for M2; the current diagnostic MVP exposes only bounded non-sudo argument
-execution.
+client, and returns the canonical TOON v2 Agent envelope. Arbitrary command and shell
+execution remain a target capability for M2; the current diagnostic MVP exposes only bounded
+non-sudo argument execution.
+
+The pre-release JSON/human surface is replaced by the Agent-only `dev.safa.cli/v2` contract. The CLI
+follows AXI, emits canonical TOON v4.1 for every non-version
+result, keeps default schemas minimal, returns explicit counts/truncation/next actions, and has no
+public format switch. Broker IPC, Codable domain models, vault persistence, and native adapters
+remain private implementation choices.
 
 The MVP supports one local macOS user and SSH-accessible servers/NAS devices. The underlying resource
 directory is adapter-independent so later database, object-storage, cache, and service profiles do
 not fork the security architecture. Delivery first covers
 SSH-config import, tunnel preflight, public-key execution, strict host identity, read-only
 diagnostics, Keychain-backed sudo migration, encrypted inventory, and compact CLI contracts.
+The same encrypted authority now includes a revisioned typed topology graph. Deterministic Broker
+algorithms answer placement, verified reachability, dependency impact, dense comparison, and cycle
+questions while the Agent-facing CLI remains five semantic verbs with an answer-first projection.
 Arbitrary mutation, general execution authorization/audit, team vaults, non-SSH execution adapters,
 and custom GUI are deferred until parity and security gates are complete. A narrowly scoped macOS
-user-presence gate for protected resource inspection is included.
+user-presence gate for protected resource details is included.
 
 ## Technical Context
 
 **Language/Version**: Swift 6.3 language mode; shell only for deterministic build/package launchers
 
 **Primary Dependencies**: Foundation, Security/SecItem, CryptoKit, LocalAuthentication, XPC,
-ServiceManagement, OSLog, Swift Argument Parser, and `/usr/bin/ssh`
+ServiceManagement, OSLog, Swift Argument Parser, the project-owned narrow TOON v4.1 presentation
+encoder verified against pinned official conformance sources, and `/usr/bin/ssh`
 
 **Storage**: AES-GCM encrypted Codable document for structured inventory/policy/grants; data
 encryption key and credential values in the non-synchronizing macOS data-protection Keychain;
 device-generated P-256 keys in Secure Enclave where supported; hash-chained JSONL audit files
 
-**Testing**: Swift Testing for unit/property tests, XCTest for XPC and signed integration
-tests, shell contract tests for packaged Skill/CLI, and synthetic SSH fixtures only
+**Testing**: Swift Testing for unit/property tests, XCTest for XPC and signed integration tests,
+official TOON conformance fixtures plus strict cross-decoding, shell contract tests for packaged
+Skill/CLI, and synthetic SSH fixtures only
 
 **Target Platform**: macOS 14.4 or newer; universal arm64/x86_64 release; Secure Enclave preferred
 on Apple silicon or supported T2/Touch ID Macs with an explicit Keychain fallback where unavailable
 
-**Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper + Agent
-Skill package; no custom GUI target in the current product phase
+**Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper +
+separately signed no-custom-GUI trusted setup helper + Agent Skill package
 
-**Performance Goals**: `resource list` and policy decisions under 100 ms p95 after unlock; broker
+**Performance Goals**: bare version response near process-start floor; `resource list` and policy decisions under 100 ms p95 after unlock; broker
 cold activation under 2 s; under 100 MB steady-state broker memory; stream command output without
 holding more than the configured 1 MiB bounded capture in memory
 
@@ -63,7 +77,7 @@ events before rotation, and at most 100 active/pending grants in the MVP
 | Useful command execution with scoped authority | PASS | Both argument-based `exec` and explicit `shell` are defined; approval grants bind caller/resource/scope/privilege/expiry |
 | macOS-native trust boundary | PASS | Signed broker, CLI and AskPass components use peer-validated XPC; Keychain, Secure Enclave and LocalAuthentication are first-class |
 | Open design, encrypted user state | PASS | Per-install AES-GCM vault, non-synchronizing Keychain keys, synthetic fixtures, MIT-compatible dependencies |
-| Deterministic contracts and auditability | PASS | Versioned JSON/IPC contracts, bounded outputs, explicit states, hash-linked sanitized audit events |
+| Deterministic contracts and auditability | PASS | Versioned TOON Agent output, typed private IPC, bounded outputs, explicit states, hash-linked sanitized audit events |
 
 No constitution exception is required. The design intentionally rejects a same-process vault,
 Agent-readable secret command, unsigned bootstrap, shared credential default, and unrestricted
@@ -81,7 +95,7 @@ specs/001-secure-agent-access/
 ├── data-model.md
 ├── quickstart.md
 ├── contracts/
-│   ├── cli-v1.md
+│   ├── agent-cli-v2.md
 │   ├── broker-ipc-v1.md
 │   └── skill-runtime-v1.md
 ├── checklists/
@@ -94,15 +108,16 @@ specs/001-secure-agent-access/
 ```text
 Package.swift
 Sources/
-├── SAFAProtocol/              # Codable CLI/XPC types, schema versions, exit mapping
+├── SAFAProtocol/              # typed Agent/XPC DTOs, schema versions, exit mapping
 ├── SAFADomain/                # resource, request, grant, audit and policy entities
 ├── SAFACrypto/                # encrypted vault envelope and Keychain abstractions
 ├── SAFAPolicy/                # deterministic classifier and scope matcher
 ├── SAFATransport/             # transport protocol, process runner and bounded streams
 ├── SAFASSH/                   # OpenSSH adapter, host verification, askpass and sudo injection
 ├── SAFABroker/                # per-user Mach/XPC service and orchestration
-├── SAFACLI/                   # `safa` Agent-facing executable
-└── SAFAAskPass/               # signed one-shot SSH credential helper
+├── SAFACLI/                   # Agent-only `safa` executable and TOON presentation
+├── SAFAAskPass/               # signed one-shot SSH credential helper
+└── SAFATrustedSetup/          # signed hidden-input SSH registration flow
 Apps/
 └── SAFA/
     ├── SAFA.xcodeproj/
@@ -145,20 +160,23 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
 3. **Broker boundary**: owns vault decryption, policy, request/grant state, credential injection,
    transport processes, redaction, and audit. Incoming XPC peers must satisfy code-signing and user
    session requirements.
-4. **Trusted local-interaction boundary (future M2)**: a separately signed, system-authenticated
-   process may present the immutable request and prove local user presence. No such custom UI ships
-   in the current phase, and it cannot alter the target or command fingerprint.
+4. **Trusted local-interaction boundary**: the current separately signed, system-authenticated setup
+   helper collects protected SSH registration fields only from a controlling terminal with echo
+   disabled. A future M2 approval component may present immutable command requests, but it cannot
+   alter the target or command fingerprint. No custom GUI ships in the current phase.
 5. **Remote boundary**: is untrusted even after authentication. Output is data, host identity is
    pinned, commands are bounded, and remote compromise confers no credential for another host.
 
 ## Delivery Phases
 
-- **M0 foundation**: protocol/domain packages, deterministic mock broker, Skill skeleton, contract
-  fixtures, threat-model tests.
+- **M0 foundation**: protocol/domain packages, deterministic mock broker, Skill skeleton, AXI/TOON
+  v2 contract fixtures, threat-model tests.
 - **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, trusted no-GUI
   registration, managed Secure Enclave key or password SSH, strict host identity, read-only
-  execution and audit. Existing direct OpenSSH identity/agent registration is implemented in the
-  current preview; managed Secure Enclave/password enrollment and proxy-route setup remain open.
+  execution and audit, plus bounded safe topology queries and user-authorized desired relationship
+  edits. Existing direct OpenSSH identity/agent registration and separately signed hidden password
+  enrollment are implemented in the current preview; managed Secure Enclave enrollment and
+  proxy-route snapshotting remain open.
 - **M2 command authority**: arbitrary `exec`/`shell`, policy classifier, trusted approval, sudo,
   scoped grants, revocation, bounded streaming and redaction.
 - **M3 distribution hardening**: universal signed/notarized runtime, Skill packaging, package verification,

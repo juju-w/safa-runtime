@@ -1,5 +1,8 @@
 # Research: Secure Agent Access
 
+> Repository split: product-level Skill and distribution decisions are canonical in `juju-w/safa`;
+> this file remains supporting history for the native macOS Runtime.
+
 ## 1. Native implementation language
 
 **Decision**: Use Swift 6.3 language mode for all trusted runtime components. Use shell only for
@@ -43,19 +46,22 @@ part of the system.
 
 ## 3. Process and trust-boundary architecture
 
-**Decision**: Split the current runtime into three signed components:
+**Decision**: Split the current runtime into four signed components:
 
 1. `safa` CLI, which has no credential entitlements;
 2. a per-user `SAFABroker` launch agent, which owns protected state and execution;
 3. a one-shot signed askpass helper used only as a child of an approved broker execution.
+4. a no-custom-GUI trusted setup helper that collects protected fields with terminal echo disabled
+   after LocalAuthentication and sends one typed, caller-bound XPC transaction to the Broker.
 
-**Delivery update**: The CLI-first parity phase has no custom GUI target. A future trusted local
-interaction process requires its own specification and signing identity; it is not part of the
-current build. System Keychain and LocalAuthentication prompts enforce the native human-presence
-checks that are implementable without product GUI.
+**Delivery update**: The CLI-first parity phase has no custom GUI target. Resource enrollment ships
+as the separately signed `dev.safa.trusted-local` helper; it accepts no protected flags or
+Agent-controlled stdin and emits no protected values. System Keychain and LocalAuthentication
+prompts enforce native human presence. A future arbitrary-command approval presentation remains a
+separate M2 specification.
 
 Use named XPC/Mach services rather than TCP. Require the expected signing identifier, team identity,
-entitlement, effective user, and audit session on every broker connection. Broker activation remains
+effective user, and audit session on every broker connection. Broker activation remains
 an explicit delivery task and must not rely on an undeclared application bundle.
 
 **Rationale**: The Agent-facing CLI must remain incapable of reading Keychain items or approving its
@@ -69,7 +75,7 @@ avoids a privileged system daemon and public listener.
 - **Loopback HTTP service**: rejected because bearer-token authentication and a listening port add a
   new replay and cross-process attack surface.
 - **Unix socket without peer signing**: file permissions identify a user, not an approved binary;
-  same-user malware could impersonate the CLI or a future trusted local peer.
+  same-user malware could impersonate the CLI or trusted local peer.
 - **Root daemon**: unnecessary for remote SSH and increases blast radius.
 
 **Sources**:
@@ -213,9 +219,24 @@ than an incomplete command allowlist.
 ## 8. Output, redaction, and audit
 
 **Decision**: Stream output through the broker, cap Agent-visible stdout and stderr independently,
-include truncation metadata, and keep the final remote exit code in the JSON result. Apply exact
-redaction using all credentials involved in the request plus conservative detectors for supported
-secret formats. Never claim that heuristic redaction can identify every transformed secret.
+include truncation metadata, and keep the final remote exit code in the typed result. The migration
+replaces the pre-release JSON envelope with the Agent-only `dev.safa.cli/v2` contract:
+one canonical TOON 4.1 document on stdout for success, empty/no-op, and error outcomes. Keep Swift
+DTOs, XPC payloads, vault persistence, and Broker internals private and typed; TOON belongs only at
+the Agent output boundary.
+
+The v2 boundary follows the [AXI](https://axi.md/) profile and its
+[official Skill](https://github.com/kunchenguid/axi/blob/408a6536625e5b05e5c56e6c4a04fe83e1f510a5/.agents/skills/axi/SKILL.md),
+pinned at commit `408a6536625e5b05e5c56e6c4a04fe83e1f510a5`: bounded
+three-to-four-field default rows, explicit counts and empty states, structured errors with exit
+codes `0/1/2`, opt-in safe ambient context, content-first no-argument behavior, contextual next
+commands, and fast help/version paths. There is no table/human renderer and no `--json`/`--toon`
+format switch. `--full` only raises a soft presentation limit; it cannot bypass Broker redaction,
+binary-output policy, or hard caps.
+
+Apply exact redaction using all credentials involved in the request plus conservative detectors for
+supported secret formats. Never claim that heuristic redaction can identify every transformed
+secret.
 
 Write append-only JSONL audit events with a per-file random genesis value and chained HMAC covering
 the previous event digest, sequence, and canonical event. Rotate by size/count and anchor the latest
@@ -224,9 +245,48 @@ rollback but does not claim remote immutability.
 
 **Alternatives considered**:
 
+- **Expose JSON and TOON as permanent parallel modes**: creates two contracts and lets clients drift.
+- **Serialize XPC and vault data as TOON**: adds migration risk without improving the Agent boundary.
+- **Adopt a Swift TOON package by name alone**: insufficient until it passes the official TOON 4.1
+  conformance fixtures; the currently reviewed `toon-swift` repository documents an older format
+  revision than the current [TOON 4.1 specification](https://toonformat.dev/reference/spec.html).
 - **Store full raw output in audit**: increases leak and retention risk.
 - **Rely only on regex redaction**: misses exact secrets with unusual formats.
 - **Claim tamper-proof local logs**: false under complete local administrator compromise.
+
+### 8.1 TOON encoder ownership and pin
+
+**Decision**: Keep a narrow deterministic TOON encoder inside `SAFACLI/Presentation` for the v2
+migration. It accepts only an ordered, typed presentation value produced from explicit public DTOs,
+supports the JSON data shapes that SAFA can emit, and has no decoder, persistence, IPC, credential,
+or policy role. Do not create a separate general-purpose TOON package or fork at this stage.
+
+Pin conformance evidence to TOON specification 4.1 at commit
+`62f16b369408180f1faf1cba7da1b46d1f336f12`. The specification is still a Working Draft, so this
+pin is an intentional reviewed compatibility boundary rather than an assumption that the format can
+never change. A later specification revision requires an explicit contract review and refreshed
+fixtures; it does not silently change shipped output.
+
+The official ecosystem lists a stable Swift implementation, but the reviewed release `0.4.0` still
+declares TOON specification 3.0. TOON 4.0/4.1 added mandatory keyed tabular objects, nested field
+groups, canonical empty-array output, and changed list-item layout. Depending on that package today
+would therefore make SAFA's 4.1 claim unverifiable. Re-evaluate it when an exact release declares
+4.1 and passes the pinned fixtures; the internal presentation seam keeps that replacement local.
+
+**Maintenance bound**:
+
+- implement encoding only, not a general decoder or validator;
+- expose no public format options beyond the canonical comma delimiter and two-space indentation;
+- preserve field encounter order and reject duplicate ordered keys;
+- fail closed on unsupported/oversized presentation values;
+- verify exact canonical output locally and strict cross-decode it with the pinned official
+  reference implementation in CI;
+- keep the normative fixture source and license provenance beside the tests.
+
+Do not fork or independently extend the AXI guidance itself. SAFA owns only its narrower public CLI
+contract and encoder adapter. The pinned AXI commit is design input; the pinned TOON specification
+and conformance fixtures are the serialization oracle. Upgrading either pin requires a reviewed
+compatibility change rather than an automatic dependency update.
 
 ## 9. Skill-first packaging
 
@@ -249,7 +309,8 @@ while the native runtime provides the actual security boundary.
 
 - pure unit/property tests for canonicalization, fingerprints, scope matching, state machines,
   redaction and encrypted-envelope tamper detection;
-- protocol snapshots and JSON Schema fixtures for CLI/XPC compatibility;
+- TOON 4.1 conformance fixtures and golden snapshots for the Agent CLI boundary, plus independent
+  typed protocol snapshots for XPC compatibility;
 - signed integration tests for Keychain access groups, peer signing requirements,
   LocalAuthentication cancellation, broker activation and askpass binding;
 - synthetic SSH servers for password/key, host mismatch, jump failure, timeout, sudo, output bounds,
@@ -287,3 +348,49 @@ Behaviors to replace:
 
 The migration rule is behavioral compatibility, not code compatibility: no production alias,
 endpoint, username, Keychain account, or credential is copied into this repository or its tests.
+
+## 12. Infrastructure topology representation for Agents
+
+**Decision**: Store topology as a directed, typed, attributed multigraph and generate a bounded,
+task-specific textual projection for the Agent. Do not choose a tree, Mermaid diagram, screenshot,
+or one fixed serialization as the universal representation.
+
+The product repository owns the
+[canonical bibliography and influence map](https://github.com/juju-w/safa/blob/main/docs/references.md).
+The links below remain beside the Runtime decision record so its evidence is reviewable in place.
+
+The evidence does not support a universal best graph encoding:
+
+- [Talk like a Graph](https://arxiv.org/abs/2310.04560) finds that results vary materially with the
+  encoder, graph task, and graph structure.
+- [Can Graph Descriptive Order Affect Solving Graph Problems with LLMs?](https://aclanthology.org/2025.acl-long.321/)
+  finds that ordering changes performance and that the effect is task-dependent.
+- [GraCoRe](https://aclanthology.org/2025.coling-main.531/) also reports effects from semantic
+  enrichment and node ordering, while a longer context alone does not guarantee better graph
+  understanding.
+- [G-Retriever](https://proceedings.neurips.cc/paper_files/paper/2024/hash/efaf1c9726648c8ba363a5c927440529-Abstract-Conference.html)
+  retrieves a connected question-relevant subgraph and returns its supporting nodes and edges,
+  avoiding whole-graph flattening and reducing hallucination.
+- [GITA](https://proceedings.neurips.cc/paper_files/paper/2024/hash/00295cede6e1600d344b5cd6d9fd4640-Abstract-Conference.html)
+  shows benefits from combined visual and textual graph input in a purpose-trained multimodal
+  framework. Conversely, [Visual Graph Arena](https://openreview.net/forum?id=BCJPAmlfxv) reports
+  severe layout sensitivity in current vision and multimodal models.
+
+**Projection policy**:
+
+- inventory and placement use a node table plus typed edge list;
+- reachability and path questions use source-rooted adjacency plus Broker-computed proof paths;
+- dependency impact uses reverse adjacency plus a computed affected set;
+- a small, homogeneous dense relation may use a bounded matrix with a stable alias legend;
+- visual diagrams are generated for people or as auxiliary multimodal context only and always ship
+  beside the canonical textual projection and Broker proof.
+
+The Runtime canonicalizes stored node/edge identity before projection and declares the task and
+ordering in every projection. Large graphs are reduced with explicit hop/node/edge limits. MVP uses
+deterministic graph traversal instead of embedding retrieval so exact connectivity remains
+reproducible and auditable.
+
+**Trust decision**: Split logical maintenance from operational truth. A user or Agent may propose a
+desired/asserted logical edge. Only signed adapters and Broker probes create observed evidence, and
+only the Broker graph engine creates derived paths. No Agent claim, diagram, or natural-language
+interpretation can mark an edge verified, select a credential, or authorize execution.

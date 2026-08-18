@@ -4,156 +4,137 @@ import SAFADomain
 import SAFAProtocol
 
 @available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
-public struct SAFACommand: AsyncParsableCommand {
+public struct SAFACommand: AsyncParsableCommand, AgentCommand {
     public static let configuration = CommandConfiguration(
         commandName: "safa",
         abstract: "Secure agent access for macOS",
-        version: "0.1.0",
         subcommands: [
-            VersionCommand.self, DoctorCommand.self, SetupCommand.self,
-            ResourceCommand.self, ExecCommand.self,
+            DoctorCommand.self, SetupCommand.self, ResourceCommand.self, TopologyCommand.self,
+            ExecCommand.self,
         ]
     )
 
     public init() {}
 
     public static func runMain() async {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.count == 1, ["-v", "-V", "--version"].contains(arguments[0]) {
+            print(RuntimeBuildMetadata.version)
+            return
+        }
+        let parserArguments = arguments.prefix { $0 != "--" }
+        if parserArguments.contains("--generate-completion-script")
+            || parserArguments.contains("--experimental-dump-help")
+        {
+            emitUsageFailure(
+                command: AgentCLIInvocation.command(arguments: arguments),
+                message: "This Agent CLI does not expose completion or command-dump output."
+            )
+        }
         do {
-            var command = try await asyncParseAsRoot()
+            var command = try await asyncParseAsRoot(arguments)
             if var asyncCommand = command as? any AsyncParsableCommand {
                 try await asyncCommand.run()
             } else {
                 try command.run()
             }
+        } catch let exitCode as ExitCode {
+            exit(withError: exitCode)
         } catch {
-            exit(withError: error)
-        }
-    }
-}
-
-protocol JSONCommand {
-    var json: Bool { get }
-}
-
-extension JSONCommand {
-    func emit(_ envelope: CLIEnvelope, humanMessage: String) throws {
-        if json {
-            FileHandle.standardOutput.write(try CanonicalCodec.encode(envelope))
-            FileHandle.standardOutput.write(Data([0x0A]))
-        } else {
-            print(humanMessage)
-        }
-    }
-
-    func emit(command: String, reply: BrokerReply) throws {
-        let status: CLIStatus
-        switch reply.status {
-        case .completed: status = .completed
-        case .userActionRequired: status = .userActionRequired
-        case .failed: status = .failed
-        }
-        var data = reply.data
-        if let error = reply.error { data["error"] = .object(error.jsonObject) }
-        let requestID: UUID?
-        if case let .string(value)? = reply.data["request_id"] {
-            requestID = UUID(uuidString: value)
-        } else {
-            requestID = nil
-        }
-        let envelope = CLIEnvelope(
-            command: command,
-            status: status,
-            requestID: requestID,
-            data: data,
-            nextAction: status == .userActionRequired
-                ? NextAction(
-                    kind: "complete_local_setup",
-                    command: [],
-                    safeForAgent: false
+            if exitCode(for: error).isSuccess {
+                let response = AgentCLIResponseV2(
+                    command: AgentCLIInvocation.command(arguments: arguments),
+                    status: .completed,
+                    payload: AgentHelpPayloadV2(text: message(for: error))
                 )
-                : nil
-        )
-        try emit(envelope, humanMessage: reply.error?.message ?? "\(command) completed.")
-        let exit = exitCode(reply)
-        if exit != .success { throw ExitCode(exit.rawValue) }
-    }
-
-    func brokerFailure(command: String) throws -> Never {
-        let error = SAFAErrorPayload(
-            code: "broker_unavailable",
-            message: "The signed local broker is unavailable.",
-            retryable: true
-        )
-        try emit(
-            CLIEnvelope(
-                command: command,
-                status: .failed,
-                data: ["error": .object(error.jsonObject)]
-            ),
-            humanMessage: error.message
-        )
-        throw ExitCode(SAFAProcessExit.runtimeFailure.rawValue)
-    }
-
-    func invalidInvocation(command: String, message: String) throws -> Never {
-        let error = SAFAErrorPayload(
-            code: "invalid_invocation",
-            message: message,
-            retryable: false
-        )
-        try emit(
-            CLIEnvelope(
-                command: command,
-                status: .failed,
-                data: ["error": .object(error.jsonObject)]
-            ),
-            humanMessage: message
-        )
-        throw ExitCode(SAFAProcessExit.invalidInvocation.rawValue)
-    }
-
-    private func exitCode(_ reply: BrokerReply) -> SAFAProcessExit {
-        if reply.status == .userActionRequired { return .userActionRequired }
-        guard reply.status != .failed else {
-            return SAFAProcessExit.map(errorCode: reply.error?.code)
+                try? SAFACommand().emit(response)
+                exit(withError: ExitCode.success)
+            }
+            emitUsageFailure(
+                command: AgentCLIInvocation.command(arguments: arguments),
+                message: message(for: error)
+            )
         }
-        if case let .object(execution)? = reply.data["execution"],
-            case let .integer(remoteExit)? = execution["remote_exit_code"],
-            remoteExit != 0
-        {
-            return .remoteFailure
+    }
+
+    public mutating func run() async throws {
+        do {
+            let client = XPCBrokerAgentClient()
+            let status = try await client.send(.runtimeStatus)
+            let directory = try await client.queryResourceDirectory(action: .list)
+            guard status.status == .completed, directory.status == .completed else {
+                try brokerFailure(command: "home")
+            }
+            let total = directory.summaries.count
+            let resources = directory.summaries.prefix(8).map(\.agentRow)
+            let payload = AgentHomePayloadV2(
+                binary: Self.displayBinaryPath(),
+                description: "Securely discover and operate registered infrastructure by alias",
+                broker: status.data.agentString(for: "broker") ?? "unknown",
+                vault: status.data.agentString(for: "vault") ?? "unknown",
+                resources: try AgentResourceListV2(
+                    total: total,
+                    truncated: total > resources.count,
+                    resources: resources
+                )
+            )
+            try finish(
+                AgentCLIResponseV2(
+                    command: "home",
+                    status: .completed,
+                    payload: payload,
+                    next: [
+                        AgentNextCommandV2(
+                            command: "safa resource show <alias>",
+                            reason: "Inspect one safe resource summary",
+                            safeForAgent: true
+                        ),
+                        AgentNextCommandV2(
+                            command: "safa topology show",
+                            reason: "Inspect bounded logical relationships",
+                            safeForAgent: true
+                        ),
+                    ]
+                )
+            )
+        } catch let exitCode as ExitCode {
+            throw exitCode
+        } catch {
+            try brokerFailure(command: "home")
         }
-        return .success
+    }
+
+    private static func emitUsageFailure(command: String, message: String) -> Never {
+        let response = AgentCLIResponseV2(
+            command: command,
+            status: .failed,
+            payload: AgentUsageFailureV2(validFlags: AgentCLIInvocation.validFlags(command)),
+            error: AgentCLIErrorV2(
+                code: "usage.invalid_invocation",
+                message: message,
+                retryable: false
+            ),
+            next: [AgentCLIInvocation.helpNext(command)]
+        )
+        try? SAFACommand().emit(response)
+        exit(withError: ExitCode(AgentCLIProcessExitV2.usage.rawValue))
+    }
+
+    private static func displayBinaryPath() -> String {
+        let path = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if path == home { return "~" }
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        return path
     }
 }
 
-struct VersionCommand: ParsableCommand, JSONCommand {
-    static let configuration = CommandConfiguration(commandName: "version")
-    @Flag var json = false
-
-    func run() throws {
-        try emit(
-            CLIEnvelope(
-                command: "version",
-                status: .completed,
-                data: [
-                    "runtime_version": .string("0.1.0"),
-                    "cli_schema": .string(CLIEnvelope.currentSchema),
-                    "platform": .string("macOS"),
-                ]
-            ),
-            humanMessage: "SAFA 0.1.0 (\(CLIEnvelope.currentSchema))"
-        )
-    }
-}
-
-struct DoctorCommand: AsyncParsableCommand, JSONCommand {
+struct DoctorCommand: AsyncParsableCommand, AgentCommand {
     static let configuration = CommandConfiguration(commandName: "doctor")
-    @Flag var json = false
 
     func run() async throws {
         do {
-            try emit(
+            try finishBrokerReply(
                 command: "doctor", reply: try await XPCBrokerAgentClient().send(.runtimeStatus))
         } catch let exit as ExitCode {
             throw exit
@@ -163,26 +144,41 @@ struct DoctorCommand: AsyncParsableCommand, JSONCommand {
     }
 }
 
-struct ExecCommand: AsyncParsableCommand, JSONCommand {
+struct ExecCommand: AsyncParsableCommand, AgentCommand {
+    static let previewLimit: UInt = 65_536
+    static let fullLimit: UInt = 1_048_576
+
     static let configuration = CommandConfiguration(commandName: "exec")
-    @Argument var alias: String
+    @Argument(completion: ResourceCLICompletion.resourceAliases) var alias: String
     @Option var intent: String
     @Option(name: .customLong("expected-effect")) var expectedEffect: String?
     @Option var rollback: String?
     @Option var timeout: UInt = 60
-    @Option(name: .customLong("output-limit")) var outputLimit: UInt = 1_048_576
-    @Flag var json = false
+    @Option(name: .customLong("output-limit")) var outputLimit: UInt = Self.previewLimit
+    @Flag var full = false
     @Argument(parsing: .postTerminator) var arguments: [String] = []
+
+    func validate() throws {
+        guard timeout > 0 else {
+            throw ValidationError("--timeout must be greater than zero.")
+        }
+        guard full || (1...Self.fullLimit).contains(outputLimit) else {
+            throw ValidationError("--output-limit must be between 1 and 1048576 bytes.")
+        }
+        guard !arguments.isEmpty else {
+            throw ValidationError("A command is required after --.")
+        }
+    }
 
     func run() async throws {
         let target = try ResourceAlias(alias)
         let command = try CommandSpec.exec(
             arguments: arguments,
             timeoutSeconds: timeout,
-            outputLimitBytes: outputLimit
+            outputLimitBytes: full ? Self.fullLimit : outputLimit
         )
         do {
-            try emit(
+            try finishBrokerReply(
                 command: "exec",
                 reply: try await XPCBrokerAgentClient().send(
                     .submitExecution(

@@ -1,0 +1,18 @@
+{
+  "schema": "dev.safa.cli/v2",
+  "command": "resource.list",
+  "status": "failed",
+  "error": {
+    "code": "usage.unknown_flag",
+    "message": "Unknown flag --stat for resource list",
+    "retryable": false
+  },
+  "valid_flags": ["--state", "--limit", "--fields", "--help"],
+  "next": [
+    {
+      "command": "safa resource list --help",
+      "reason": "Read the complete local command reference",
+      "safe_for_agent": true
+    }
+  ]
+}

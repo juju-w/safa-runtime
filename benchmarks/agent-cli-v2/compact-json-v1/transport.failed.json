@@ -1,0 +1,18 @@
+{
+  "schema": "dev.safa.cli/v1",
+  "command": "exec",
+  "status": "failed",
+  "request_id": null,
+  "timestamp": "2026-04-18T09:30:00Z",
+  "data": {
+    "error": {
+      "code": "transport_failure",
+      "message": "The resource could not be reached securely.",
+      "retryable": false,
+      "details": {},
+      "remediation": null
+    }
+  },
+  "warnings": [],
+  "next_action": null
+}

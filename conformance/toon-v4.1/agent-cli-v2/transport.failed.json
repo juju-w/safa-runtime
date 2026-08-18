@@ -1,0 +1,11 @@
+{
+  "schema": "dev.safa.cli/v2",
+  "command": "exec",
+  "status": "transport_failed",
+  "request_id": "018f0000-0000-7000-8000-000000000002",
+  "error": {
+    "code": "transport.unavailable",
+    "message": "The resource could not be reached securely.",
+    "retryable": true
+  }
+}

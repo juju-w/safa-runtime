@@ -65,6 +65,20 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 message: "SSH config import supports host resource types only.",
                 details: ["resource_type": .string(resourceType)]
             )
+        } catch ResourceLifecycleError.unsupportedTemplate(let template) {
+            return failure(
+                request,
+                code: "resource_template_unknown",
+                message: "The requested resource template is not installed.",
+                details: ["template": .string(template)]
+            )
+        } catch ResourceLifecycleError.trustedServiceSetupRequired(let template) {
+            return userActionRequired(
+                request,
+                code: "trusted_service_setup_required",
+                message: "This service template needs protected local connection setup.",
+                details: ["template": .string(template)]
+            )
         } catch ResourceLifecycleError.unsupportedAction {
             return userActionRequired(
                 request,
@@ -101,11 +115,41 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 code: "resource_state_invalid",
                 message: "Only a needs_setup draft can complete initial setup."
             )
-        } catch ResourceSetupError.verificationFailed {
+        } catch ResourceSetupError.accountVerificationFailed {
             return failure(
                 request,
-                code: "transport_failure",
-                message: "OpenSSH verification did not complete successfully."
+                code: "ssh_account_verification_failed",
+                message: "The configured OpenSSH account could not be verified."
+            )
+        } catch ResourceSetupError.authenticationRejected {
+            return failure(
+                request,
+                code: "ssh_authentication_rejected",
+                message: "The host rejected the configured OpenSSH identity."
+            )
+        } catch ResourceSetupError.hostIdentityRejected {
+            return failure(
+                request,
+                code: "ssh_host_identity_rejected",
+                message: "The live SSH host key did not match the trusted imported identity."
+            )
+        } catch ResourceSetupError.routeUnavailable {
+            return failure(
+                request,
+                code: "ssh_route_unavailable",
+                message: "The configured SSH route was unavailable during verification."
+            )
+        } catch ResourceSetupError.inventoryProbeFailed {
+            return failure(
+                request,
+                code: "ssh_inventory_probe_failed",
+                message: "OpenSSH connected, but the bounded host inventory probe failed."
+            )
+        } catch ResourceSetupError.platformMismatch {
+            return failure(
+                request,
+                code: "host_platform_mismatch",
+                message: "The probed host platform does not match the registered platform."
             )
         } catch ResourceSetupError.invalidCredentialLocator {
             return failure(
@@ -160,10 +204,12 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 message: "The resource is not in a state that supports this change."
             )
         } catch SSHConfigResolverError.aliasNotConfigured {
-            return failure(
+            return userActionRequired(
                 request,
                 code: "ssh_config_alias_not_found",
-                message: "The SSH config alias is not explicitly configured."
+                message:
+                    "The SSH alias is not configured; protected local SSH setup is required.",
+                details: ["resource": .string(request.alias.rawValue)]
             )
         } catch SSHConfigResolverError.timedOut {
             return failure(
@@ -207,12 +253,18 @@ public actor ResourceMutationService: ResourceMutationHandling {
     private func userActionRequired(
         _ request: ResourceMutationRequestV1,
         code: String,
-        message: String
+        message: String,
+        details: [String: JSONValue] = [:]
     ) -> ResourceMutationReplyV1 {
         ResourceMutationReplyV1(
             messageID: request.header.messageID,
             status: .userActionRequired,
-            error: SAFAErrorPayload(code: code, message: message, retryable: false)
+            error: SAFAErrorPayload(
+                code: code,
+                message: message,
+                retryable: false,
+                details: details
+            )
         )
     }
 

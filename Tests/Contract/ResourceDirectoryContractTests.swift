@@ -36,7 +36,7 @@ struct ResourceDirectoryContractTests {
             alias: try ResourceAlias("nas.home"),
             mutation: ResourceMutationV1(
                 sourceSSHConfigAlias: try ResourceAlias("home-nas"),
-                resourceType: .hostNAS
+                resourceType: .hostLinux
             )
         )
 
@@ -44,7 +44,7 @@ struct ResourceDirectoryContractTests {
             String(data: CanonicalCodec.encode(request), encoding: .utf8)
         )
         #expect(text.contains("home-nas"))
-        #expect(text.contains("host.nas"))
+        #expect(text.contains("host.linux"))
         #expect(!text.contains("display_name"))
         #expect(!text.contains("endpoint"))
         #expect(!text.contains("username"))
@@ -53,12 +53,41 @@ struct ResourceDirectoryContractTests {
         #expect(!text.contains("sudo"))
     }
 
+    @Test("resource edit state is explicit and carries no private connection material")
+    func editStateRequestIsSafe() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let request = ResourceMutationRequestV1(
+            header: IPCHeader(sentAt: date, deadline: date.addingTimeInterval(30)),
+            action: .edit,
+            alias: try ResourceAlias("nas.home"),
+            mutation: ResourceMutationV1(
+                sourceSSHConfigAlias: try ResourceAlias("home-nas"),
+                desiredState: .disabled
+            )
+        )
+
+        let text = try #require(
+            String(data: CanonicalCodec.encode(request), encoding: .utf8)
+        )
+        #expect(text.contains(#""action":"edit""#))
+        #expect(text.contains(#""desired_state":"disabled""#))
+        #expect(!text.contains("endpoint"))
+        #expect(!text.contains("username"))
+        #expect(!text.contains("password"))
+        #expect(!text.contains("credential"))
+    }
+
     @Test("public summary cannot encode connection or credential material")
     func publicSummaryIsSafe() throws {
         let summary = ResourceSummaryV1(
             alias: "gpu.lab",
             displayName: "GPU worker",
             resourceType: "host.linux",
+            kind: "host",
+            templateID: "ssh",
+            templateVersion: 1,
+            hostPlatform: "linux",
+            roles: ["gpu"],
             state: "active",
             health: "ready",
             capabilities: ["exec"],
@@ -86,6 +115,11 @@ struct ResourceDirectoryContractTests {
             alias: "gpu.lab",
             displayName: "GPU worker",
             resourceType: "host.linux",
+            kind: "host",
+            templateID: "ssh",
+            templateVersion: 1,
+            hostPlatform: "linux",
+            roles: ["gpu"],
             alternateAliases: ["gpu-worker"],
             accessMethods: ["ssh"],
             state: "active",

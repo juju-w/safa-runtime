@@ -8,17 +8,46 @@ extension ResourceService {
         password: Data,
         now: Date = Date()
     ) async throws -> Resource {
+        guard draft.credentialKind != nil else {
+            throw ResourceServiceError.unexpectedCredential
+        }
+        return try await addProtectedResource(draft, credential: password, now: now)
+    }
+
+    public func addProtectedResource(
+        _ draft: PrivateResourceDraft,
+        credential: Data?,
+        verifiedReachabilityObservedAt: Date? = nil,
+        now: Date = Date()
+    ) async throws -> Resource {
         try await mutationGate.withLock { [self] in
-            try await addPasswordResourceUnlocked(draft, password: password, now: now)
+            try await addProtectedResourceUnlocked(
+                draft,
+                credential: credential,
+                verifiedReachabilityObservedAt: verifiedReachabilityObservedAt,
+                now: now
+            )
         }
     }
 
-    func addPasswordResourceUnlocked(
+    func addProtectedResourceUnlocked(
         _ draft: PrivateResourceDraft,
-        password: Data,
+        credential: Data?,
+        verifiedReachabilityObservedAt: Date?,
         now: Date
     ) async throws -> Resource {
-        guard draft.hostIdentity.status == .trusted else {
+        let template = try Self.ensureTemplateCompatibility(
+            classification: draft.classification,
+            accessMethods: draft.accessMethods,
+            credentialKind: draft.credentialKind
+        )
+        guard (credential == nil) == (draft.credentialKind == nil) else {
+            throw ResourceServiceError.unexpectedCredential
+        }
+        guard !template.credentialRequired || credential != nil else {
+            throw ResourceServiceError.credentialRequired(template.id.rawValue)
+        }
+        if draft.accessMethods.contains(.ssh), draft.hostIdentity?.status != .trusted {
             throw ResourceServiceError.invalidHostIdentity
         }
         var document = try await vault.readDocument()
@@ -36,27 +65,39 @@ extension ResourceService {
             resources: document.resources
         )
 
-        let credentialID = UUID()
-        let passwordCredential = PasswordCredential(store: passwordStore)
-        let locator = try await passwordCredential.create(secret: password, id: credentialID)
-        let reference = CredentialReference(
-            id: credentialID,
-            kind: .sshPassword,
-            storageLocator: Data(locator.account.utf8),
-            securityDomains: [draft.securityDomain],
-            accessClass: .automaticWithinPolicy,
-            health: .ready,
-            createdAt: now
-        )
+        let credentialID = credential.map { _ in UUID() }
+        var reference: CredentialReference?
+        if let credential, let credentialID, let credentialKind = draft.credentialKind {
+            let passwordCredential = PasswordCredential(store: passwordStore)
+            let locator = try await passwordCredential.create(secret: credential, id: credentialID)
+            reference = CredentialReference(
+                id: credentialID,
+                kind: credentialKind,
+                storageLocator: Data(locator.account.utf8),
+                securityDomains: [draft.securityDomain],
+                accessClass: .automaticWithinPolicy,
+                health: .ready,
+                createdAt: now
+            )
+        }
         let resource = Resource(
             id: resourceID,
             alias: draft.alias,
-            resourceType: draft.resourceType,
+            classification: draft.classification,
             alternateAliases: draft.alternateAliases,
             accessMethods: draft.accessMethods,
             metadata: draft.metadata,
             relationships: draft.relationships,
+            credentialBindings: credentialID.map {
+                [
+                    ResourceCredentialBinding(
+                        role: draft.credentialRole,
+                        credentialID: $0
+                    )
+                ]
+            } ?? [],
             displayName: draft.displayName,
+            transport: draft.accessMethods.contains(.ssh) ? .ssh : nil,
             endpoint: draft.endpoint,
             username: draft.username,
             securityDomain: draft.securityDomain,
@@ -67,12 +108,20 @@ extension ResourceService {
             createdAt: now,
             updatedAt: now
         )
-        document.credentialReferences.append(reference)
+        if let reference {
+            document.credentialReferences.append(reference)
+        }
         document.resources.append(resource)
         do {
-            try await vault.writeDocument(document)
+            try await writeResourceDocument(
+                document,
+                verifiedReachabilityTo: verifiedReachabilityObservedAt.map { _ in resource.alias },
+                observedAt: verifiedReachabilityObservedAt
+            )
         } catch {
-            try? await passwordCredential.delete(id: credentialID)
+            if let credentialID {
+                try? await passwordStore.deleteSecret(id: credentialID)
+            }
             throw error
         }
         return resource
@@ -83,6 +132,7 @@ extension ResourceService {
         alias: ResourceAlias,
         draft: PrivateResourceDraft,
         replacementPassword: Data? = nil,
+        verifiedReachabilityObservedAt: Date? = nil,
         now: Date = Date()
     ) async throws -> Resource {
         try await mutationGate.withLock { [self] in
@@ -90,6 +140,7 @@ extension ResourceService {
                 alias: alias,
                 draft: draft,
                 replacementPassword: replacementPassword,
+                verifiedReachabilityObservedAt: verifiedReachabilityObservedAt,
                 now: now
             )
         }
@@ -99,12 +150,13 @@ extension ResourceService {
         alias: ResourceAlias,
         draft: PrivateResourceDraft,
         replacementPassword: Data?,
+        verifiedReachabilityObservedAt: Date?,
         now: Date
     ) async throws -> Resource {
         guard draft.alias == alias else {
             throw ResourceServiceError.notFound(alias: alias.rawValue)
         }
-        guard draft.hostIdentity.status == .trusted else {
+        if draft.accessMethods.contains(.ssh), draft.hostIdentity?.status != .trusted {
             throw ResourceServiceError.invalidHostIdentity
         }
         var document = try await vault.readDocument()
@@ -117,6 +169,32 @@ extension ResourceService {
         }
 
         var resource = document.resources[index]
+        guard resource.resolvedTemplate == draft.classification.template,
+            resource.resolvedKind == draft.classification.kind
+        else {
+            throw ResourceServiceError.templateChangeNotAllowed(
+                from: resource.resolvedTemplate.id.rawValue,
+                to: draft.classification.template.id.rawValue
+            )
+        }
+        let previousCredentialID = resource.authRef
+        let existingCredentialKind = previousCredentialID.flatMap { previousID in
+            document.credentialReferences.first(where: { $0.id == previousID })?.kind
+        }
+        let effectiveCredentialKind =
+            replacementPassword == nil
+            ? existingCredentialKind : draft.credentialKind
+        _ = try Self.ensureTemplateCompatibility(
+            classification: draft.classification,
+            accessMethods: draft.accessMethods,
+            credentialKind: effectiveCredentialKind
+        )
+        if replacementPassword == nil,
+            let requestedKind = draft.credentialKind,
+            requestedKind != existingCredentialKind
+        {
+            throw ResourceServiceError.unexpectedCredential
+        }
         try Self.ensureValidMetadata(draft.metadata)
         try Self.ensureAliasesAvailable(
             canonical: draft.alias,
@@ -129,9 +207,11 @@ extension ResourceService {
             ownerID: resource.id,
             resources: document.resources
         )
-        let previousCredentialID = resource.authRef
         var replacementCredentialID: UUID?
         if let replacementPassword {
+            guard let credentialKind = draft.credentialKind else {
+                throw ResourceServiceError.unexpectedCredential
+            }
             let id = UUID()
             let credential = PasswordCredential(store: passwordStore)
             let locator = try await credential.create(secret: replacementPassword, id: id)
@@ -140,7 +220,7 @@ extension ResourceService {
             document.credentialReferences.append(
                 CredentialReference(
                     id: id,
-                    kind: .sshPassword,
+                    kind: credentialKind,
                     storageLocator: Data(locator.account.utf8),
                     securityDomains: [draft.securityDomain],
                     accessClass: .automaticWithinPolicy,
@@ -149,19 +229,34 @@ extension ResourceService {
                 )
             )
         }
+        let connectionChanged =
+            resource.endpoint != draft.endpoint
+            || resource.username != draft.username
+            || resource.resolvedAccessMethods != draft.accessMethods
         resource.displayName = draft.displayName
         resource.profile = ResourceProfile(
-            resourceType: draft.resourceType,
+            classification: draft.classification,
             alternateAliases: draft.alternateAliases,
             accessMethods: draft.accessMethods,
             metadata: draft.metadata,
             relationships: draft.relationships,
-            credentialBindings: resource.resolvedCredentialBindings
+            credentialBindings: replacementCredentialID.map {
+                [
+                    ResourceCredentialBinding(
+                        role: draft.credentialRole,
+                        credentialID: $0
+                    )
+                ]
+            } ?? resource.resolvedCredentialBindings
         )
         resource.endpoint = draft.endpoint
         resource.username = draft.username
         resource.securityDomain = draft.securityDomain
         resource.hostIdentity = draft.hostIdentity
+        // A changed service connection must be proved again by its protocol adapter.
+        if connectionChanged || replacementPassword != nil {
+            resource.verification = nil
+        }
         resource.revision += 1
         resource.updatedAt = now
         document.resources[index] = resource
@@ -179,7 +274,11 @@ extension ResourceService {
             document.credentialReferences.removeAll { $0.id == previousCredentialID }
         }
         do {
-            try await vault.writeDocument(document)
+            try await writeResourceDocument(
+                document,
+                verifiedReachabilityTo: verifiedReachabilityObservedAt.map { _ in resource.alias },
+                observedAt: verifiedReachabilityObservedAt
+            )
         } catch {
             if let replacementCredentialID {
                 try? await passwordStore.deleteSecret(id: replacementCredentialID)
@@ -190,10 +289,51 @@ extension ResourceService {
             let previousCredentialID,
             previousCredentialID != replacementCredentialID,
             !document.credentialReferences.contains(where: { $0.id == previousCredentialID }),
-            previousCredentialKind == .sshPassword
+            previousCredentialKind.map(Self.isBrokerStoredSecret) == true
         {
             try? await passwordStore.deleteSecret(id: previousCredentialID)
         }
         return resource
+    }
+
+    /// Commits only broker-owned adapter evidence. Agent input cannot manufacture
+    /// this transition, and a stale probe cannot bless a changed connection.
+    @discardableResult
+    public func recordServiceVerification(
+        alias: ResourceAlias,
+        expectedRevision: UInt64,
+        adapter: AccessMethodIdentifier,
+        succeeded: Bool,
+        now: Date = Date()
+    ) async throws -> Resource {
+        try await mutationGate.withLock { [self] in
+            var document = try await vault.readDocument()
+            guard
+                let index = document.resources.firstIndex(where: {
+                    $0.alias == alias && $0.state != .deleted
+                })
+            else {
+                throw ResourceServiceError.notFound(alias: alias.rawValue)
+            }
+            var resource = document.resources[index]
+            guard resource.revision == expectedRevision, resource.state == .active else {
+                throw ResourceServiceError.staleResource
+            }
+            guard !resource.resolvedAccessMethods.contains(.ssh),
+                resource.resolvedAccessMethods.contains(adapter)
+            else {
+                throw ResourceServiceError.incompatibleAccessMethod(adapter.rawValue)
+            }
+            resource.verification = ResourceVerification(
+                status: succeeded ? .verified : .failed,
+                adapter: adapter,
+                checkedAt: now
+            )
+            resource.revision += 1
+            resource.updatedAt = now
+            document.resources[index] = resource
+            try await writeResourceDocument(document)
+            return resource
+        }
     }
 }

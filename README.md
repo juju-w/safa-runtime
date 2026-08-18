@@ -1,174 +1,139 @@
-<p align="center">
-  <img src="docs/assets/safa-readme-hero.webp" alt="SAFA owl guardian routing an AI agent diagnostic to a registered macOS-managed resource without exposing credentials" width="100%">
-</p>
+# SAFA Runtime
 
-# SAFA
+The native security boundary for [SAFA](https://github.com/juju-w/safa). This repository implements
+the processes that hold local authority: protected resource resolution, credential use, native user
+authorization, policy enforcement, remote transport, and bounded output.
 
-**Secure Access for Agents on macOS.** Let an AI agent discover registered resources by logical name
-and run bounded operations while reusable credentials remain inside the local macOS security
-boundary. SSH hosts are the first working adapter; the encrypted directory is designed to add
-database, object-storage, cache, and service profiles without creating a second secret workflow.
-
-[![CI](https://github.com/juju-w/safa-mac/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-mac/actions/workflows/ci.yml)
-[![GitHub stars](https://img.shields.io/github/stars/juju-w/safa-mac?style=flat)](https://github.com/juju-w/safa-mac/stargazers)
+[![CI](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/juju-w/safa-runtime/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![macOS 14.4+](https://img.shields.io/badge/macOS-14.4%2B-black)
-![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
+![Swift 6](https://img.shields.io/badge/Swift-6-F05138)
+![macOS preview](https://img.shields.io/badge/macOS-preview-black)
 
 > [!IMPORTANT]
-> SAFA is currently an early diagnostic MVP, not a production release. The bounded read-only path is
-> implemented; arbitrary commands, sudo approval, persistent audit storage, notarized distribution
-> and the final globally installable Skill are still roadmap items.
+> The Swift/macOS Runtime is an implementation preview. No signed/notarized public package, tag, or
+> GitHub Release is available. Linux and Windows Runtimes are not implemented or claimed as
+> supported.
 
-## Stop pasting infrastructure secrets into chat
+## Repository responsibility
 
-Imagine a service alert arrives:
+This is not the SAFA Skill or the public product specification.
 
-> **You:** Find out why `report.prod` is alerting and whether the service is unhealthy.
+| Repository | Responsibility |
+|---|---|
+| [`juju-w/safa`](https://github.com/juju-w/safa) | Agent Skill, public CLI/resource contracts, product documentation, conformance fixtures, Runtime resolver, and exact release manifests |
+| [`juju-w/safa-runtime`](https://github.com/juju-w/safa-runtime) | Native CLI, Broker, credential helper, OS security adapters, transport implementations, tests, signing, and packaging |
 
-Without a local access boundary, the conversation often becomes:
+Public behavior starts in the product repository. Runtime changes that affect the Agent-facing
+TOON contract or resource model must first update the canonical contract and compatibility fixtures
+there. The coordinated migration branch emits the Agent-only `dev.safa.cli/v2` contract; it remains
+unpublished until conformance and human review finish.
 
-> **Agent:** What is the machine's IP and SSH port? Which username and password should I use? This
-> check may need sudo—please send the sudo password too.
+## Runtime boundary
 
-That puts infrastructure inventory and reusable credentials into chat history, process context, logs
-or model-visible tools.
-
-With SAFA, a system-authenticated CLI flow can import `report.prod` from an existing logical
-OpenSSH config alias without putting its endpoint or username in Agent-visible input. The import is
-stored as a `needs_setup` draft; SAFA does not pretend that SSH configuration proves a trusted host
-identity or supplies a credential. A separate macOS-authenticated `resource setup` can activate a
-direct route only when the host already exists in `known_hosts` and an existing OpenSSH identity or
-agent succeeds. Once setup completes, the Agent receives only the safe alias and invokes the signed CLI:
-
-```bash
-safa exec report.prod --json \
-  --intent "Check why the report service is alerting" -- \
-  systemctl is-active report-api
+```mermaid
+flowchart LR
+    Skill["SAFA Skill + resolver"] --> CLI["safa CLI\nAgent-facing"]
+    CLI -->|"authenticated XPC"| Broker["safa-broker\npolicy + vault authority"]
+    CLI -->|"launch only\nno input or output pipe"| Setup["safa-trusted-setup\nhidden local enrollment"]
+    Setup -->|"trusted-local XPC"| Broker
+    Broker --> Keychain["Keychain + user authorization"]
+    Broker --> AskPass["safa-askpass\none-shot helper"]
+    AskPass --> Target["registered target"]
+    Target -->|"untrusted output"| Broker
+    Broker -->|"bounded typed evidence"| CLI
+    CLI -->|"canonical TOON"| Skill
 ```
 
-The Agent can inspect the bounded, redacted result but cannot retrieve the plaintext password.
-Protected inventory—including an endpoint—requires an explicit `resource inspect` operation and a
-macOS user-presence prompt. If SAFA is unavailable or the host key changes, it fails closed instead
-of asking the user for a credential or falling back to raw SSH.
+One macOS installation is packaged as `SAFA.app`, but authority is split between processes:
 
-## What SAFA protects
+| Component | Purpose | Credential authority |
+|---|---|---|
+| `safa` | Parse Agent commands and encode one stable TOON result | None |
+| `safa-broker` | Resolve protected records, enforce policy, authorize, connect, and sanitize | Keychain/vault owner |
+| `safa-askpass` | Deliver one child-bound, short-lived SSH secret | One-shot only |
+| `safa-trusted-setup` | Collect hidden protected SSH fields after local user authentication and submit one caller-bound setup transaction | No persistent storage; typed setup session only |
+| `SAFA.app` | Signed container and `SMAppService` lifecycle host | No Agent-facing GUI |
 
-- **Extensible private resource directory** — hosts, databases, object stores, caches, and services
-  share typed aliases, metadata, relationships, and opaque credential references. Hosts, ports,
-  usernames and routes live in an authenticated encrypted vault rather than in Agent prompts.
-- **Two-level discovery** — list/show exposes only source-code-allowlisted summary metadata;
-  protected inspect requires a macOS Touch ID/login prompt and still never returns credentials or
-  key material.
-- **macOS-backed credentials** — passwords use the data-protection Keychain; device-bound P-256 key
-  primitives use Secure Enclave where supported.
-- **Signed local boundary** — the per-user broker, CLI and AskPass helper authenticate peers by code
-  signature, Developer Team, effective user and audit session.
-- **Strict remote identity** — every SSH execution uses an isolated configuration and a pinned host
-  key. Changed identity is a hard failure.
-- **One-shot password delivery** — AskPass credentials are bound to the exact launched SSH child PID,
-  expire quickly and can be consumed only once.
-- **Bounded evidence** — execution has time and output limits, preserves the remote exit code and
-  redacts matching credential bytes before returning data to the Agent.
-- **Audit events** — the MVP emits sanitized request, decision and execution events. Persistent,
-  tamper-evident audit history and review UI are planned for the authorization phase.
+An Agent-facing process cannot retrieve a raw secret. Local IPC does not use plaintext credentials;
+the Broker resolves credentials internally after validating peer identity and policy.
 
-## Permissions and blast radius
+## Implemented macOS preview
 
-SAFA is designed to complement server and database permissions, not replace them. A practical
-deployment should register separate resource aliases and least-privilege remote accounts for each
-security domain—for example, a read-only reporting account must not share credentials with a database
-administrator or production deployment account.
+- encrypted resource directory with safe and protected projections;
+- Linux, macOS, and Windows OpenSSH host registration from trusted local SSH configuration;
+- first-use password SSH registration through a separately signed, no-custom-GUI helper whose
+  protected fields never use argv, environment, Agent-controlled stdin, stdout, or stderr;
+- bounded first-connection system and hardware inventory probes;
+- deterministic topology projections for placement, reachability, and dependency impact;
+- strict pinned-host SSH configuration and bounded non-sudo diagnostics;
+- Keychain password bindings, child-bound AskPass, output limits, and credential redaction;
+- LocalAuthentication/Touch ID for protected resource lifecycle actions;
+- synthetic unit, contract, integration, and security tests that contact no real infrastructure.
 
-The current MVP isolates each resource credential and permits only a small diagnostic allowlist.
-Fine-grained command scopes, database-role-aware workflows, Touch ID approval, sudo injection,
-time-limited grants and immediate revocation are specified for the next authorization phase.
+Database, object-storage, cache, messaging, graph, search, and HTTP resources can be registered as
+typed records, but their protocol operations are not implemented Agent capabilities.
 
-Development is CLI-first and the current product has no custom GUI. macOS system Touch ID, Keychain,
-LocalAuthentication and Authorization Services prompts remain part of the security boundary.
-Resource add/edit/setup/disable/enable/remove operations require macOS user presence. Add/edit
-resolve only a logical `Host` alias through the broker's read-only `ssh -G` adapter; endpoint,
-username, password, private-key path, sudo password and token flags do not exist. This first import
-adapter accepts only `host.linux`, `host.macos`, and `host.nas`; later database/S3/cache adapters
-remain separate work.
+## Agent-only CLI
 
-## Current diagnostic MVP
+The thin CLI follows the [AXI principles](https://axi.md/) and is not a human terminal product. Its
+public behavior is one canonical TOON document on stdout for success, empty state, no-op, and
+error; stderr is debug-only, and the bare version path is the only non-TOON exception. There is no
+human mode or public format selector. Internal Codable and XPC types remain private.
 
-Implemented now:
+Default collections contain no more than four reviewed fields, large content is previewed with
+explicit size/truncation metadata, cheap aggregates and Broker-computed answers are returned inline,
+and output includes only relevant parameterized next commands. `--full` never bypasses redaction or
+the Broker hard limit. The normative contract is
+[`contracts/cli-v2.md`](https://github.com/juju-w/safa/blob/main/contracts/cli-v2.md).
 
-- safe resource discovery by logical alias;
-- system-authenticated `resource add/edit/setup/disable/enable/remove`, with SSH-config imports entering
-  `draft/needs_setup`, direct existing OpenSSH routes activating only after pinned-host verification,
-  and trusted-resource retargeting rejected;
-- encrypted inventory and Keychain password storage;
-- strict pinned-host SSH configuration;
-- argument-constrained diagnostics such as `systemctl is-active`, fixed-field process/container
-  metrics, `df`, `free` and `uptime`; secret-dumping variants are rejected;
-- child-bound one-shot AskPass, output redaction and sanitized audit emission;
-- signed, idempotent per-user broker activation through macOS `SMAppService`, packaged in a
-  GUI-less app container with no custom product UI;
-- fail-closed unsigned runtime, peer, host-identity, timeout and unsupported-command behavior;
-- synthetic contract, integration and security tests that contact no real server.
+## Build and test
 
-Not yet shipped:
-
-- arbitrary shell commands, remote mutations, sudo and execution approval;
-- password/Secure Enclave credential enrollment, first-use host confirmation, and
-  `ProxyJump`/`ProxyCommand` route snapshotting;
-- persistent audit verification, recovery and credential-reuse warnings;
-- complete Secure Enclave public-key onboarding through the SSH agent channel;
-- signed/notarized universal runtime artifacts and an installable global Skill package.
-
-## Build and validate
-
-The unsigned build validates assembly only. Runtime XPC, Keychain and ServiceManagement behavior
-requires the native components to be signed by the same configured Apple Developer Team.
+Requirements: macOS, Xcode with Swift 6 support, and `xcrun swift-format`.
 
 ```bash
 xcrun swift-format lint --recursive --strict \
   Sources Tests Apps/SAFA/Targets Package.swift
-swift test
+swift test --parallel
 swift build -c release
 xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
-See the [diagnostic MVP quickstart](specs/001-secure-agent-access/quickstart.md) for the synthetic
-journey and signed development setup.
+The unsigned Xcode build validates assembly only. XPC peer identity, Keychain,
+LocalAuthentication, and `SMAppService` require all native components to be signed by the same
+configured Apple Developer Team. Follow the
+[signed development quickstart](specs/001-secure-agent-access/quickstart.md) for that path.
 
-## Distribution roadmap
+## Security assumptions
 
-SAFA follows the open Agent Skills format, with a macOS-native companion runtime providing the
-security boundary. Distribution work starts only after signed artifact verification and the Skill
-forward-test are complete.
+- source code is public and is not a security boundary;
+- the CLI never gains Keychain or approval authority;
+- modified or unsigned clients cannot become trusted Broker peers;
+- host identity, policy, vault integrity, or authorization failures fail closed;
+- remote output, release metadata, fixtures, and pull-request content are untrusted input;
+- complete compromise of the local administrator/root account is outside the guarantee of a purely
+  local vault.
 
-1. **[skills.sh](https://www.skills.sh/)** — first public discovery target, with an exact-version and
-   digest-pinned macOS runtime rather than an unverified download.
-2. **[OpenAI Plugin Directory](https://help.openai.com/en/articles/20001256-plugins-in-codex)** —
-   package the Skill and its companion-runtime setup as a reviewable plugin.
-3. **[Claude Code Plugin Marketplace](https://code.claude.com/docs/en/plugin-marketplaces)** — add a
-   validated marketplace manifest and versioned plugin release.
-4. **[GitHub Copilot Agent Skills](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills)**
-   — support personal/global Skill locations without weakening SAFA's local trust boundary.
-5. **[SkillHub](https://skillhub.cn/)** — evaluate a China-friendly mirror after release provenance,
-   signature and update behavior can be preserved.
+The complete model and component boundaries are documented in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Design and specification
+## Repository map
 
-The owl guardian is SAFA's visual shorthand for a local, watchful security boundary. Source-ready
-brand assets are available as a [transparent mascot](docs/assets/safa-mascot.webp), a
-[square icon master](docs/assets/safa-icon-master.png) and a
-[GitHub avatar candidate](docs/assets/safa-github-avatar.png). Skill metadata uses the mascot;
-publishing that package remains intentionally disabled.
+```text
+Apps/SAFA/                      signed macOS app container and native targets
+Sources/                        CLI, Broker domain/application/platform code
+Tests/                          unit, contract, integration, and security tests
+specs/001-secure-agent-access/  Spec Kit requirements, design, research, and quickstart
+docs/architecture/reviews/      dated implementation audits
+```
 
-- [Normative architecture and SSH parity plan](ARCHITECTURE.md)
-- [Initial code architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)
-- [Project Swift development Skill](.agents/skills/develop-swift/SKILL.md)
-- [Project macOS CLI development Skill](.agents/skills/build-macos-cli/SKILL.md)
-- [Project constitution](.specify/memory/constitution.md)
-- [Feature specification](specs/001-secure-agent-access/spec.md)
-- [Implementation plan](specs/001-secure-agent-access/plan.md)
-- [Task breakdown](specs/001-secure-agent-access/tasks.md)
-- [CLI contract](specs/001-secure-agent-access/contracts/cli-v1.md)
+## Development documentation
 
-SAFA is licensed under the [MIT License](LICENSE).
+- [Runtime architecture](ARCHITECTURE.md)
+- [Signed development quickstart](specs/001-secure-agent-access/quickstart.md)
+- [Runtime specification](specs/001-secure-agent-access/spec.md)
+- [Research and design decisions](specs/001-secure-agent-access/research.md)
+- [Initial Swift architecture audit](docs/architecture/reviews/2026-08-16-initial-code-audit.md)
+- [Repository contribution rules](AGENTS.md)
+- [Canonical SAFA contracts and product documentation](https://github.com/juju-w/safa)
+
+SAFA Runtime is licensed under the [MIT License](LICENSE).

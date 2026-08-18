@@ -16,7 +16,8 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
     private let audit: AuditService
     private let askPassExecutable: URL
     private let workingDirectory: URL
-    private var setupSessions: [UUID: ResourceAlias] = [:]
+    private let trustedResourceSetup: TrustedResourceSetupService
+    private let topologyReachabilityRecorder: (any TopologyReachabilityRecording)?
 
     public init(
         vault: any VaultDocumentStoring,
@@ -26,18 +27,26 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         transport: SSHTransport = SSHTransport(),
         diagnosticPolicy: DiagnosticCommandPolicy = DiagnosticCommandPolicy(),
         audit: AuditService = AuditService(),
+        trustedSSHVerifier: (any TrustedSSHResourceVerifying)? = nil,
+        topologyReachabilityRecorder: (any TopologyReachabilityRecording)? = nil,
         askPassExecutable: URL,
         workingDirectory: URL
     ) {
         self.vault = vault
         self.passwordStore = passwordStore
-        self.resourceService =
+        let resolvedResourceService =
             resourceService
             ?? ResourceService(vault: vault, passwordStore: passwordStore)
+        self.resourceService = resolvedResourceService
+        trustedResourceSetup = TrustedResourceSetupService(
+            resources: resolvedResourceService,
+            sshVerifier: trustedSSHVerifier
+        )
         self.bindingStore = bindingStore
         self.transport = transport
         self.diagnosticPolicy = diagnosticPolicy
         self.audit = audit
+        self.topologyReachabilityRecorder = topologyReachabilityRecorder
         self.askPassExecutable = askPassExecutable
         self.workingDirectory = workingDirectory
     }
@@ -112,77 +121,21 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         do {
             switch operation {
             case let .beginPrivateSetup(resourceAlias):
-                let sessionID = UUID()
-                setupSessions[sessionID] = resourceAlias
+                let sessionID = await trustedResourceSetup.begin(
+                    alias: resourceAlias,
+                    caller: caller
+                )
                 return BrokerReply(
                     messageID: messageID,
                     status: .completed,
                     data: ["setup_session_id": .string(sessionID.uuidString)]
                 )
             case let .commitPrivateSetup(sessionID, protectedPayload):
-                guard let alias = setupSessions.removeValue(forKey: sessionID) else {
-                    return failure(
-                        messageID: messageID,
-                        code: "setup_session_invalid",
-                        message: "The private setup session is invalid or expired."
-                    )
-                }
-                let payload = try CanonicalCodec.decode(
-                    ProtectedResourceSetupPayload.self,
-                    from: protectedPayload,
-                    maxBytes: 64 * 1_024
+                let resource = try await trustedResourceSetup.commit(
+                    sessionID: sessionID,
+                    caller: caller,
+                    protectedPayload: protectedPayload
                 )
-                guard
-                    !payload.host.isEmpty,
-                    payload.host.utf8.count <= 255,
-                    !payload.username.isEmpty,
-                    payload.username.utf8.count <= 255,
-                    payload.securityDomain.utf8.count <= 128,
-                    payload.hostFingerprint.utf8.count <= 512
-                else {
-                    return failure(
-                        messageID: messageID,
-                        code: "invalid_setup",
-                        message: "The trusted setup values are invalid."
-                    )
-                }
-                let draft = PrivateResourceDraft(
-                    alias: alias,
-                    resourceType: try payload.resourceType.map(ResourceTypeIdentifier.init)
-                        ?? .hostLinux,
-                    alternateAliases: try (payload.alternateAliases ?? []).map(ResourceAlias.init),
-                    accessMethods: try (payload.accessMethods ?? ["ssh"])
-                        .map(AccessMethodIdentifier.init),
-                    metadata: try (payload.metadata ?? []).map(Self.domainMetadata),
-                    displayName: payload.displayName,
-                    endpoint: ResourceEndpoint(host: payload.host, port: payload.port),
-                    username: payload.username,
-                    securityDomain: payload.securityDomain,
-                    hostIdentity: HostIdentity(
-                        algorithm: payload.hostKeyAlgorithm,
-                        publicKey: payload.hostPublicKey,
-                        fingerprint: payload.hostFingerprint,
-                        verifiedAt: Date(),
-                        verificationMethod: .manual,
-                        status: .trusted
-                    )
-                )
-                let document = try await vault.readDocument()
-                let resource: Resource
-                if document.resources.contains(where: {
-                    $0.alias == alias && $0.state != .deleted
-                }) {
-                    resource = try await resourceService.edit(
-                        alias: alias,
-                        draft: draft,
-                        replacementPassword: payload.password
-                    )
-                } else {
-                    resource = try await resourceService.addPasswordResource(
-                        draft,
-                        password: payload.password
-                    )
-                }
                 return BrokerReply(
                     messageID: messageID,
                     status: .completed,
@@ -192,6 +145,24 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
                 .rotateHostIdentity, .exportRecovery, .importRecovery:
                 return unsupported(messageID: messageID)
             }
+        } catch TrustedResourceSetupError.invalidSession {
+            return failure(
+                messageID: messageID,
+                code: "setup_session_invalid",
+                message: "The private setup session is invalid or expired."
+            )
+        } catch TrustedResourceSetupError.invalidPayload {
+            return failure(
+                messageID: messageID,
+                code: "invalid_setup",
+                message: "The trusted setup values are invalid."
+            )
+        } catch TrustedResourceSetupError.unsupportedTemplate {
+            return failure(
+                messageID: messageID,
+                code: "resource_template_unknown",
+                message: "The requested resource template is not installed."
+            )
         } catch {
             return failure(
                 messageID: messageID,
@@ -330,6 +301,15 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         }
         if binding != nil { bindingStore.revoke(requestID: requestID) }
 
+        // OpenSSH reserves 255 for connection/authentication failures. Other exit codes
+        // come from a reached remote command and still prove transport reachability.
+        if result.termination == .exit, result.exitCode != 255 {
+            try? await topologyReachabilityRecorder?.recordSuccessfulReachability(
+                to: resource.alias,
+                observedAt: result.finishedAt
+            )
+        }
+
         let stdout = redactionSecret.map { Self.redact($0, from: result.stdout) } ?? result.stdout
         let stderr = redactionSecret.map { Self.redact($0, from: result.stderr) } ?? result.stderr
         let outcome = result.exitCode == 0 ? "completed" : "remote_failure"
@@ -350,11 +330,13 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
                     "stdout": .object([
                         "text": .string(String(decoding: stdout, as: UTF8.self)),
                         "captured_bytes": .integer(Int64(stdout.count)),
+                        "original_bytes": .integer(Int64(result.stdoutTotalBytes)),
                         "truncated": .boolean(result.stdoutTruncated),
                     ]),
                     "stderr": .object([
                         "text": .string(String(decoding: stderr, as: UTF8.self)),
                         "captured_bytes": .integer(Int64(stderr.count)),
+                        "original_bytes": .integer(Int64(result.stderrTotalBytes)),
                         "truncated": .boolean(result.stderrTruncated),
                     ]),
                 ]),
@@ -370,28 +352,6 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
             result.replaceSubrange(range, with: replacement)
         }
         return result
-    }
-
-    private static func domainMetadata(
-        _ entry: ResourceMetadataEntryV1
-    ) throws -> ResourceMetadataEntry {
-        ResourceMetadataEntry(
-            key: try ResourceMetadataKey(entry.key),
-            value: domainMetadataValue(entry.value),
-            observedAt: entry.observedAt
-        )
-    }
-
-    private static func domainMetadataValue(
-        _ value: ResourceMetadataValueV1
-    ) -> ResourceMetadataValue {
-        switch value {
-        case let .text(value): .text(value)
-        case let .integer(value): .integer(value)
-        case let .boolean(value): .boolean(value)
-        case let .byteCount(value): .byteCount(value)
-        case let .textList(value): .textList(value)
-        }
     }
 
     private static func jsonProjection(_ resource: SafeResourceProjection) -> JSONValue {

@@ -21,6 +21,19 @@ public protocol BrokerAgentClient: Sendable {
         alias: ResourceAlias,
         mutation: ResourceMutationV1?
     ) async throws -> ResourceMutationReplyV1
+    func queryTopology(
+        task: TopologyProjectionTask,
+        source: ResourceAlias?,
+        target: ResourceAlias?,
+        relation: TopologyRelation?,
+        bounds: TopologyQueryBoundsV1
+    ) async throws -> TopologyQueryReplyV1
+    func mutateTopology(
+        action: TopologyMutationActionV1,
+        source: ResourceAlias,
+        relation: TopologyRelation,
+        target: ResourceAlias
+    ) async throws -> TopologyMutationReplyV1
 }
 
 final class XPCReplyContinuationBox<Reply: Sendable>: @unchecked Sendable {
@@ -61,6 +74,7 @@ final class XPCReplyContinuationBox<Reply: Sendable>: @unchecked Sendable {
 
 enum XPCReplyTimeout {
     static let standard: TimeInterval = 10
+    static let userPresence: TimeInterval = 300
     static let commandGrace: UInt = 10
     static let maximumCommand: UInt = 60
     static let maximumWait: UInt = 300
@@ -74,6 +88,18 @@ enum XPCReplyTimeout {
         default:
             standard
         }
+    }
+
+    static func interval(for action: ResourceQueryActionV1) -> TimeInterval {
+        action == .inspect ? userPresence : standard
+    }
+
+    static func interval(for _: ResourceMutationActionV1) -> TimeInterval {
+        userPresence
+    }
+
+    static func interval(for _: TopologyMutationActionV1) -> TimeInterval {
+        userPresence
     }
 }
 
@@ -140,6 +166,29 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
         alias: ResourceAlias? = nil,
         state: ResourceState? = nil
     ) async throws -> ResourceDirectoryReplyV1 {
+        try await queryResourceDirectory(
+            action: action,
+            alias: alias,
+            state: state,
+            replyTimeout: XPCReplyTimeout.interval(for: action)
+        )
+    }
+
+    func queryResourceDirectoryForCompletion() async throws -> ResourceDirectoryReplyV1 {
+        try await queryResourceDirectory(
+            action: .list,
+            alias: nil,
+            state: nil,
+            replyTimeout: 0.75
+        )
+    }
+
+    private func queryResourceDirectory(
+        action: ResourceQueryActionV1,
+        alias: ResourceAlias?,
+        state: ResourceState?,
+        replyTimeout: TimeInterval
+    ) async throws -> ResourceDirectoryReplyV1 {
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
             teamIdentifier: team,
@@ -160,7 +209,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                 connection: connection,
                 continuation: continuation
             )
-            box.scheduleTimeout(after: XPCReplyTimeout.standard)
+            box.scheduleTimeout(after: replyTimeout)
             connection.remoteObjectInterface = NSXPCInterface(
                 with: (any SAFAAgentBrokerXPC).self
             )
@@ -201,6 +250,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
         alias: ResourceAlias,
         mutation: ResourceMutationV1? = nil
     ) async throws -> ResourceMutationReplyV1 {
+        let replyTimeout = XPCReplyTimeout.interval(for: action)
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
             teamIdentifier: team,
@@ -221,7 +271,7 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                 connection: connection,
                 continuation: continuation
             )
-            box.scheduleTimeout(after: XPCReplyTimeout.standard)
+            box.scheduleTimeout(after: replyTimeout)
             connection.remoteObjectInterface = NSXPCInterface(
                 with: (any SAFAAgentBrokerXPC).self
             )
@@ -249,6 +299,130 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
                     else {
                         throw BrokerAgentClientError.invalidReply
                     }
+                    box.succeed(reply)
+                } catch {
+                    box.fail(error)
+                }
+            }
+        }
+    }
+
+    public func queryTopology(
+        task: TopologyProjectionTask,
+        source: ResourceAlias? = nil,
+        target: ResourceAlias? = nil,
+        relation: TopologyRelation? = nil,
+        bounds: TopologyQueryBoundsV1 = TopologyQueryBoundsV1()
+    ) async throws -> TopologyQueryReplyV1 {
+        let team = try CodeSigningRequirement.currentTeamIdentifier()
+        let requirement = try CodeSigningRequirement.requirement(
+            teamIdentifier: team,
+            signingIdentifiers: ["dev.safa.broker"]
+        )
+        let now = Date()
+        let message = TopologyQueryRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            task: task,
+            source: source,
+            target: target,
+            relation: relation,
+            bounds: bounds
+        )
+        let request = try CanonicalCodec.encode(message)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let connection = NSXPCConnection(machServiceName: BrokerServiceNames.agent)
+            let box = XPCReplyContinuationBox(
+                connection: connection,
+                continuation: continuation
+            )
+            box.scheduleTimeout(after: XPCReplyTimeout.standard)
+            connection.remoteObjectInterface = NSXPCInterface(
+                with: (any SAFAAgentBrokerXPC).self
+            )
+            connection.setCodeSigningRequirement(requirement)
+            connection.interruptionHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.invalidationHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.resume()
+            guard
+                let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+                    box.fail(BrokerAgentClientError.unavailable)
+                }) as? any SAFAAgentBrokerXPC
+            else {
+                box.fail(BrokerAgentClientError.unavailable)
+                return
+            }
+            proxy.queryTopology(request) { data in
+                do {
+                    let reply = try CanonicalCodec.decode(
+                        TopologyQueryReplyV1.self,
+                        from: data,
+                        maxBytes: 2 * 1_048_576
+                    )
+                    guard reply.protocolVersion == IPCHeader.currentVersion,
+                        reply.messageID == message.header.messageID
+                    else { throw BrokerAgentClientError.invalidReply }
+                    box.succeed(reply)
+                } catch {
+                    box.fail(error)
+                }
+            }
+        }
+    }
+
+    public func mutateTopology(
+        action: TopologyMutationActionV1,
+        source: ResourceAlias,
+        relation: TopologyRelation,
+        target: ResourceAlias
+    ) async throws -> TopologyMutationReplyV1 {
+        let team = try CodeSigningRequirement.currentTeamIdentifier()
+        let requirement = try CodeSigningRequirement.requirement(
+            teamIdentifier: team,
+            signingIdentifiers: ["dev.safa.broker"]
+        )
+        let now = Date()
+        let message = TopologyMutationRequestV1(
+            header: IPCHeader(sentAt: now, deadline: now.addingTimeInterval(30)),
+            action: action,
+            source: source,
+            relation: relation,
+            target: target
+        )
+        let request = try CanonicalCodec.encode(message)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let connection = NSXPCConnection(machServiceName: BrokerServiceNames.agent)
+            let box = XPCReplyContinuationBox(
+                connection: connection,
+                continuation: continuation
+            )
+            box.scheduleTimeout(after: XPCReplyTimeout.interval(for: action))
+            connection.remoteObjectInterface = NSXPCInterface(
+                with: (any SAFAAgentBrokerXPC).self
+            )
+            connection.setCodeSigningRequirement(requirement)
+            connection.interruptionHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.invalidationHandler = { box.fail(BrokerAgentClientError.unavailable) }
+            connection.resume()
+            guard
+                let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+                    box.fail(BrokerAgentClientError.unavailable)
+                }) as? any SAFAAgentBrokerXPC
+            else {
+                box.fail(BrokerAgentClientError.unavailable)
+                return
+            }
+            proxy.mutateTopology(request) { data in
+                do {
+                    let reply = try CanonicalCodec.decode(
+                        TopologyMutationReplyV1.self,
+                        from: data,
+                        maxBytes: 2 * 1_048_576
+                    )
+                    guard reply.protocolVersion == IPCHeader.currentVersion,
+                        reply.messageID == message.header.messageID
+                    else { throw BrokerAgentClientError.invalidReply }
                     box.succeed(reply)
                 } catch {
                     box.fail(error)

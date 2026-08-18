@@ -1,0 +1,6 @@
+{
+  "schema": "dev.safa.cli/v2",
+  "command": "setup.activate",
+  "status": "no_op",
+  "broker_service_status": "enabled"
+}

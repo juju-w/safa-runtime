@@ -2,11 +2,303 @@ import Foundation
 import SAFABroker
 import SAFACrypto
 import SAFADomain
+import SAFAProtocol
 import SAFATestFixtures
 import Testing
 
 @Suite("Private resource onboarding")
 struct ResourceOnboardingTests {
+    @Test("trusted setup sessions are bound to the exact signed local caller")
+    func trustedSetupSessionCallerBinding() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: credentials,
+            bindingStore: ChildCredentialBindingStore(),
+            askPassExecutable: URL(fileURLWithPath: "/synthetic/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+        )
+        let alias = try ResourceAlias("mysql.test")
+        let sessionID = try #require(
+            Self.sessionID(
+                from: await handler.handle(
+                    .beginPrivateSetup(resourceAlias: alias),
+                    caller: Self.trustedSetupCaller,
+                    messageID: UUID()
+                )
+            )
+        )
+        let otherCaller = CallerIdentity(
+            signingIdentifier: "dev.safa.trusted-local",
+            teamIdentifier: "TESTTEAM1",
+            effectiveUserID: 501,
+            auditSessionID: 78
+        )
+        let reply = await handler.handle(
+            .commitPrivateSetup(
+                sessionID: sessionID,
+                protectedPayload: try CanonicalCodec.encode(
+                    ProtectedResourceSetupPayload(
+                        resourceType: ResourceTypeIdentifier.databaseMySQL.rawValue,
+                        host: "database.invalid",
+                        port: 3306,
+                        username: "reader",
+                        securityDomain: "synthetic",
+                        credential: Data("must-not-persist".utf8),
+                        credentialKind: CredentialKind.databasePassword.rawValue
+                    )
+                )
+            ),
+            caller: otherCaller,
+            messageID: UUID()
+        )
+
+        #expect(reply.status == .failed)
+        #expect(await vault.readDocument().resources.isEmpty)
+        #expect(await vault.readDocument().credentialReferences.isEmpty)
+    }
+
+    @Test("SSH trusted setup verifies the account before persisting any secret")
+    func trustedSSHSetupIsTransactional() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let resources = ResourceService(vault: vault, passwordStore: credentials)
+        let verifier = RecordingTrustedSSHVerifier(
+            result: .failure(SyntheticTrustedSetupFailure.rejected)
+        )
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: credentials,
+            bindingStore: ChildCredentialBindingStore(),
+            resourceService: resources,
+            trustedSSHVerifier: verifier,
+            askPassExecutable: URL(fileURLWithPath: "/synthetic/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+        )
+        let alias = try ResourceAlias("nas.home")
+        let caller = Self.trustedSetupCaller
+        let sessionID = try #require(
+            Self.sessionID(
+                from: await handler.handle(
+                    .beginPrivateSetup(resourceAlias: alias),
+                    caller: caller,
+                    messageID: UUID()
+                )
+            )
+        )
+        let secret = Data("synthetic-password-that-must-not-persist".utf8)
+        let reply = await handler.handle(
+            .commitPrivateSetup(
+                sessionID: sessionID,
+                protectedPayload: try CanonicalCodec.encode(
+                    Self.sshPayload(credential: secret)
+                )
+            ),
+            caller: caller,
+            messageID: UUID()
+        )
+
+        #expect(reply.status == .failed)
+        #expect(await verifier.observedPasswords == [secret])
+        let document = await vault.readDocument()
+        #expect(document.resources.isEmpty)
+        #expect(document.credentialReferences.isEmpty)
+    }
+
+    @Test("verified SSH setup stores observed inventory and activates the resource")
+    func trustedSSHSetupCommitsVerifiedInventory() async throws {
+        let observedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let inventory = HostInventorySnapshot(
+            platform: .linux,
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "host.cpu.logical-count",
+                    value: .integer(32),
+                    observedAt: observedAt
+                )
+            ]
+        )
+        let verifier = RecordingTrustedSSHVerifier(result: .success(inventory))
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let resources = ResourceService(vault: vault, passwordStore: credentials)
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: credentials,
+            bindingStore: ChildCredentialBindingStore(),
+            resourceService: resources,
+            trustedSSHVerifier: verifier,
+            askPassExecutable: URL(fileURLWithPath: "/synthetic/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+        )
+        let alias = try ResourceAlias("nas.home")
+        let caller = Self.trustedSetupCaller
+        let sessionID = try #require(
+            Self.sessionID(
+                from: await handler.handle(
+                    .beginPrivateSetup(resourceAlias: alias),
+                    caller: caller,
+                    messageID: UUID()
+                )
+            )
+        )
+        let secret = Data("synthetic-password".utf8)
+        let reply = await handler.handle(
+            .commitPrivateSetup(
+                sessionID: sessionID,
+                protectedPayload: try CanonicalCodec.encode(
+                    Self.sshPayload(credential: secret)
+                )
+            ),
+            caller: caller,
+            messageID: UUID()
+        )
+
+        #expect(reply.status == .completed)
+        let resource = try await resources.resource(alias: alias)
+        #expect(resource.state == .active)
+        #expect(resource.resolvedMetadata == inventory.metadata)
+        #expect(await credentials.readSecret(id: resource.authRef!) == secret)
+        let graph = try #require(await vault.readDocument().topologyGraph)
+        let runtimeID = try #require(
+            graph.nodes.first(where: { $0.alias.rawValue == "runtime.local" })?.id
+        )
+        let reachability = try #require(
+            graph.edges.first(where: {
+                $0.fromNodeID == runtimeID
+                    && $0.toNodeID == resource.id
+                    && $0.relation == .canReach
+            })
+        )
+        #expect(reachability.verification == .verified)
+        #expect(reachability.observedAt != nil)
+    }
+
+    @Test("trusted local setup accepts a typed service without exposing its secret")
+    func trustedServiceSetup() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let resources = ResourceService(vault: vault, passwordStore: credentials)
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: credentials,
+            bindingStore: ChildCredentialBindingStore(),
+            resourceService: resources,
+            askPassExecutable: URL(fileURLWithPath: "/synthetic/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+        )
+        let alias = try ResourceAlias("mysql.test")
+        let caller = CallerIdentity(
+            signingIdentifier: "dev.safa.trusted-local",
+            teamIdentifier: "TESTTEAM1",
+            effectiveUserID: 501,
+            auditSessionID: 77
+        )
+        let begin = await handler.handle(
+            .beginPrivateSetup(resourceAlias: alias),
+            caller: caller,
+            messageID: UUID()
+        )
+        guard case let .string(sessionValue) = begin.data["setup_session_id"],
+            let sessionID = UUID(uuidString: sessionValue)
+        else {
+            Issue.record("trusted setup did not return a session")
+            return
+        }
+        let secret = Data("synthetic-database-password".utf8)
+        let payload = ProtectedResourceSetupPayload(
+            resourceType: ResourceTypeIdentifier.databaseMySQL.rawValue,
+            host: "database.invalid",
+            port: 3306,
+            username: "reader",
+            securityDomain: "synthetic",
+            credential: secret,
+            credentialKind: CredentialKind.databasePassword.rawValue,
+            credentialRole: ResourceCredentialRole.readOnly.rawValue
+        )
+        let committed = await handler.handle(
+            .commitPrivateSetup(
+                sessionID: sessionID,
+                protectedPayload: try CanonicalCodec.encode(payload)
+            ),
+            caller: caller,
+            messageID: UUID()
+        )
+
+        #expect(committed.status == .completed)
+        let resource = try await resources.resource(alias: alias)
+        #expect(resource.resolvedResourceType == .databaseMySQL)
+        #expect(resource.resolvedAccessMethods == [.mysql])
+        #expect(resource.resolvedCredentialBindings.first?.role == .readOnly)
+        #expect(SafeResourceProjection(resource: resource).health == .needsVerification)
+        #expect(await credentials.readSecret(id: resource.authRef!) == secret)
+        #expect(
+            !String(decoding: try CanonicalCodec.encode(resource), as: UTF8.self).contains(
+                "synthetic-database-password"))
+
+        let editSession = await handler.handle(
+            .beginPrivateSetup(resourceAlias: alias),
+            caller: caller,
+            messageID: UUID()
+        )
+        guard case let .string(editSessionValue) = editSession.data["setup_session_id"],
+            let editSessionID = UUID(uuidString: editSessionValue)
+        else {
+            Issue.record("trusted edit did not return a session")
+            return
+        }
+        let editedReply = await handler.handle(
+            .commitPrivateSetup(
+                sessionID: editSessionID,
+                protectedPayload: try CanonicalCodec.encode(
+                    ProtectedResourceSetupPayload(
+                        displayName: "Synthetic database",
+                        resourceType: ResourceTypeIdentifier.databaseMySQL.rawValue,
+                        host: "database.invalid",
+                        port: 3306,
+                        username: "reader",
+                        securityDomain: "synthetic"
+                    )
+                )
+            ),
+            caller: caller,
+            messageID: UUID()
+        )
+        let edited = try await resources.resource(alias: alias)
+        #expect(editedReply.status == .completed)
+        #expect(edited.authRef == resource.authRef)
+        #expect(edited.displayName == "Synthetic database")
+        #expect(await credentials.readSecret(id: edited.authRef!) == secret)
+    }
+
+    private static let trustedSetupCaller = CallerIdentity(
+        signingIdentifier: "dev.safa.trusted-local",
+        teamIdentifier: "TESTTEAM1",
+        effectiveUserID: 501,
+        auditSessionID: 77
+    )
+
+    private static func sessionID(from reply: BrokerReply) -> UUID? {
+        guard case let .string(value) = reply.data["setup_session_id"] else { return nil }
+        return UUID(uuidString: value)
+    }
+
+    private static func sshPayload(credential: Data) -> ProtectedResourceSetupPayload {
+        ProtectedResourceSetupPayload(
+            resourceType: ResourceTypeIdentifier.hostLinux.rawValue,
+            host: "nas.invalid",
+            port: 22,
+            username: "operator",
+            securityDomain: "trusted-local",
+            hostKeyAlgorithm: "ssh-ed25519",
+            hostPublicKey: Data([1, 2, 3]),
+            hostFingerprint: "SHA256:trusted",
+            credential: credential,
+            credentialKind: CredentialKind.sshPassword.rawValue
+        )
+    }
+
     @Test("SSH config import creates a real draft without inventing trust or credentials")
     func sshConfigDraftImport() async throws {
         let vault = InMemoryVaultDocumentStore()
@@ -17,7 +309,7 @@ struct ResourceOnboardingTests {
         let resource = try await service.addDiscoveredResource(
             DiscoveredResourceDraft(
                 alias: ResourceAlias("nas.home"),
-                resourceType: .hostNAS,
+                resourceType: .hostLinux,
                 displayName: "Home NAS",
                 endpoint: ResourceEndpoint(scheme: "ssh", host: "nas.internal", port: 2222),
                 username: "operator",
@@ -50,7 +342,7 @@ struct ResourceOnboardingTests {
                 alias: ResourceAlias("nas.home"),
                 draft: DiscoveredResourceDraft(
                     alias: ResourceAlias("nas.home"),
-                    resourceType: .hostNAS,
+                    resourceType: .hostLinux,
                     displayName: "Retargeted NAS",
                     endpoint: ResourceEndpoint(host: "other.internal", port: 22),
                     username: "operator",
@@ -533,6 +825,139 @@ struct ResourceOnboardingTests {
         )
     }
 
+    @Test("service templates share encrypted add, edit, show, and remove storage semantics")
+    func serviceTemplateCRUD() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let service = ResourceService(vault: vault, passwordStore: credentials)
+        let originalSecret = Data("synthetic-database-password".utf8)
+        let replacementSecret = Data("replacement-database-password".utf8)
+        let draft = PrivateResourceDraft(
+            alias: try ResourceAlias("sqlserver.test"),
+            resourceType: .databaseSQLServer,
+            accessMethods: [.sqlServer],
+            metadata: [
+                try ResourceMetadataEntry(
+                    key: "database.name",
+                    value: .text("synthetic")
+                )
+            ],
+            endpoint: ResourceEndpoint(
+                scheme: "sqlserver",
+                host: "database.invalid",
+                port: 1433
+            ),
+            username: "reader",
+            securityDomain: "synthetic",
+            credentialKind: .databasePassword,
+            credentialRole: .readOnly
+        )
+
+        let added = try await service.addProtectedResource(
+            draft,
+            credential: originalSecret
+        )
+        #expect(added.resolvedResourceType == .databaseSQLServer)
+        #expect(added.transport == nil)
+        #expect(added.hostIdentity == nil)
+        #expect(added.resolvedCredentialBindings.first?.role == .readOnly)
+        #expect(SafeResourceProjection(resource: added).capabilities.isEmpty)
+        #expect(SafeResourceProjection(resource: added).health == .needsVerification)
+        #expect(await credentials.readSecret(id: added.authRef!) == originalSecret)
+
+        let verified = try await service.recordServiceVerification(
+            alias: added.alias,
+            expectedRevision: added.revision,
+            adapter: .sqlServer,
+            succeeded: true
+        )
+        #expect(SafeResourceProjection(resource: verified).health == .ready)
+
+        let edited = try await service.edit(
+            alias: verified.alias,
+            draft: draft,
+            replacementPassword: replacementSecret
+        )
+        #expect(edited.authRef != verified.authRef)
+        #expect(edited.verification == nil)
+        #expect(SafeResourceProjection(resource: edited).health == .needsVerification)
+        #expect(await credentials.readSecret(id: added.authRef!) == nil)
+        #expect(await credentials.readSecret(id: edited.authRef!) == replacementSecret)
+
+        _ = try await service.remove(alias: edited.alias)
+        #expect(await credentials.readSecret(id: edited.authRef!) == nil)
+    }
+
+    @Test("templates with optional authentication can be registered without a fake secret")
+    func unauthenticatedServiceOnboarding() async throws {
+        let vault = InMemoryVaultDocumentStore()
+        let credentials = InMemoryPasswordSecretStore()
+        let service = ResourceService(vault: vault, passwordStore: credentials)
+        let resource = try await service.addProtectedResource(
+            PrivateResourceDraft(
+                alias: try ResourceAlias("health-api"),
+                resourceType: .serviceHTTP,
+                accessMethods: [.http],
+                endpoint: ResourceEndpoint(
+                    scheme: "https",
+                    host: "service.invalid",
+                    port: 443,
+                    path: "/health"
+                ),
+                securityDomain: "synthetic",
+                credentialKind: nil
+            ),
+            credential: nil
+        )
+
+        #expect(resource.authRef == nil)
+        #expect(resource.resolvedCredentialBindings.isEmpty)
+        #expect(SafeResourceProjection(resource: resource).health == .needsVerification)
+        #expect(await vault.readDocument().credentialReferences.isEmpty)
+    }
+
+    @Test("template validation rejects mismatched adapters and credential kinds")
+    func serviceTemplateValidation() async throws {
+        let service = ResourceService(
+            vault: InMemoryVaultDocumentStore(),
+            passwordStore: InMemoryPasswordSecretStore()
+        )
+        let wrongAdapter = PrivateResourceDraft(
+            alias: try ResourceAlias("sqlserver.test"),
+            resourceType: .databaseSQLServer,
+            accessMethods: [.redis],
+            endpoint: ResourceEndpoint(host: "database.invalid", port: 1433),
+            username: "reader",
+            securityDomain: "synthetic",
+            credentialKind: .databasePassword
+        )
+        await #expect(
+            throws: ResourceServiceError.incompatibleAccessMethod("cache.redis")
+        ) {
+            try await service.addProtectedResource(
+                wrongAdapter,
+                credential: Data("synthetic".utf8)
+            )
+        }
+
+        let wrongCredential = PrivateResourceDraft(
+            alias: try ResourceAlias("redis.test"),
+            resourceType: .cacheRedis,
+            accessMethods: [.redis],
+            endpoint: ResourceEndpoint(host: "cache.invalid", port: 6379),
+            securityDomain: "synthetic",
+            credentialKind: .apiToken
+        )
+        await #expect(
+            throws: ResourceServiceError.incompatibleCredentialKind("service.api-token")
+        ) {
+            try await service.addProtectedResource(
+                wrongCredential,
+                credential: Data("synthetic".utf8)
+            )
+        }
+    }
+
     @Test("editing an unknown alias does not expose an endpoint or credential")
     func unknownEdit() async {
         let service = ResourceService(
@@ -599,6 +1024,34 @@ struct ResourceOnboardingTests {
         let document = await vault.readDocument()
         #expect(document.resources.allSatisfy { $0.state == .active })
         #expect(try ResourceRegistry(resources: document.resources).list().count == 2)
+        let relationshipEdge = try #require(
+            document.topologyGraph?.edges.first(where: {
+                $0.fromNodeID != host.id && $0.relation == .runsOn && $0.toNodeID == host.id
+            }))
+        #expect(relationshipEdge.layer == .desired)
+        #expect(relationshipEdge.verification == .asserted)
+    }
+}
+
+private enum SyntheticTrustedSetupFailure: Error, Sendable {
+    case rejected
+}
+
+private actor RecordingTrustedSSHVerifier: TrustedSSHResourceVerifying {
+    private let result: Result<HostInventorySnapshot, SyntheticTrustedSetupFailure>
+    private(set) var observedPasswords: [Data] = []
+
+    init(result: Result<HostInventorySnapshot, SyntheticTrustedSetupFailure>) {
+        self.result = result
+    }
+
+    func verify(
+        draft _: PrivateResourceDraft,
+        password: Data,
+        observedAt _: Date
+    ) async throws -> HostInventorySnapshot {
+        observedPasswords.append(password)
+        return try result.get()
     }
 }
 

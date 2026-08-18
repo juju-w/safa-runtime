@@ -7,7 +7,8 @@ unless stated otherwise.
 
 ## Resource
 
-Represents any logical resource. SSH hosts and NAS devices are the first executable profile;
+Represents any logical resource. SSH hosts are the first executable profile; NAS is a host role,
+not a platform or a separate host type.
 databases, object storage, caches, and services reuse the same aggregate as adapters are added.
 
 | Field | Type | Rules |
@@ -15,14 +16,18 @@ databases, object storage, caches, and services reuse the same aggregate as adap
 | `id` | UUID | Stable, never reused |
 | `alias` | String | 1-64 chars; lowercase letters, digits, dots and hyphens; unique |
 | `alternateAliases` | String list | Shares the canonical collision namespace; encrypted |
-| `resourceType` | Namespaced identifier | Examples: `host.linux`, `database.mysql`, `object-storage.s3` |
+| `kind` | Namespaced identifier | `host`, `database`, `object-storage`, `cache`, `messaging`, `search`, `graph`, or `service` |
+| `template` | ID + version | Immutable adapter/configuration schema binding such as `ssh@1` or `mysql@1` |
+| `hostPlatform` | Enum? | Hosts only: `linux`, `macos`, or `windows` |
+| `roles` | Identifier list | Orthogonal purposes such as `nas`, `gpu`, or `jump-server` |
+| `resourceType` | Namespaced identifier | Additive CLI v1 compatibility projection; not an internal template key |
 | `displayName` | String? | Protected detail; encrypted and not in the default summary |
 | `accessMethods` | Identifier list | Stored profile; an adapter must still implement execution |
 | `transport` | Enum? | Legacy/MVP compatibility value: `ssh`; non-SSH profiles leave it absent |
-| `endpoint` | Scheme + host + port + path | Encrypted; disclosed only by authorized inspect |
-| `username` | String | Encrypted; disclosed only by authorized inspect |
+| `endpoint` | Scheme + host + port + path | Encrypted; disclosed only by authorized detailed show |
+| `username` | String | Encrypted; disclosed only by authorized detailed show |
 | `metadata` | Typed entry list | Non-secret profile data; unknown keys default private |
-| `relationships` | Kind + target ID list | Encrypted topology; exposed by target alias only after authorization |
+| `relationships` | Kind + target ID + origin list | Canonical encrypted resource relationships; exposed by target alias only after authorization |
 | `credentialBindings` | Role + CredentialReference ID list | Encrypted; never Agent-visible |
 | `jumpRoute` | Resource ID list | Acyclic; each item must be an SSH resource |
 | `securityDomain` | String | Used to detect credential reuse/blast radius |
@@ -53,7 +58,54 @@ non-interactive summary uses a source-code allowlist; configuration and imported
 declare their own keys public. The initial safe keys are `host.os.family`,
 `host.docker.available`, `database.engine`, `object-storage.provider`, `cache.engine`, and
 `service.protocol`. IP addresses, kernel releases, CPU/memory/disk details, Docker versions, routes,
-and all unknown keys require `resource inspect` user presence.
+and all unknown keys require `resource show --details` user presence.
+
+Successful initial SSH setup records a bounded read-only inventory snapshot in the same transaction
+that activates the resource. It includes platform, architecture, OS/kernel version, CPU model/count,
+total memory, root-filesystem capacity/free space, hardware vendor/model, and Docker availability or
+version when present. Missing optional values do not block activation; account or platform mismatch
+does.
+
+## TopologyGraph
+
+Represents relationships that cannot be faithfully modeled by a tree. The graph is directed, typed,
+attributed, and permits parallel edges. It is versioned independently from individual resources.
+
+| Field | Type | Rules |
+|---|---|---|
+| `revision` | UInt64 | Changes on every graph mutation or verification-state change |
+| `nodes` | `TopologyNode` list | Stable identity; storage order is non-semantic |
+| `edges` | `TopologyEdge` list | Explicit direction; storage order is non-semantic |
+
+A `TopologyNode` has an immutable ID, kind (`resource`, `site`, `security-domain`,
+`network-segment`, `runtime`, or `route`), optional Resource ID, stable semantic alias, visibility,
+and bounded typed attributes. Resource aliases reuse the directory selector; context aliases occupy
+reviewed namespaces. Agent-proposed context aliases are limited to one semantic segment beneath
+`site`, `domain`, `network`, `runtime`, or `route`; raw network coordinates never become
+Agent-visible node attributes.
+
+A `TopologyEdge` has an immutable ID, source/target IDs, relation, layer (`desired`, `observed`, or
+`derived`), verification (`asserted`, `verified`, `stale`, or `failed`), origin, visibility,
+observation/expiry timestamps, Broker-only evidence reference, and revision. Initial relations are
+`located-in`, `member-of`, `runs-on`, `depends-on`, `backed-by`, `replicates-to`, `routed-via`, and
+`can-reach`.
+
+Agent proposals may create or update only desired/asserted logical edges. A signed adapter or probe
+owns observed evidence; deterministic Broker graph operations own derived edges and proof paths.
+Credential bindings are not graph nodes or Agent-visible edge properties.
+
+For resource pairs, `hosted-on`, `depends-on`, and `backed-by` are canonical in
+`Resource.relationships` and materialize as deterministic `runs-on`, `depends-on`, and `backed-by`
+desired edges. A successful bounded SSH setup or execution refreshes a single observed/verified
+`runtime.local can-reach <resource>` edge for five minutes; OpenSSH exit `255` never creates it.
+
+## TopologyProjection
+
+A transient, bounded Agent DTO derived from one graph revision. It contains an answer-first outcome,
+safe semantic aliases, a node table, typed directed edge table, task, declared ordering, roots,
+Broker-computed proof edge IDs, and a truncation flag. Inventory, reachability, dependency-impact, and dense-comparison tasks select
+different views; there is deliberately no universal serialization. Visual diagrams are derived
+artifacts and cannot be read back as trusted graph state.
 
 ## CredentialReference
 

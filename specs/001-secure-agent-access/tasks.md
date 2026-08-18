@@ -1,5 +1,8 @@
 # Tasks: Secure Agent Access
 
+> Repository split: paths under `Skills/safa` have moved to `juju-w/safa/skills/safa`. Historical
+> task text below is retained for traceability and must not recreate a Skill in this Runtime repo.
+
 **Input**: Design documents from `specs/001-secure-agent-access/`
 
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`
@@ -34,7 +37,8 @@ tests first and confirm they fail before the matching implementation.
 
 **⚠️ CRITICAL**: No user story implementation starts until this phase passes its tests.
 
-- [X] T009 [P] Add failing Codable snapshot tests for CLI envelope and errors in `Tests/Contract/CLIEnvelopeContractTests.swift`
+- [X] T009 [P] Add the historical v1 envelope snapshots (superseded and removed by the coordinated
+  T101/T106 v2 migration)
 - [X] T010 [P] Add failing domain validation and state-transition tests in `Tests/Unit/DomainStateTests.swift`
 - [X] T011 [P] Add failing canonical request fingerprint tests in `Tests/Security/RequestFingerprintTests.swift`
 - [X] T012 Implement versioned CLI/XPC envelope, status, error, and next-action types in `Sources/SAFAProtocol/`
@@ -80,7 +84,7 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 
 - [X] T033 [P] [US1] Implement resource alias validation, safe projections, and registry queries in `Sources/SAFADomain/ResourceRegistry.swift`
 - [X] T034 [US1] Implement private add/edit/disable/enable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
-- [ ] T035 [P] [US1] Implement a trusted, system-authenticated no-GUI resource registration and
+- [X] T035 [P] [US1] Implement a trusted, system-authenticated no-GUI resource registration and
   credential-entry flow without adding secret flags or Agent-controlled stdin
 - [X] T036 [P] [US1] Implement device-bound P-256 key creation and public-key enrollment export in `Sources/SAFACrypto/SecureEnclaveSSHKey.swift`
 - [X] T037 [P] [US1] Implement Keychain password credential creation and lookup in `Sources/SAFACrypto/PasswordCredential.swift`
@@ -89,19 +93,63 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 - [X] T040 [US1] Implement signed one-shot password response helper in `Sources/SAFAAskPass/AskPassRuntime.swift` and `Sources/SAFAAskPassExecutable/main.swift`
 - [X] T041 [US1] Implement bounded process launch, cancellation, stdout/stderr capture, and exit preservation in `Sources/SAFATransport/ProcessRunner.swift`
 - [X] T042 [US1] Implement read-only SSH execution orchestration in `Sources/SAFASSH/SSHTransport.swift`
-- [X] T043 [P] [US1] Implement `doctor`, `setup status`, and complete
-  `resource list|ls/show/inspect/add/edit/setup/disable/enable/remove` CLI commands in `Sources/SAFACLI/`
+- [X] T043 [P] [US1] Implement `doctor`, `setup status`, and the public
+  `resource list|ls/show/add/edit/remove` CLI surface in `Sources/SAFACLI/`; keep protected inspect,
+  setup, verification, and state transitions as options or internal stages
 - [X] T043b [US1] Implement the system-authenticated SSH-config draft import lifecycle without
   endpoint, username, password, key, token, or sudo-password CLI fields
 - [X] T043c [US1] Implement system-authenticated setup for an existing direct OpenSSH
   identity-file/agent route with prior `known_hosts` trust, bounded verification, and atomic draft
   activation
+- [X] T043d [US1] Extend the signed template registry and encrypted CRUD transaction to Windows
+  OpenSSH, database, object-storage, cache, graph, search, and HTTP resources; require
+  revision-bound protocol verification before a service reports ready
+- [X] T043e [US1] Normalize resource kind/template/platform/roles, retire `host.nas` with compatible
+  vault migration, add Kafka/RabbitMQ/MongoDB templates, and persist a bounded first-connection host
+  inventory probe atomically with SSH activation
 - [X] T043a [US1] Implement the generic encrypted resource directory, alternate-alias collision
   checks, typed metadata, open credential kinds, typed `list/show/inspect` XPC DTOs, and macOS
   user-presence protection for detailed inspection
 - [X] T044 [US1] Implement argument-based `exec` submission and result rendering in `Sources/SAFACLI/SAFACommand.swift`
 - [X] T045 [US1] Add request/decision/execution audit emission for the MVP path in `Sources/SAFABroker/AuditService.swift`
 - [X] T046 [US1] Complete the synthetic end-to-end MVP and leakage assertions in `Tests/Integration/ReadOnlySSHJourneyTests.swift`
+- [X] T046a [P] [US1] Add permutation-invariance, parallel-edge, provenance, freshness, visibility,
+  and no-secret topology domain tests in `Tests/Unit/TopologyGraphTests.swift` and
+  `Tests/Security/TopologyProjectionLeakageTests.swift`
+- [X] T046b [P] [US1] Add contract fixtures for node/edge tables, reachability adjacency,
+  dependency-impact reverse adjacency, bounded dense matrices, proofs, and truncation in
+  `Tests/Contract/TopologyProjectionContractTests.swift`
+- [X] T046c [US1] Implement the revisioned desired/observed/derived topology domain and relation
+  validation in `Sources/SAFADomain/Topology/TopologyGraph.swift`
+- [X] T046d [US1] Implement deterministic bounded neighborhood, path, reachability, cycle, and
+  dependency-set operations with proof edge IDs in `Sources/SAFADomain/Topology/TopologyQueryEngine.swift`
+- [X] T046e [US1] Implement task-specific safe projections and stable ordering in
+  `Sources/SAFAProtocol/TopologyProjectionV1.swift`; diagrams remain derived non-authoritative
+  output and are not required for this task
+- [X] T046f [US1] Bind Agent proposals only to desired/asserted edges and require signed adapter or
+  Broker evidence for verified observed/derived edges in
+  `Sources/SAFABroker/Topology/TopologyGraphService.swift`
+- [X] T046g [US1] Bind explicit topology query/mutation DTOs through peer-validated Agent XPC and
+  expose only `show`, `path`, `impact`, `link`, and `unlink` in
+  `Sources/SAFACLI/Commands/Topology/`
+- [X] T046h [US1] Mirror the canonical answer-first CLI fixtures, update the SAFA Skill routing
+  rules, and document the complex-inside/simple-outside algorithm and decision diagrams in the
+  public product repository
+- [X] T046i [US1] Make encrypted resource relationships canonical for resource-to-resource
+  `hosted-on`, `depends-on`, and `backed-by` declarations and reconcile stable desired graph edges
+- [X] T046j [US1] Serialize matching topology link/unlink and resource lifecycle writes through one
+  Broker transaction gate, with backward-compatible relationship provenance
+- [X] T046k [US1] Refresh short-lived verified `runtime.local can-reach` evidence only after bounded
+  SSH setup or an execution result that is not OpenSSH transport/authentication exit `255`
+- [X] T046l [US1] Cover relationship reconciliation, lifecycle synchronization, observation refresh,
+  transport-failure rejection, and synthetic execution with unit and integration tests
+- [X] T046la [US1] Add separate five-minute in-memory approval leases for similar resource setup and
+  desired topology link operations while requiring fresh authorization for destructive/state actions
+- [X] T046m [US1] Install the locally signed Runtime, import the existing SSH alias catalog, run only
+  bounded read-only probes, and verify the packaged resource/topology closure without committing any
+  real infrastructure coordinates to the repository
+- [X] T046n [US1] Adapt strict OpenSSH setup to quoted Application Support paths, non-default-port
+  host-key aliases, portable POSIX hostname probes, and single-layer UTF-8 Windows inventory
 
 **Checkpoint**: User Story 1 is independently demonstrable and is the first releasable diagnostic
 MVP, even before arbitrary elevated command approval is added.
@@ -245,8 +293,30 @@ revocable without exposing secrets.
 - [ ] T095 Harden release entitlements, sandbox/runtime exceptions, logging privacy, and launch environment in `Apps/SAFA/Config/`
 - [ ] T096 Add signed/notarized release workflow with external secret references only in `.github/workflows/release.yml`
 - [ ] T097 Run every scenario in `specs/001-secure-agent-access/quickstart.md` and record pass/fail evidence in `Tests/QuickstartResults.md`
-- [ ] T098 Validate all 26 functional requirements and 10 success criteria against test evidence in `specs/001-secure-agent-access/checklists/release-readiness.md`
+- [ ] T098 Validate every functional requirement and success criterion against test evidence in `specs/001-secure-agent-access/checklists/release-readiness.md`
 - [ ] T099 Perform final MIT/dependency license, source-secret, artifact-secret, signature, architecture, and schema compatibility checks in `Scripts/verify-package.sh`
+
+### Agent CLI v2 migration (release blocking)
+
+- [X] T100 Read and apply the installed `axi` Skill, pin its reviewed upstream commit plus the
+  normative TOON v4.1 specification, and record the encoder ownership/conformance decision in
+  `specs/001-secure-agent-access/research.md`
+- [X] T101 [P] Add failing canonical TOON fixtures for home, resource, topology, execution, empty,
+  no-op, truncation, usage error, protected-action, transport-error, and hostile-output cases in
+  `Tests/Contract/AgentCLIV2ContractTests.swift`
+- [X] T102 [P] Add strict TOON cross-decoding and official v4.1 conformance fixtures to CI without
+  exposing runtime IPC or vault persistence as public formats
+- [X] T103 Implement explicit `dev.safa.cli/v2` public DTOs and the first canonical TOON
+  presentation adapter (`resource.list`) in `Sources/SAFAProtocol/Agent/` and
+  `Sources/SAFACLI/Presentation/`
+- [X] T104 Implement AXI minimal fields, allowlisted `--fields`, bounded preview/`--full`, aggregates,
+  definitive empty states, contextual safe next commands, and content-first roots
+- [X] T105 Replace v1 exit mapping with `0` success/accepted/no-op, `1` incomplete/error, and `2`
+  usage-before-side-effect while preserving stable lifecycle/error codes inside TOON
+- [X] T106 Remove public JSON/human format switches and completion generation, update the Skill and
+  exact Runtime schema range atomically, and keep the launcher TOON failure paths deterministic
+- [X] T107 Benchmark representative synthetic SAFA tasks against compact JSON v1 across the selected
+  Agent models; require no task-completion regression and record token/turn/latency results
 
 ---
 
@@ -329,5 +399,5 @@ US3 vault/recovery hardening || US4 Skill packaging || US5 audit and revocation
 - Development-only peer/signature bypasses must be compile-time excluded from Release builds.
 - An approved root shell is intentionally powerful; scope, expiry, visibility, and audit are the
   mitigation, not misleading command classification.
-- Commit after each task or coherent test-first group and keep contract changes backward compatible
-  within `dev.safa.cli/v1`.
+- Commit after each task or coherent test-first group. Keep the unpublished Skill and Runtime on the
+  reviewed `dev.safa.cli/v2` contract without restoring a second public output mode.

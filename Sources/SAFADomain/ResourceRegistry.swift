@@ -11,6 +11,7 @@ public enum ResourceRegistryError: Error, Equatable, Sendable {
 public enum ResourceHealth: String, Codable, Sendable {
     case ready
     case needsSetup = "needs_setup"
+    case needsVerification = "needs_verification"
     case disabled
 }
 
@@ -18,6 +19,10 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
     public let alias: ResourceAlias
     public let displayName: String?
     public let resourceType: ResourceTypeIdentifier
+    public let kind: ResourceKindIdentifier
+    public let template: ResourceTemplateBinding
+    public let hostPlatform: HostPlatform?
+    public let roles: [ResourceRoleIdentifier]
     public let transport: TransportKind?
     public let state: ResourceState
     public let capabilities: [String]
@@ -29,23 +34,47 @@ public struct SafeResourceProjection: Codable, Equatable, Sendable {
         // Display names remain encrypted detail unless a separate disclosure policy is introduced.
         displayName = nil
         resourceType = resource.resolvedResourceType
+        kind = resource.resolvedKind
+        template = resource.resolvedTemplate
+        hostPlatform = resource.resolvedHostPlatform
+        roles = resource.resolvedRoles.sorted { $0.rawValue < $1.rawValue }
         transport = resource.transport
         state = resource.state
-        var values: [String] = []
-        if resource.resolvedAccessMethods.contains(.ssh) {
-            values.append("exec")
-            if resource.sudoRef != nil { values.append("sudo") }
+        let definition = ResourceTemplateRegistry.builtIn.template(
+            classification: resource.resolvedClassification
+        )
+        var values = definition?.capabilities ?? []
+        if resource.resolvedAccessMethods.contains(.ssh), resource.sudoRef != nil {
+            values.append("sudo")
         }
         capabilities = values
         if resource.state == .disabled || resource.state == .deleted {
             health = .disabled
-        } else if resource.state == .active,
-            resource.authRef != nil,
-            resource.hostIdentity?.status == .trusted
-        {
-            health = .ready
         } else {
-            health = .needsSetup
+            let hasCredential =
+                resource.authRef != nil
+                || !resource.resolvedCredentialBindings.isEmpty
+            let credentialReady = !(definition?.credentialRequired ?? true) || hasCredential
+            let connectionReady: Bool
+            let verificationReady: Bool
+            if resource.resolvedAccessMethods.contains(.ssh) {
+                connectionReady =
+                    resource.endpoint != nil
+                    && resource.hostIdentity?.status == .trusted
+                // SSH setup verifies the pinned host identity and the expected account
+                // before the broker activates the resource.
+                verificationReady = true
+            } else {
+                connectionReady = resource.endpoint != nil
+                verificationReady = resource.verification?.status == .verified
+            }
+            if resource.state != .active || !connectionReady || !credentialReady {
+                health = .needsSetup
+            } else if !verificationReady {
+                health = .needsVerification
+            } else {
+                health = .ready
+            }
         }
         summaryMetadata = ResourceSummaryDisclosure.publicEntries(from: resource.resolvedMetadata)
     }
@@ -84,6 +113,7 @@ public struct ResourceRegistry: Sendable {
                     "\(relationship.kind.rawValue):\(relationship.targetResourceID.uuidString)"
                 guard relationship.targetResourceID != resource.id,
                     resourcesByID[relationship.targetResourceID] != nil,
+                    [.user, .agent, .import].contains(relationship.origin),
                     relationships.insert(relationshipKey).inserted
                 else {
                     throw ResourceRegistryError.invalidRelationship(

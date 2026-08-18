@@ -27,7 +27,7 @@ extension ResourceService {
     static func isSSHHostType(_ resourceType: ResourceTypeIdentifier) -> Bool {
         resourceType == .hostLinux
             || resourceType == .hostMacOS
-            || resourceType == .hostNAS
+            || resourceType == .hostWindows
     }
 
     static func ensureValidMetadata(_ metadata: [ResourceMetadataEntry]) throws {
@@ -45,6 +45,44 @@ extension ResourceService {
         }
     }
 
+    static func ensureTemplateCompatibility(
+        classification: ResourceClassification,
+        accessMethods: [AccessMethodIdentifier],
+        credentialKind: CredentialKind?
+    ) throws -> ResourceTemplateDefinition {
+        guard
+            let template = ResourceTemplateRegistry.builtIn.template(classification: classification)
+        else {
+            throw ResourceServiceError.unsupportedTemplate(
+                classification.template.id.rawValue
+            )
+        }
+        let allowedMethods = Set(template.accessMethods)
+        guard !accessMethods.isEmpty,
+            accessMethods.allSatisfy(allowedMethods.contains)
+        else {
+            let method =
+                accessMethods.first { !allowedMethods.contains($0) }
+                ?? accessMethods.first
+            throw ResourceServiceError.incompatibleAccessMethod(
+                method?.rawValue ?? "missing"
+            )
+        }
+        if let credentialKind,
+            !template.credentialKinds.contains(credentialKind)
+        {
+            throw ResourceServiceError.incompatibleCredentialKind(credentialKind.rawValue)
+        }
+        guard !template.credentialRequired || credentialKind != nil else {
+            throw ResourceServiceError.credentialRequired(template.id.rawValue)
+        }
+        return template
+    }
+
+    static func isBrokerStoredSecret(_ kind: CredentialKind) -> Bool {
+        kind != .sshOpenSSH && kind != .sshSecureEnclaveKey
+    }
+
     static func ensureRelationships(
         _ relationships: [ResourceRelationship],
         ownerID: UUID,
@@ -56,6 +94,7 @@ extension ResourceService {
             let key = "\(relationship.kind.rawValue):\(relationship.targetResourceID.uuidString)"
             guard relationship.targetResourceID != ownerID,
                 liveIDs.contains(relationship.targetResourceID),
+                [.user, .agent, .import].contains(relationship.origin),
                 seen.insert(key).inserted
             else {
                 throw ResourceServiceError.invalidRelationship

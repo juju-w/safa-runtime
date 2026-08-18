@@ -26,7 +26,7 @@ extension ResourceService {
         resource.revision += 1
         resource.updatedAt = now
         document.resources[index] = resource
-        try await vault.writeDocument(document)
+        try await writeResourceDocument(document)
         return resource
     }
 
@@ -54,7 +54,7 @@ extension ResourceService {
         resource.revision += 1
         resource.updatedAt = now
         document.resources[index] = resource
-        try await vault.writeDocument(document)
+        try await writeResourceDocument(document)
         return resource
     }
 
@@ -102,9 +102,9 @@ extension ResourceService {
         {
             document.credentialReferences.removeAll { $0.id == credentialID }
         }
-        try await vault.writeDocument(document)
+        try await writeResourceDocument(document)
         if let credentialID,
-            credentialKind == .sshPassword,
+            credentialKind.map(Self.isBrokerStoredSecret) == true,
             !document.credentialReferences.contains(where: { $0.id == credentialID })
         {
             try? await passwordStore.deleteSecret(id: credentialID)

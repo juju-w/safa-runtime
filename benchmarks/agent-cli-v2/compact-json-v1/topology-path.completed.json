@@ -1,0 +1,42 @@
+{
+  "schema": "dev.safa.cli/v1",
+  "command": "topology.path",
+  "status": "completed",
+  "request_id": null,
+  "timestamp": "2026-04-18T09:30:00Z",
+  "data": {
+    "topology": {
+      "schema": "dev.safa.topology/v1",
+      "graph_revision": 42,
+      "task": "reachability",
+      "ordering": "source-rooted-breadth-first",
+      "roots": ["runtime.local", "worker.batch"],
+      "nodes": [
+        { "alias": "runtime.local", "kind": "runtime", "resource_kind": null },
+        { "alias": "worker.batch", "kind": "resource", "resource_kind": "host" }
+      ],
+      "edges": [
+        {
+          "id": "edge-1",
+          "from": "runtime.local",
+          "relation": "can-reach",
+          "to": "worker.batch",
+          "layer": "observed",
+          "verification": "verified",
+          "freshness": "fresh"
+        }
+      ],
+      "answer": {
+        "outcome": "confirmed",
+        "source": "runtime.local",
+        "target": "worker.batch",
+        "affected_aliases": [],
+        "proof_edge_ids": ["edge-1"]
+      },
+      "matrix": null,
+      "truncated": false
+    }
+  },
+  "warnings": [],
+  "next_action": null
+}

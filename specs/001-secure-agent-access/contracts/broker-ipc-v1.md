@@ -4,7 +4,8 @@
 
 The CLI and separately signed trusted local processes communicate with the per-user broker over
 named XPC/Mach services. The broker exposes no TCP listener and no general-purpose secret API. The
-current preview ships no custom trusted-interaction UI client.
+current preview ships a separately signed no-custom-GUI resource-setup client; approval UI for
+arbitrary execution remains outside this phase.
 
 Before accepting a message, each side validates the peer's code-signing requirement. The broker also
 checks effective user and audit session. Distribution builds accept only the expected Developer Team,
@@ -57,10 +58,16 @@ exportRecovery(RecoveryOptions, AuthenticationContextProof) -> RecoveryResult
 importRecovery(RecoveryPackage, AuthenticationContextProof) -> RecoveryResult
 ```
 
-The broker will accept future approval only from a separately identified trusted local peer. That
-peer may choose among broker-proposed scopes but cannot replace the command, target, risk findings,
-or privilege ceiling in an existing request. The trusted-local role is a reserved protocol boundary,
-not evidence that a GUI is part of the current product.
+The Broker accepts resource setup only from the `dev.safa.trusted-local` peer signed by the same
+Developer Team and running as the same user/audit session. Setup sessions bind begin and commit to
+that caller, expire within five minutes, and are single-use. The helper accepts only a safe alias and
+host type in argv; endpoint, account, fingerprint, and password are read with terminal echo disabled
+and sent only in the protected typed XPC payload. The Broker verifies the live host, account,
+platform, and inventory before Keychain persistence.
+
+Future approval uses the same separately identified role but may choose only among Broker-proposed
+scopes; it cannot replace the command, target, risk findings, or privilege ceiling. The
+trusted-local role is not evidence that a custom GUI is part of the current product.
 
 ## Message properties
 

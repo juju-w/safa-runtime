@@ -1,0 +1,15 @@
+schema: dev.safa.cli/v2
+command: home
+status: completed
+bin: safa
+description: Securely discover and operate registered infrastructure by alias
+broker: ready
+vault: ready
+count:
+  total: 1
+  returned: 1
+  truncated: false
+resources[1]{alias,kind,state,health}:
+  worker.batch,host,active,healthy
+next[1]{command,reason,safe_for_agent}:
+  safa resource show <alias>,Inspect one safe resource summary,true

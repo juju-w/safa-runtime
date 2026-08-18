@@ -20,6 +20,8 @@ let package = Package(
         .library(name: "SAFABroker", targets: ["SAFABroker"]),
         .library(name: "SAFACLI", targets: ["SAFACLI"]),
         .library(name: "SAFAAskPass", targets: ["SAFAAskPass"]),
+        .library(name: "SAFATrustedSetup", targets: ["SAFATrustedSetup"]),
+        .executable(name: "safa-trusted-setup", targets: ["SAFATrustedSetupExecutable"]),
         .executable(name: "safa", targets: ["SAFACLIExecutable"]),
         .executable(name: "safa-broker", targets: ["SAFABrokerExecutable"]),
         .executable(name: "safa-askpass", targets: ["SAFAAskPassExecutable"]),
@@ -92,6 +94,22 @@ let package = Package(
             dependencies: ["SAFAProtocol"],
             swiftSettings: strictConcurrency
         ),
+        .target(
+            name: "SAFATrustedSetup",
+            dependencies: [
+                "SAFACrypto",
+                "SAFADomain",
+                "SAFAProtocol",
+                "SAFATransport",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: strictConcurrency
+        ),
+        .executableTarget(
+            name: "SAFATrustedSetupExecutable",
+            dependencies: ["SAFATrustedSetup"],
+            swiftSettings: strictConcurrency
+        ),
         .executableTarget(
             name: "SAFAAskPassExecutable",
             dependencies: ["SAFAAskPass"],
@@ -126,6 +144,7 @@ let package = Package(
                 "SAFAProtocol",
                 "SAFASSH",
                 "SAFATestFixtures",
+                "SAFATrustedSetup",
                 "SAFATransport",
             ],
             path: "Tests/Integration",

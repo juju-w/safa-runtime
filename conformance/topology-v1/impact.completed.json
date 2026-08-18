@@ -1,0 +1,31 @@
+{
+  "schema": "dev.safa.topology/v1",
+  "graph_revision": 8,
+  "task": "dependency-impact",
+  "ordering": "target-rooted-reverse-breadth-first",
+  "roots": ["storage.reports"],
+  "nodes": [
+    {"alias": "storage.reports", "kind": "resource", "resource_kind": "object-storage"},
+    {"alias": "service.data-api", "kind": "resource", "resource_kind": "service"}
+  ],
+  "edges": [
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "from": "service.data-api",
+      "relation": "backed-by",
+      "to": "storage.reports",
+      "layer": "desired",
+      "verification": "asserted",
+      "freshness": "asserted"
+    }
+  ],
+  "answer": {
+    "outcome": "found",
+    "source": null,
+    "target": "storage.reports",
+    "affected_aliases": ["service.data-api"],
+    "proof_edge_ids": []
+  },
+  "matrix": null,
+  "truncated": false
+}

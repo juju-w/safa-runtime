@@ -1,0 +1,23 @@
+schema: dev.safa.cli/v2
+command: topology.path
+status: completed
+graph_revision: 42
+task: reachability
+ordering: source_breadth_first
+answer:
+  outcome: confirmed
+  source: runtime.local
+  target: worker.batch
+  affected_aliases: []
+  proof_edge_ids[1]: edge-1
+count:
+  nodes: 2
+  edges: 1
+  truncated: false
+roots[1]: runtime.local
+nodes[2]{alias,kind,resource_kind}:
+  runtime.local,runtime,null
+  worker.batch,resource,host
+edges[1]{id,from,relation,to}:
+  edge-1,runtime.local,can-reach,worker.batch
+matrix: null

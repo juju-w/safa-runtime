@@ -107,6 +107,35 @@ struct ResourceDirectoryTests {
         #expect(throws: ResourceRegistryError.self) {
             try ResourceRegistry(resources: [invalid])
         }
+
+        let forged = TestDirectoryResourceFactory.make(
+            alias: "forged-service",
+            relationships: [
+                ResourceRelationship(
+                    kind: .hostedOn,
+                    targetResourceID: host.id,
+                    origin: .adapter
+                )
+            ]
+        )
+        #expect(throws: ResourceRegistryError.self) {
+            try ResourceRegistry(resources: [host, forged])
+        }
+    }
+
+    @Test("legacy relationships decode with import provenance")
+    func legacyRelationshipProvenance() throws {
+        let target = UUID(uuidString: "10000000-0000-4000-8000-000000000001")!
+        let data = Data(
+            #"{"kind":"depends-on","target_resource_id":"10000000-0000-4000-8000-000000000001"}"#
+                .utf8
+        )
+
+        let relationship = try JSONDecoder().decode(ResourceRelationship.self, from: data)
+
+        #expect(relationship.kind == .dependsOn)
+        #expect(relationship.targetResourceID == target)
+        #expect(relationship.origin == .import)
     }
 
     @Test("unknown metadata is private unless code explicitly allowlists its key")
@@ -196,7 +225,34 @@ struct ResourceDirectoryTests {
                 == .sshPassword)
     }
 
-    @Test("non-SSH profiles do not require host connection fields or claim SSH execution")
+    @Test("legacy NAS type migrates to a Linux SSH host with a NAS role")
+    func legacyNASTypeMigration() throws {
+        let resource = TestDirectoryResourceFactory.make(alias: "nas.home")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(resource))
+                as? [String: Any]
+        )
+        var profile = try #require(object["profile"] as? [String: Any])
+        profile.removeValue(forKey: "classification")
+        profile["resourceType"] = "host.nas"
+        object["profile"] = profile
+
+        let migrated = try JSONDecoder().decode(
+            Resource.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        #expect(migrated.resolvedKind == .host)
+        #expect(migrated.resolvedTemplate == .sshV1)
+        #expect(migrated.resolvedHostPlatform == .linux)
+        #expect(migrated.resolvedRoles == [.nas])
+        #expect(migrated.resolvedResourceType == .hostLinux)
+        #expect(
+            !String(decoding: try JSONEncoder().encode(migrated), as: UTF8.self).contains(
+                "host.nas"))
+    }
+
+    @Test("non-SSH profiles expose only their template capabilities")
     func nonSSHProfile() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let resource = Resource(
@@ -219,7 +275,92 @@ struct ResourceDirectoryTests {
         let projection = SafeResourceProjection(resource: resource)
         #expect(projection.resourceType == .databaseMySQL)
         #expect(projection.capabilities.isEmpty)
+        #expect(!projection.capabilities.contains("exec"))
+        #expect(projection.health == .needsSetup)
         #expect(projection.summaryMetadata.map(\.key.rawValue) == ["database.engine"])
+    }
+
+    @Test("built-in templates cover the three host platforms and common middleware")
+    func builtInTemplateCoverage() throws {
+        let registry = ResourceTemplateRegistry.builtIn
+        let expectedTemplateIDs = [
+            "elasticsearch", "http", "kafka", "minio", "mongodb", "mysql", "neo4j", "oss",
+            "postgresql", "rabbitmq", "redis", "s3", "sqlserver", "ssh",
+        ]
+
+        #expect(registry.templates.map(\.id.rawValue) == expectedTemplateIDs)
+        #expect(registry.template(resourceType: .hostWindows)?.id == .ssh)
+        #expect(registry.template(resourceType: .messagingKafka)?.id == .kafka)
+        #expect(registry.template(resourceType: .messagingRabbitMQ)?.id == .rabbitMQ)
+        #expect(registry.template(resourceType: .databaseMongoDB)?.id == .mongodb)
+        #expect(registry.template(resourceType: .databaseSQLServer)?.id == .sqlServer)
+        #expect(registry.template(resourceType: .objectStorageMinIO)?.id == .minio)
+        #expect(registry.template(resourceType: .objectStorageOSS)?.id == .oss)
+        #expect(registry.template(resourceType: .searchElasticsearch)?.id == .elasticsearch)
+        #expect(registry.template(resourceType: .graphNeo4j)?.id == .neo4j)
+    }
+
+    @Test("template fields classify protected and secret input")
+    func templateFieldSensitivity() throws {
+        let registry = ResourceTemplateRegistry.builtIn
+        let ssh = try #require(registry.template(id: .ssh))
+        let sqlServer = try #require(registry.template(id: .sqlServer))
+
+        #expect(
+            ssh.fields.first { $0.id.rawValue == "connection.endpoint" }?.sensitivity
+                == .protected
+        )
+        #expect(
+            sqlServer.fields.first { $0.id.rawValue == "credential.password" }?.sensitivity
+                == .secret
+        )
+        #expect(
+            sqlServer.fields.first { $0.id.rawValue == "connection.port" }?.defaultValue
+                == .integer(1433)
+        )
+    }
+
+    @Test("active service readiness follows template credential policy")
+    func serviceReadiness() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let unauthenticatedHTTP = Resource(
+            id: UUID(),
+            alias: try ResourceAlias("health-api"),
+            resourceType: .serviceHTTP,
+            accessMethods: [.http],
+            transport: nil,
+            endpoint: ResourceEndpoint(scheme: "https", host: "service.invalid", port: 443),
+            username: nil,
+            securityDomain: "synthetic",
+            state: .active,
+            createdAt: now,
+            updatedAt: now
+        )
+        let mysqlWithoutCredential = Resource(
+            id: UUID(),
+            alias: try ResourceAlias("mysql.test"),
+            resourceType: .databaseMySQL,
+            accessMethods: [.mysql],
+            transport: nil,
+            endpoint: ResourceEndpoint(host: "mysql.invalid", port: 3306),
+            username: "reader",
+            securityDomain: "synthetic",
+            state: .active,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        #expect(
+            SafeResourceProjection(resource: unauthenticatedHTTP).health == .needsVerification)
+        #expect(SafeResourceProjection(resource: mysqlWithoutCredential).health == .needsSetup)
+
+        var verifiedHTTP = unauthenticatedHTTP
+        verifiedHTTP.verification = ResourceVerification(
+            status: .verified,
+            adapter: .http,
+            checkedAt: now
+        )
+        #expect(SafeResourceProjection(resource: verifiedHTTP).health == .ready)
     }
 }
 

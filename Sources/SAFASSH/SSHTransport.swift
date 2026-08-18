@@ -31,4 +31,26 @@ public struct SSHTransport: Sendable {
         let invocation = didLaunch.map(prepared.invocation.withLaunchHandler) ?? prepared.invocation
         return try await runner.run(invocation)
     }
+
+    public func executeWindowsPowerShell(
+        resource: Resource,
+        encodedScript: String,
+        credential: SSHCredentialContext,
+        workingRoot: URL,
+        timeoutSeconds: UInt,
+        outputLimitBytes: UInt,
+        didLaunch: (@Sendable (Int32) -> Void)? = nil
+    ) async throws -> ProcessExecutionResult {
+        let prepared = try builder.prepareWindowsPowerShell(
+            resource: resource,
+            encodedScript: encodedScript,
+            credential: credential,
+            rootDirectory: workingRoot,
+            timeoutSeconds: timeoutSeconds,
+            outputLimitBytes: outputLimitBytes
+        )
+        defer { try? FileManager.default.removeItem(at: prepared.rootDirectory) }
+        let invocation = didLaunch.map(prepared.invocation.withLaunchHandler) ?? prepared.invocation
+        return try await runner.run(invocation)
+    }
 }

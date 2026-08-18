@@ -1,0 +1,10 @@
+schema: dev.safa.cli/v2
+command: setup.status
+status: user_action_required
+error:
+  code: local_action.required
+  message: Enable the SAFA background item in System Settings.
+  retryable: false
+broker_service_status: requires_approval
+next[1]{command,reason,safe_for_agent}:
+  open System Settings > Login Items,A local user must enable the signed background item,false
