@@ -166,8 +166,8 @@ a 15-minute command scope, reject command/target mutation, and revoke the grant.
 
 ### Tests for User Story 2
 
-- [ ] T047 [P] [US2] Add failing policy finding and precedence tests in `Tests/Unit/PolicyClassifierTests.swift`
-- [ ] T048 [P] [US2] Add failing POSIX quoting and shell fingerprint property tests in `Tests/Security/CommandCanonicalizationTests.swift`
+- [X] T047 [P] [US2] Add failing policy finding and precedence tests in `Tests/Unit/PolicyClassifierTests.swift`
+- [X] T048 [P] [US2] Add failing POSIX quoting and shell fingerprint property tests in `Tests/Security/CommandCanonicalizationTests.swift`
 - [ ] T049 [P] [US2] Add failing replay, mutation, caller, resource, expiry, and clock rollback tests in `Tests/Security/ApprovalBindingTests.swift`
 - [ ] T050 [P] [US2] Add failing Touch ID cancel/fallback and forged-approval tests in `Tests/Integration/TrustedApprovalTests.swift`
 - [ ] T051 [P] [US2] Add failing sudo injection and stdin isolation tests in `Tests/Security/SudoExecutionTests.swift`
@@ -175,8 +175,8 @@ a 15-minute command scope, reject command/target mutation, and revoke the grant.
 
 ### Implementation for User Story 2
 
-- [ ] T053 [P] [US2] Implement command tokenization metadata, POSIX rendering, and immutable fingerprints in `Sources/SAFAPolicy/CommandCanonicalizer.swift`
-- [ ] T054 [P] [US2] Implement deterministic risk findings and deny/approval precedence in `Sources/SAFAPolicy/PolicyEngine.swift`
+- [X] T053 [P] [US2] Implement command tokenization metadata, POSIX rendering, and immutable fingerprints in `Sources/SAFAPolicy/CommandCanonicalizer.swift`
+- [X] T054 [P] [US2] Implement deterministic risk findings and deny/approval precedence in `Sources/SAFAPolicy/PolicyEngine.swift`
 - [ ] T055 [US2] Implement request state machine and asynchronous wait/cancel lifecycle in `Sources/SAFABroker/RequestService.swift`
 - [ ] T056 [US2] Implement exact, prefix, and full-access scope matching with monotonic expiry in `Sources/SAFAPolicy/GrantMatcher.swift`
 - [ ] T057 [US2] Implement LocalAuthentication-backed approval decisions behind a broker-owned

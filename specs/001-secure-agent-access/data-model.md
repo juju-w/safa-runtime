@@ -159,6 +159,13 @@ Immutable representation used to calculate an execution fingerprint.
 Exactly one of `arguments` and `shellProgram` is present. Environment injection is excluded from the
 MVP Agent contract to avoid a second secret and policy channel.
 
+`dev.safa.command/v1` canonicalization length-prefixes every UTF-8 value and binds mode, ordered
+arguments or exact shell source, stdin mode, TTY, working directory, timeout, and output limit into
+one SHA-256 command fingerprint. `exec` rendering quotes each argument independently for a POSIX
+remote shell; empty values, quotes, whitespace, newlines, metacharacters, and command-substitution
+text therefore remain inert argument data. NUL values and vectors above the reviewed byte/count
+limits fail before policy or transport work.
+
 ## ExecutionRequest
 
 | Field | Type | Rules |
@@ -252,7 +259,10 @@ or revocation prevents use.
 | `limits` | ExecutionLimits | Time, output, concurrency and TTY limits |
 
 Rule evaluation is deterministic and emits every matched finding. Order cannot turn a deny into an
-allow.
+allow. Hard security or execution-limit failures and matching deny rules take precedence over
+approval and automatic rules. Shell mode, sudo, stdin, TTY, a selected working directory,
+interpreters, encoded payloads, redirects, command substitution, destructive patterns, and
+state-changing commands cannot be downgraded by an automatic rule or Agent-authored review.
 
 ## ExecutionResult
 
