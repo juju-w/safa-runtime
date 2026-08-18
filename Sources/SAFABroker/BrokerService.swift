@@ -579,6 +579,7 @@ public final class BrokerService: @unchecked Sendable {
 
 public enum BrokerRuntime {
     public static func main() async -> Never {
+        BrokerProcessEnvironment.reexecIfNeeded()
         BrokerProcessEnvironment.apply()
         let teamIdentifier: String
         do {
