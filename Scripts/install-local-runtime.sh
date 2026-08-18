@@ -108,12 +108,22 @@ install_directory="${runtimes_root}/${runtime_version}"
 staging_directory="${runtimes_root}/.${runtime_version}.installing.$$"
 lock_path="${data_root}/runtime.local.json"
 lock_staging="${data_root}/.runtime.local.json.$$"
+[ ! -d "$lock_path" ] || fail "Runtime lock path is a directory"
 
 cleanup() {
   rm -rf -- "$build_root" "$staging_directory"
   rm -f -- "$lock_staging"
 }
 trap cleanup EXIT HUP INT TERM
+
+rollback_runtime_activation() {
+  if [ -d "$install_directory" ] && [ ! -e "$staging_directory" ]; then
+    /bin/mv "$install_directory" "$staging_directory" 2>/dev/null || true
+  fi
+  if [ -n "${backup_directory:-}" ] && [ -d "$backup_directory" ]; then
+    /bin/mv "$backup_directory" "$install_directory" 2>/dev/null || true
+  fi
+}
 
 set -- \
   -quiet \
@@ -247,6 +257,10 @@ umask 077
 /usr/bin/codesign --verify --deep --strict "${staging_directory}/SAFA.app" >/dev/null 2>&1 \
   || fail "Staged SAFA.app failed code-signature verification"
 
+printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\":\"${runtime_version}\",\"cli_schema\":\"dev.safa.cli/v2\",\"platform\":\"macos\",\"architecture\":\"${architecture}\",\"team_identifier\":\"${team_identifier}\",\"app_cdhash\":\"${app_cdhash}\",\"broker_cdhash\":\"${broker_cdhash}\",\"askpass_cdhash\":\"${askpass_cdhash}\",\"trusted_setup_cdhash\":\"${trusted_setup_cdhash}\"}" \
+  > "$lock_staging"
+/bin/chmod 600 "$lock_staging"
+
 if [ -e "$install_directory" ]; then
   [ "$replace_existing" -eq 1 ] \
     || fail "Runtime ${runtime_version} is already installed; pass --replace to retain it as a backup"
@@ -256,16 +270,14 @@ if [ -e "$install_directory" ]; then
 fi
 
 if ! /bin/mv "$staging_directory" "$install_directory"; then
-  if [ -n "${backup_directory:-}" ] && [ -d "$backup_directory" ]; then
-    /bin/mv "$backup_directory" "$install_directory"
-  fi
+  rollback_runtime_activation
   fail "Failed to activate the staged Runtime"
 fi
 
-printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\":\"${runtime_version}\",\"cli_schema\":\"dev.safa.cli/v2\",\"platform\":\"macos\",\"architecture\":\"${architecture}\",\"team_identifier\":\"${team_identifier}\",\"app_cdhash\":\"${app_cdhash}\",\"broker_cdhash\":\"${broker_cdhash}\",\"askpass_cdhash\":\"${askpass_cdhash}\",\"trusted_setup_cdhash\":\"${trusted_setup_cdhash}\"}" \
-  > "$lock_staging"
-/bin/chmod 600 "$lock_staging"
-/bin/mv "$lock_staging" "$lock_path"
+if ! /bin/mv "$lock_staging" "$lock_path"; then
+  rollback_runtime_activation
+  fail "Failed to activate the local Runtime lock"
+fi
 
 installed_cli="${install_directory}/SAFA.app/Contents/MacOS/safa"
 "$installed_cli" --version
