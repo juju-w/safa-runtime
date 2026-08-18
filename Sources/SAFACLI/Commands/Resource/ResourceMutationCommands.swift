@@ -50,16 +50,24 @@ extension SSHConfigMutationCommand {
         )
     }
 
-    func runMutation(action: ResourceMutationActionV1, command: String) async throws {
+    func runMutation(
+        action: ResourceMutationActionV1,
+        command: String,
+        remediation: (
+            @Sendable (ResourceAlias, ResourceMutationReplyV1) async throws
+                -> ResourceMutationReplyV1
+        )? = nil
+    ) async throws {
         do {
             let (parsedAlias, mutation) = try mutationInput()
+            let reply = try await XPCBrokerAgentClient().mutateResource(
+                action: action,
+                alias: parsedAlias,
+                mutation: mutation
+            )
             try finishMutation(
                 command: command,
-                reply: try await XPCBrokerAgentClient().mutateResource(
-                    action: action,
-                    alias: parsedAlias,
-                    mutation: mutation
-                )
+                reply: try await remediation?(parsedAlias, reply) ?? reply
             )
         } catch let exit as ExitCode {
             throw exit
@@ -125,7 +133,57 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     var desiredState: String? { nil }
 
     func run() async throws {
-        try await runMutation(action: .add, command: "resource.add")
+        let requestedType = try importedResourceType.map(ResourceTypeIdentifier.init) ?? .hostLinux
+        let usesSSH = template == nil || template == ResourceTemplateIdentifier.ssh.rawValue
+        try await runMutation(
+            action: .add,
+            command: "resource.add",
+            remediation: { alias, reply in
+                guard fromSSHConfig == nil, usesSSH,
+                    reply.error?.code == "ssh_config_alias_not_found"
+                else {
+                    return reply
+                }
+                do {
+                    try await BundledTrustedResourceSetupLauncher().launch(
+                        alias: alias,
+                        resourceType: requestedType
+                    )
+                    let directory = try await XPCBrokerAgentClient().queryResourceDirectory(
+                        action: .show,
+                        alias: alias
+                    )
+                    guard directory.status == .completed,
+                        let summary = directory.summaries.first
+                    else {
+                        throw TrustedResourceSetupLauncherError.setupIncomplete
+                    }
+                    return ResourceMutationReplyV1(
+                        messageID: reply.messageID,
+                        status: .completed,
+                        summary: summary
+                    )
+                } catch {
+                    return ResourceMutationReplyV1(
+                        messageID: reply.messageID,
+                        status: .userActionRequired,
+                        error: SAFAErrorPayload(
+                            code: "trusted_setup_incomplete",
+                            message:
+                                "Complete the hidden, system-authenticated local setup and retry.",
+                            retryable: true,
+                            details: [
+                                "resource": .string(alias.rawValue),
+                                "trusted_local_command": .string(
+                                    "safa resource add \(alias.rawValue) --type "
+                                        + requestedType.rawValue
+                                ),
+                            ]
+                        )
+                    )
+                }
+            }
+        )
     }
 }
 

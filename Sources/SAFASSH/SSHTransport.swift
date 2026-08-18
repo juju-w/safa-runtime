@@ -38,7 +38,8 @@ public struct SSHTransport: Sendable {
         credential: SSHCredentialContext,
         workingRoot: URL,
         timeoutSeconds: UInt,
-        outputLimitBytes: UInt
+        outputLimitBytes: UInt,
+        didLaunch: (@Sendable (Int32) -> Void)? = nil
     ) async throws -> ProcessExecutionResult {
         let prepared = try builder.prepareWindowsPowerShell(
             resource: resource,
@@ -49,6 +50,7 @@ public struct SSHTransport: Sendable {
             outputLimitBytes: outputLimitBytes
         )
         defer { try? FileManager.default.removeItem(at: prepared.rootDirectory) }
-        return try await runner.run(prepared.invocation)
+        let invocation = didLaunch.map(prepared.invocation.withLaunchHandler) ?? prepared.invocation
+        return try await runner.run(invocation)
     }
 }

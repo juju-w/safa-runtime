@@ -204,10 +204,12 @@ public actor ResourceMutationService: ResourceMutationHandling {
                 message: "The resource is not in a state that supports this change."
             )
         } catch SSHConfigResolverError.aliasNotConfigured {
-            return failure(
+            return userActionRequired(
                 request,
                 code: "ssh_config_alias_not_found",
-                message: "The SSH config alias is not explicitly configured."
+                message:
+                    "The SSH alias is not configured; protected local SSH setup is required.",
+                details: ["resource": .string(request.alias.rawValue)]
             )
         } catch SSHConfigResolverError.timedOut {
             return failure(

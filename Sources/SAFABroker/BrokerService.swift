@@ -646,6 +646,14 @@ public enum BrokerRuntime {
             passwordStore: keychain,
             bindingStore: bindingStore,
             resourceService: resourceStore,
+            trustedSSHVerifier: TrustedSSHPasswordSetupVerifier(
+                bindingStore: bindingStore,
+                askPassExecutable: askPassExecutable,
+                workingDirectory: applicationSupport.appendingPathComponent(
+                    "runtime",
+                    isDirectory: true
+                )
+            ),
             topologyReachabilityRecorder: topology,
             askPassExecutable: askPassExecutable,
             workingDirectory: applicationSupport.appendingPathComponent(

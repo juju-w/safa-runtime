@@ -98,11 +98,17 @@ extension AgentCommand {
     }
 
     func finishMutation(command: String, reply: ResourceMutationReplyV1) throws {
+        let protectedCommand: String
+        if case let .string(value) = reply.error?.details["trusted_local_command"] {
+            protectedCommand = value
+        } else {
+            protectedCommand = "complete resource setup in the trusted local workflow"
+        }
         let next =
             reply.status == .userActionRequired
             ? [
                 AgentNextCommandV2(
-                    command: "complete resource setup in the trusted local workflow",
+                    command: protectedCommand,
                     reason: reply.error?.message ?? "Local setup is required",
                     safeForAgent: false
                 )

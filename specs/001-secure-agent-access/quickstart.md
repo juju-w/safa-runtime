@@ -16,7 +16,8 @@ xcodebuild -quiet -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
 
 The test journey constructs only `nas.home` with documentation-only address `203.0.113.10`; its
 transport is an in-memory fake and does not open a network connection. The native Xcode build checks
-the broker, CLI, and AskPass assembly without pretending that an unsigned XPC build can run.
+the broker, CLI, AskPass, and trusted-setup assembly without pretending that an unsigned XPC build
+can run.
 
 ## 2. Inspect the stable CLI surface
 
@@ -38,8 +39,8 @@ not fall back to raw SSH or ask for a credential.
 
 The product has no custom windows, menus, or SwiftUI/AppKit workflow. Apple requires a GUI-less app
 container for `SMAppService` to register the per-user LaunchAgent, so the Xcode aggregate embeds the
-CLI, nested broker app, AskPass helper, and launch-agent plist in `SAFA.app`. Build every component
-with the same configured Apple Developer Team:
+CLI, nested broker app, AskPass helper, trusted-setup helper, and launch-agent plist in `SAFA.app`.
+Build every component with the same configured Apple Developer Team:
 
 ```bash
 xcodebuild -project Apps/SAFA/SAFA.xcodeproj -scheme "SAFA Runtime" \
@@ -78,13 +79,14 @@ version; the previous Runtime is retained as a backup. This does not notarize or
 
 ## 4. Validate resource lifecycle through tests
 
-The CLI-first preview has no private registration UI. Its signed runtime exposes the five-command
+The CLI-first preview has no custom registration UI. Its signed runtime exposes the five-command
 resource surface; add/edit/remove each require a macOS Touch ID/login authorization. Add/edit accept
 only logical aliases, safe template/type choices, and an optional active/disabled state:
 
 ```bash
 safa resource add nas.home --from-ssh-config home-nas \
   --type host.linux
+safa resource add new.host --type host.linux
 safa resource edit nas.home --from-ssh-config home-nas
 safa resource edit nas.home --state disabled
 safa resource edit nas.home --state active
@@ -96,6 +98,16 @@ then, in the same command, uses an existing `known_hosts` entry and available Op
 identity-file/agent route to verify the account and declared platform, write a bounded read-only
 hardware/system probe into the encrypted directory, and atomically return `active`. A remediable
 failure may retain the draft; edit resumes it. `ProxyJump` and `ProxyCommand` remain unsupported.
+
+When the alias is not present in OpenSSH configuration, the same `resource add` command launches the
+separately signed `safa-trusted-setup` helper. It opens its own controlling terminal and disables
+echo for host, port, username, independently verified SHA-256 host fingerprint, and password. None
+of those fields enters argv, environment, Agent-controlled stdin, stdout, or stderr. The Broker
+binds the setup session to the signed helper, verifies password login as the declared account,
+pinned host identity, target platform, and bounded inventory, then stores the password in the Data
+Protection Keychain and activates the resource atomically. If the Agent has no controlling terminal,
+the response provides the same command as `safe_for_agent: false` for the user to run locally.
+
 The adapter accepts `host.linux`, `host.macos`, and `host.windows`; a Windows target must
 already expose OpenSSH and follows the same pinned-host verification path. Service templates can be
 selected with `--template` from the built-in registry, including Kafka, RabbitMQ, and MongoDB. Their protected local configuration client
@@ -133,8 +145,9 @@ event. A changed host identity or unsupported command fails closed.
 
 ## MVP boundary
 
-This checkpoint enables signed per-user broker activation and reviewed setup of an existing direct
-OpenSSH identity or agent route with prior `known_hosts` trust. It does not yet enable password or
-new private-key enrollment, first-use host confirmation, sudo, shell programs, arbitrary remote
-mutations, approval grants, recovery, notarized distribution, or the final packaged Skill. Those
-remain separate Spec Kit phases; do not bypass the diagnostic allowlist to simulate them.
+This checkpoint enables signed per-user broker activation, reviewed setup of an existing direct
+OpenSSH identity/agent route, and hidden password enrollment with manual first-use host-fingerprint
+confirmation. It does not yet enable managed Secure Enclave SSH enrollment, private-key import,
+sudo, shell programs, arbitrary remote mutations, approval grants, recovery, notarized
+distribution, or the final packaged Skill. Those remain separate Spec Kit phases; do not bypass the
+diagnostic allowlist to simulate them.

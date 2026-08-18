@@ -341,12 +341,13 @@ struct OpenSSHSetupVerifier: OpenSSHSetupVerifying {
         }
         return try await inventoryProbe.probe(
             resource: resource,
-            locator: locator,
-            observedAt: observedAt
+            credential: locator.credentialContext(),
+            observedAt: observedAt,
+            didLaunch: nil
         )
     }
 
-    private static func classifySSHFailure(_ stderr: Data) -> ResourceSetupError {
+    static func classifySSHFailure(_ stderr: Data) -> ResourceSetupError {
         let message = String(decoding: stderr.prefix(16 * 1_024), as: UTF8.self).lowercased()
         if message.contains("host key verification failed")
             || message.contains("remote host identification has changed")

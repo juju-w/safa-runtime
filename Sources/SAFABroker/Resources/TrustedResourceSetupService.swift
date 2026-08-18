@@ -12,26 +12,53 @@ public enum TrustedResourceSetupError: Error, Equatable, Sendable {
 /// signed trusted-local XPC role. Agent-facing DTOs never contain these values.
 public actor TrustedResourceSetupService {
     private let resources: ResourceService
-    private var sessions: [UUID: ResourceAlias] = [:]
+    private let sshVerifier: (any TrustedSSHResourceVerifying)?
+    private let sessionLifetime: TimeInterval
+    private var sessions: [UUID: TrustedResourceSetupSession] = [:]
 
-    public init(resources: ResourceService) {
+    init(
+        resources: ResourceService,
+        sshVerifier: (any TrustedSSHResourceVerifying)? = nil,
+        sessionLifetime: TimeInterval = 300
+    ) {
         self.resources = resources
+        self.sshVerifier = sshVerifier
+        self.sessionLifetime = min(max(1, sessionLifetime), 300)
     }
 
-    public func begin(alias: ResourceAlias) -> UUID {
+    public func begin(
+        alias: ResourceAlias,
+        caller: CallerIdentity,
+        now: Date = Date()
+    ) -> UUID {
+        sessions = sessions.filter { $0.value.expiresAt >= now }
+        if sessions.count >= 32,
+            let oldest = sessions.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key
+        {
+            sessions.removeValue(forKey: oldest)
+        }
         let sessionID = UUID()
-        sessions[sessionID] = alias
+        sessions[sessionID] = TrustedResourceSetupSession(
+            alias: alias,
+            caller: caller,
+            expiresAt: now.addingTimeInterval(sessionLifetime)
+        )
         return sessionID
     }
 
     public func commit(
         sessionID: UUID,
+        caller: CallerIdentity,
         protectedPayload: Data,
         now: Date = Date()
     ) async throws -> Resource {
-        guard let alias = sessions.removeValue(forKey: sessionID) else {
+        guard let session = sessions.removeValue(forKey: sessionID),
+            session.caller == caller,
+            now <= session.expiresAt
+        else {
             throw TrustedResourceSetupError.invalidSession
         }
+        let alias = session.alias
         let payload = try CanonicalCodec.decode(
             ProtectedResourceSetupPayload.self,
             from: protectedPayload,
@@ -62,7 +89,7 @@ public actor TrustedResourceSetupService {
         let credentialKind =
             try payload.credentialKind.map { try CredentialKind($0) }
             ?? (protectedCredential == nil ? nil : template.credentialKinds.first)
-        let draft = PrivateResourceDraft(
+        var draft = PrivateResourceDraft(
             alias: alias,
             resourceType: resourceType,
             alternateAliases: try (payload.alternateAliases ?? []).map { try ResourceAlias($0) },
@@ -83,6 +110,38 @@ public actor TrustedResourceSetupService {
                 ?? .primary
         )
 
+        if draft.accessMethods.contains(.ssh) {
+            guard let protectedCredential,
+                credentialKind == .sshPassword,
+                let sshVerifier
+            else {
+                throw TrustedResourceSetupError.unsupportedTemplate
+            }
+            let inventory = try await sshVerifier.verify(
+                draft: draft,
+                password: protectedCredential,
+                observedAt: now
+            )
+            draft = PrivateResourceDraft(
+                alias: draft.alias,
+                classification: draft.classification,
+                alternateAliases: draft.alternateAliases,
+                accessMethods: draft.accessMethods,
+                metadata: Self.merging(
+                    trustedInput: draft.metadata,
+                    observedInventory: inventory.metadata
+                ),
+                relationships: draft.relationships,
+                displayName: draft.displayName,
+                endpoint: draft.endpoint,
+                username: draft.username,
+                securityDomain: draft.securityDomain,
+                hostIdentity: draft.hostIdentity,
+                credentialKind: draft.credentialKind,
+                credentialRole: draft.credentialRole
+            )
+        }
+
         do {
             _ = try await resources.resource(alias: alias)
             return try await resources.edit(
@@ -98,6 +157,15 @@ public actor TrustedResourceSetupService {
                 now: now
             )
         }
+    }
+
+    private static func merging(
+        trustedInput: [ResourceMetadataEntry],
+        observedInventory: [ResourceMetadataEntry]
+    ) -> [ResourceMetadataEntry] {
+        let observedKeys = Set(observedInventory.map(\.key))
+        return (trustedInput.filter { !observedKeys.contains($0.key) } + observedInventory)
+            .sorted { $0.key.rawValue < $1.key.rawValue }
     }
 
     private func hostIdentity(
@@ -144,4 +212,10 @@ public actor TrustedResourceSetupService {
         case let .textList(value): .textList(value)
         }
     }
+}
+
+private struct TrustedResourceSetupSession: Sendable {
+    let alias: ResourceAlias
+    let caller: CallerIdentity
+    let expiresAt: Date
 }

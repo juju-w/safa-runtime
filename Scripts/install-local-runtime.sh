@@ -103,8 +103,9 @@ cli_path="${source_app}/Contents/MacOS/safa"
 broker_app="${source_app}/Contents/Library/Helpers/SAFABrokerAgent.app"
 broker_path="${broker_app}/Contents/MacOS/safa-broker"
 askpass_path="${source_app}/Contents/Library/Helpers/safa-askpass"
+trusted_setup_path="${source_app}/Contents/Library/Helpers/safa-trusted-setup"
 
-for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path"; do
+for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path" "$trusted_setup_path"; do
   [ -e "$component" ] || fail "Runtime component is missing: $component"
   /usr/bin/codesign --verify --strict "$component" >/dev/null 2>&1 \
     || fail "Runtime component failed code-signature verification: $component"
@@ -126,8 +127,10 @@ signature_field() {
   || fail "Broker signing identifier is invalid"
 [ "$(signature_field "$askpass_path" Identifier)" = "dev.safa.askpass" ] \
   || fail "AskPass signing identifier is invalid"
+[ "$(signature_field "$trusted_setup_path" Identifier)" = "dev.safa.trusted-local" ] \
+  || fail "trusted setup signing identifier is invalid"
 
-for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path"; do
+for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path" "$trusted_setup_path"; do
   [ "$(signature_field "$component" TeamIdentifier)" = "$team_identifier" ] \
     || fail "Runtime component was not signed by Team ${team_identifier}"
 done
@@ -146,7 +149,8 @@ installed_version=$("$cli_path" --version) \
 app_cdhash=$(signature_field "$source_app" CDHash)
 broker_cdhash=$(signature_field "$broker_app" CDHash)
 askpass_cdhash=$(signature_field "$askpass_path" CDHash)
-for cdhash in "$app_cdhash" "$broker_cdhash" "$askpass_cdhash"; do
+trusted_setup_cdhash=$(signature_field "$trusted_setup_path" CDHash)
+for cdhash in "$app_cdhash" "$broker_cdhash" "$askpass_cdhash" "$trusted_setup_cdhash"; do
   if ! printf '%s\n' "$cdhash" | /usr/bin/grep -Eq '^[0-9a-f]{40}$'; then
     fail "Runtime returned an invalid code-directory hash"
   fi
@@ -176,7 +180,7 @@ if ! /bin/mv "$staging_directory" "$install_directory"; then
   fail "Failed to activate the staged Runtime"
 fi
 
-printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\":\"${runtime_version}\",\"platform\":\"macos\",\"architecture\":\"${architecture}\",\"team_identifier\":\"${team_identifier}\",\"app_cdhash\":\"${app_cdhash}\",\"broker_cdhash\":\"${broker_cdhash}\",\"askpass_cdhash\":\"${askpass_cdhash}\"}" \
+printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\":\"${runtime_version}\",\"platform\":\"macos\",\"architecture\":\"${architecture}\",\"team_identifier\":\"${team_identifier}\",\"app_cdhash\":\"${app_cdhash}\",\"broker_cdhash\":\"${broker_cdhash}\",\"askpass_cdhash\":\"${askpass_cdhash}\",\"trusted_setup_cdhash\":\"${trusted_setup_cdhash}\"}" \
   > "$lock_staging"
 /bin/chmod 600 "$lock_staging"
 /bin/mv "$lock_staging" "$lock_path"

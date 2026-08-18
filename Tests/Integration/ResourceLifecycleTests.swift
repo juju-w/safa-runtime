@@ -1080,8 +1080,9 @@ private struct StaticHostInventoryProbe: OpenSSHHostInventoryProbing {
 
     func probe(
         resource _: Resource,
-        locator _: OpenSSHCredentialLocatorV1,
-        observedAt: Date
+        credential _: SSHCredentialContext,
+        observedAt: Date,
+        didLaunch _: (@Sendable (Int32) -> Void)?
     ) async throws -> HostInventorySnapshot {
         HostInventorySnapshot(
             platform: platform,

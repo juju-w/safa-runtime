@@ -75,7 +75,10 @@ them.
 ## 2. macOS architecture principles
 
 1. **The CLI is a parser and presenter, not a security boundary.** It has no Keychain entitlement,
-   cannot approve requests, and never launches credential-bearing processes.
+   cannot approve requests, and never receives a credential-bearing pipe. It may launch the
+   separately signed trusted-setup executable only by safe alias/type; that helper opens its own
+   controlling terminal, suppresses echo for every protected field, and communicates directly with
+   the Broker.
 2. **The broker owns authority.** It resolves encrypted resource metadata, enforces policy, obtains
    credentials, launches transports, and returns bounded results.
 3. **macOS owns human presence.** During the CLI-first phase, privileged credential use and human
@@ -106,7 +109,10 @@ flowchart LR
     Agent["Agent"] -->|validated argv| CLI["Signed safa CLI\nno secret entitlement"]
     CLI -->|canonical TOON| Agent
     CLI -->|Agent XPC\nsigned peer check| Broker["Per-user SAFA broker\nauthority boundary"]
+    CLI -->|safe alias + type only| Setup["Signed trusted setup helper\nno custom GUI"]
     Human["Local human"] -->|Touch ID / system prompt| Native["macOS Security UI\nno custom product GUI"]
+    Human -->|hidden protected input| Setup
+    Setup -->|trusted-local XPC\nsigned peer check| Broker
     Native -->|user presence result| Broker
     Broker --> Policy["Deterministic policy\nand use cases"]
     Broker --> Vault["Encrypted resource vault"]
@@ -130,8 +136,10 @@ flowchart LR
   session. The broker derives peer identity from the connection, not message fields.
 - The Agent-facing CLI cannot submit a secret or approval. A system-authenticated local workflow may
   confirm a broker-computed request but cannot rewrite its target, command, or policy result.
-- A future trusted local-interaction process, if specified, must retain a separate signing identity
-  and XPC contract. No such product UI ships in the current phase.
+- The shipped trusted resource-setup helper has the distinct `dev.safa.trusted-local` signing
+  identity and a typed XPC contract. It has no custom product UI, accepts no protected CLI flags,
+  accepts no protected value from Agent stdin or environment, and emits no protected field.
+  Approval presentation for future arbitrary execution remains a separate M2 design.
 - The broker writes a per-request SSH config and pinned `known_hosts`, disables ambient forwarding,
   and does not inherit the user's mutable SSH configuration during execution.
 - Remote output is untrusted data. It is bounded before returning to the Agent and must never be
@@ -154,6 +162,7 @@ vended library product.
 | `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, product presentation |
 | `SAFACLI` | ArgumentParser commands, typed request mapping, canonical TOON presentation | Secrets, policy, direct SSH, approval, human rendering |
 | `SAFAAskPass` | One-shot child-bound credential response | Resource lookup or general Keychain queries |
+| `SAFATrustedSetup` | LocalAuthentication, hidden `/dev/tty` enrollment, host-key scan/confirmation, typed trusted XPC client | Keychain persistence, direct SSH login, Agent output |
 
 The intended dependency shape is:
 
@@ -164,6 +173,7 @@ SAFASSH ───────────────► SAFADomain + SAFATransp
 SAFACrypto ────────────► SAFADomain
 SAFAPolicy ────────────► SAFADomain
 SAFATransport ─────────► SAFADomain
+SAFATrustedSetup ──────► SAFAProtocol + SAFADomain + SAFACrypto + SAFATransport
 ```
 
 `SAFAProtocol` must gradually stop importing persistence-oriented domain aggregates. Map explicit
@@ -197,6 +207,10 @@ Sources/
 │   ├── Commands/Exec/
 │   ├── Commands/Credential/
 │   └── Presentation/
+├── SAFATrustedSetup/
+│   ├── TrustedSetupConsole.swift
+│   ├── TrustedSSHEnrollmentFlow.swift
+│   └── TrustedLocalSetupClient.swift
 └── SAFASSH/
     ├── Configuration/
     ├── Authentication/
@@ -275,28 +289,36 @@ topology, or remote output for later ambient context.
 
 ### Manage resource lifecycle from the CLI
 
-1. `safa resource add ALIAS --from-ssh-config SSH_ALIAS` and `resource edit` carry only logical
+1. `safa resource add ALIAS [--from-ssh-config SSH_ALIAS]` and `resource edit` carry only logical
    aliases, safe template/type choices, and an optional active/disabled state across the mutation
    XPC method.
 2. The broker asks macOS for device-owner authentication, then runs bounded `ssh -G SSH_ALIAS`
    locally and persists the resolved endpoint and username inside the encrypted vault. Private
    connection values never become CLI arguments or mutation DTO fields.
-3. Add creates a private draft, then in the same authorized workflow imports a previously trusted
+3. When an explicit OpenSSH alias exists, add creates a private draft, then in the same authorized workflow imports a previously trusted
    `known_hosts` identity and an available existing OpenSSH identity/agent route, verifies the exact
    remote username and registered Linux/macOS/Windows platform, and runs a bounded read-only host
    inventory probe before atomically committing `active` with the probe metadata. A remediable
    failure may retain the draft; `resource edit` resumes it without exposing a separate setup
    command.
-4. Setup currently accepts direct routes, including a local Core Tunnel listener expressed as the
+4. When no explicit OpenSSH alias exists, the same add command launches the separately signed
+   trusted helper. All connection fields and the password are read with terminal echo disabled;
+   the helper accepts only alias/type in argv, performs LocalAuthentication, scans the live SSH host
+   key, and requires the user to enter the independently verified SHA-256 fingerprint. The Broker
+   binds the setup session to that exact signed peer and audit session, verifies password login,
+   exact remote account, pinned identity, platform, and inventory, then atomically stores the
+   credential in Keychain and activates the resource. A non-interactive invocation returns a
+   `safe_for_agent: false` command for the user to run in a trusted local terminal.
+5. Setup currently accepts direct routes, including a local Core Tunnel listener expressed as the
    resolved endpoint. `ProxyJump` and `ProxyCommand` fail with `user_action_required` until SAFA can
    review and snapshot their complete route rather than inherit mutable SSH configuration.
-5. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
+6. Refreshing a draft is allowed. Retargeting a resource that already has a credential or trusted
    identity is rejected so a mutable SSH config cannot silently redirect trusted access.
-6. `resource edit --state disabled|active` changes access state while preserving the trusted route;
+7. `resource edit --state disabled|active` changes access state while preserving the trusted route;
    `resource remove` deletes the resource. Both require macOS user presence. All resource writes pass
    through one serialized broker transaction gate. Removal preserves relationship integrity and
    deletes an unshared credential reference through the same transaction.
-7. Production add/edit/setup and desired topology link operations may reuse a scoped, in-memory
+8. Production add/edit/setup and desired topology link operations may reuse a scoped, in-memory
    approval for at most five minutes within their own Broker service. The lease is capped at 300
    seconds, is lost on Broker restart, cannot cross from resource setup to topology, and is cleared
    by a denial or sensitive state change. Remove, disable, enable, unlink, credential use, protected
@@ -324,8 +346,9 @@ topology, or remote output for later ambient context.
   Keychain/Secure Enclave and the encrypted directory keeps only opaque references.
 - Built-in templates currently cover SSH (including Windows OpenSSH), MySQL, PostgreSQL,
   SQL Server, MongoDB, S3, MinIO, OSS, Redis, Kafka, RabbitMQ, Elasticsearch, Neo4j, and HTTP. Their protected setup payload
-  enters only through the separately signed trusted-local XPC role. Shipping that role's local
-  no-GUI client remains a separate delivery gate; the Agent-facing CLI cannot substitute for it.
+  enters only through the separately signed trusted-local XPC role. The first shipped local client
+  implements password SSH setup only; typed service credential forms and protocol verification
+  adapters remain gated. The Agent-facing CLI cannot substitute for the trusted peer.
 - A stored service connection is `needs_verification`, not `ready`. Only its typed broker adapter
   may record revision-bound verification evidence. Changing endpoint, username, access method, or
   credential clears the evidence before the edited revision is returned.
@@ -390,26 +413,27 @@ The normative schema and initial host keys are defined in
 5. Windows inventory emits UTF-8 JSON and uses one trusted, bounded encoded-PowerShell layer. The
    generic Agent command wrapper remains separate, preventing nested base64 from exceeding the
    Windows OpenSSH command-line limit.
-4. The broker constructs an isolated, pinned OpenSSH configuration, verifies the expected account,
+6. The broker constructs an isolated, pinned OpenSSH configuration, verifies the expected account,
    and runs one fixed read-only platform probe. Linux/macOS report architecture, OS/kernel, CPU,
    memory, root-filesystem capacity, hardware model, and Docker availability; Windows reports the
    equivalent bounded CIM data. Authentication or platform mismatch fails setup; unavailable
    optional fields are omitted.
-5. Only after successful verification does one revision-checked transaction add the OpenSSH
+7. Only after successful verification does one revision-checked transaction add the OpenSSH
    credential reference, persist validated inventory metadata, and mark the resource active.
 
 Execution snapshots the direct endpoint, remote username, trusted host key, and approved local
 OpenSSH credential locator. Later retargeting through `~/.ssh/config` is rejected. Managed Secure
-Enclave onboarding, password entry, first-use host confirmation, and `ProxyJump`/`ProxyCommand`
-snapshotting remain later work.
+Enclave onboarding and `ProxyJump`/`ProxyCommand` snapshotting remain later work. Password entry and
+manual first-use fingerprint confirmation are implemented by the trusted helper.
 
 ### Add sudo capability
 
 1. The Agent-facing CLI never requests or accepts a sudo password.
 2. The CLI-first parity slice may import an existing per-host sudo credential from the current local
    Keychain only inside a broker-owned, system-authenticated migration flow.
-3. New sudo-password enrollment remains unavailable until a safe local secret-entry path exists; it
-   must not be improvised through argv, environment variables, chat, or Agent-controlled stdin.
+3. New sudo-password enrollment remains unavailable until a distinct sudo-specific trusted flow
+   binds discovery, verification, role, and policy. The SSH setup helper must not be generalized by
+   accepting sudo data through argv, environment variables, chat, or Agent-controlled stdin.
 4. The broker stores sudo as a separate `ThisDeviceOnly` Keychain item and verifies it with a
    read-only `sudo -v` operation.
 5. Sudo remains independently removable and high-privilege use requires system user presence.
@@ -433,12 +457,13 @@ down, the response directs the user to start it instead of asking for an IP or p
 | `ssh -G` route inspection | Explicit-host import implemented for direct routes | Reviewed `ProxyJump`/`ProxyCommand` snapshot | P0 |
 | Core Tunnel listener preflight | Direct local-listener routes execute; dedicated health check missing | Route-health adapter and actionable `tunnel_unavailable` result | P0 |
 | Public-key `BatchMode=yes` SSH | Existing identity-file/agent route wired end-to-end | Managed Secure Enclave identity | P0 |
-| Strict host-key checking | Existing `known_hosts` import and pinned execution implemented | First-use confirmation and rotation flow | P0 |
+| Strict host-key checking | Existing `known_hosts` import plus hidden first-use fingerprint confirmation and pinned execution implemented | Rotation flow | P0 |
+| Password SSH onboarding | Signed hidden-input helper, caller-bound XPC session, account/platform/inventory verification, and atomic Keychain activation implemented | Credential rotation through the same trusted flow | P0 |
 | Read-only diagnosis | Narrow allowlist exists | Argument-aware policy that excludes secret-dumping forms | P0 |
 | Per-host sudo in Keychain | Model only | Separate credential, system approval, protected stdin | P1 |
 | One scoped sudo command | Missing | Broker-owned sudo adapter and exact approval | P1 |
 | Atomic user creation | Missing | Reviewed operational recipe over scoped sudo | P1 |
-| Service credential status/injection | Typed templates, protected Broker commit, and verification evidence implemented; local setup client and protocol adapters missing | Least-privilege client adapters with credential injection and health probes | P2 |
+| Service credential status/injection | Typed templates and protected Broker commit exist; the shipped trusted client currently handles password SSH only | Least-privilege client adapters with credential injection and health probes | P2 |
 | Credential discovery/import | External Python tooling | Explicit local migration assistant; never background scanning | P2 |
 | Core Tunnel inventory refresh | External Python tooling | Read-only optional import adapter | P2 |
 | Persistent tamper-evident audit UI | In-memory event sketch | Deferred until core operations are useful and safe | Later |
@@ -453,8 +478,8 @@ down, the response directs the user to start it instead of asking for an IP or p
   Secure Enclave SSH until the constrained SSH-agent socket protocol is implemented and tested
   end-to-end.
 - **XPC:** both sides set peer code-signing requirements; the listener also validates user and audit
-  session. Agent, broker, AskPass, and any future trusted local-interaction process use role-specific
-  signing identifiers.
+  session. Agent, broker, AskPass, and trusted setup use role-specific signing identifiers. Setup
+  sessions additionally bind the begin/commit pair to the same caller and expire within five minutes.
 - **Service lifecycle:** register the per-user broker through `SMAppService`; show registration state
   and a direct System Settings remediation path.
 - **Files:** application-support directories are `0700`; vault/config/known-host files are `0600`;
@@ -470,7 +495,7 @@ No new authorization or audit feature starts until the architecture remediation 
 4. remove secret-dumping command forms from the automatic diagnostic policy;
 5. add SSH-config import, tunnel preflight, and public-key execution contract tests;
 6. keep the canonical TOON v2 fixtures strict-decoding against pinned official TOON sources, then
-   validate the signed broker/CLI/AskPass boundaries without adding GUI work or publishing
+   validate the signed broker/CLI/AskPass/trusted-setup boundaries without adding GUI work or publishing
    artifacts.
 
 After every slice: format, build, test, unsigned Xcode assembly, Draft PR, CI, squash merge. No tag,

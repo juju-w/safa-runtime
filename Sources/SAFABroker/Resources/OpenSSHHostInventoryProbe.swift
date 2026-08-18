@@ -6,8 +6,9 @@ import SAFATransport
 protocol OpenSSHHostInventoryProbing: Sendable {
     func probe(
         resource: Resource,
-        locator: OpenSSHCredentialLocatorV1,
-        observedAt: Date
+        credential: SSHCredentialContext,
+        observedAt: Date,
+        didLaunch: (@Sendable (Int32) -> Void)?
     ) async throws -> HostInventorySnapshot
 }
 
@@ -25,8 +26,9 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
 
     func probe(
         resource: Resource,
-        locator: OpenSSHCredentialLocatorV1,
-        observedAt: Date
+        credential: SSHCredentialContext,
+        observedAt: Date,
+        didLaunch: (@Sendable (Int32) -> Void)? = nil
     ) async throws -> HostInventorySnapshot {
         guard let expectedPlatform = resource.resolvedHostPlatform else {
             throw ResourceSetupError.inventoryProbeFailed
@@ -51,10 +53,11 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
                 result = try await transport.executeWindowsPowerShell(
                     resource: resource,
                     encodedScript: Self.windowsProbe,
-                    credential: try locator.credentialContext(),
+                    credential: credential,
                     workingRoot: workingRoot,
                     timeoutSeconds: 15,
-                    outputLimitBytes: 32 * 1_024
+                    outputLimitBytes: 32 * 1_024,
+                    didLaunch: didLaunch
                 )
             } else {
                 result = try await transport.execute(
@@ -64,8 +67,9 @@ struct OpenSSHHostInventoryProbe: OpenSSHHostInventoryProbing {
                         timeoutSeconds: 15,
                         outputLimitBytes: 32 * 1_024
                     ),
-                    credential: try locator.credentialContext(),
-                    workingRoot: workingRoot
+                    credential: credential,
+                    workingRoot: workingRoot,
+                    didLaunch: didLaunch
                 )
             }
         } catch {

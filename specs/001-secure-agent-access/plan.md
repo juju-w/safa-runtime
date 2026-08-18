@@ -53,8 +53,8 @@ Skill/CLI, and synthetic SSH fixtures only
 **Target Platform**: macOS 14.4 or newer; universal arm64/x86_64 release; Secure Enclave preferred
 on Apple silicon or supported T2/Touch ID Macs with an explicit Keychain fallback where unavailable
 
-**Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper + Agent
-Skill package; no custom GUI target in the current product phase
+**Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper +
+separately signed no-custom-GUI trusted setup helper + Agent Skill package
 
 **Performance Goals**: bare version response near process-start floor; `resource list` and policy decisions under 100 ms p95 after unlock; broker
 cold activation under 2 s; under 100 MB steady-state broker memory; stream command output without
@@ -116,7 +116,8 @@ Sources/
 ├── SAFASSH/                   # OpenSSH adapter, host verification, askpass and sudo injection
 ├── SAFABroker/                # per-user Mach/XPC service and orchestration
 ├── SAFACLI/                   # Agent-only `safa` executable and TOON presentation
-└── SAFAAskPass/               # signed one-shot SSH credential helper
+├── SAFAAskPass/               # signed one-shot SSH credential helper
+└── SAFATrustedSetup/          # signed hidden-input SSH registration flow
 Apps/
 └── SAFA/
     ├── SAFA.xcodeproj/
@@ -159,9 +160,10 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
 3. **Broker boundary**: owns vault decryption, policy, request/grant state, credential injection,
    transport processes, redaction, and audit. Incoming XPC peers must satisfy code-signing and user
    session requirements.
-4. **Trusted local-interaction boundary (future M2)**: a separately signed, system-authenticated
-   process may present the immutable request and prove local user presence. No such custom UI ships
-   in the current phase, and it cannot alter the target or command fingerprint.
+4. **Trusted local-interaction boundary**: the current separately signed, system-authenticated setup
+   helper collects protected SSH registration fields only from a controlling terminal with echo
+   disabled. A future M2 approval component may present immutable command requests, but it cannot
+   alter the target or command fingerprint. No custom GUI ships in the current phase.
 5. **Remote boundary**: is untrusted even after authentication. Output is data, host identity is
    pinned, commands are bounded, and remote compromise confers no credential for another host.
 
@@ -172,8 +174,9 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
 - **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, trusted no-GUI
   registration, managed Secure Enclave key or password SSH, strict host identity, read-only
   execution and audit, plus bounded safe topology queries and user-authorized desired relationship
-  edits. Existing direct OpenSSH identity/agent registration is implemented in the
-  current preview; managed Secure Enclave/password enrollment and proxy-route setup remain open.
+  edits. Existing direct OpenSSH identity/agent registration and separately signed hidden password
+  enrollment are implemented in the current preview; managed Secure Enclave enrollment and
+  proxy-route snapshotting remain open.
 - **M2 command authority**: arbitrary `exec`/`shell`, policy classifier, trusted approval, sudo,
   scoped grants, revocation, bounded streaming and redaction.
 - **M3 distribution hardening**: universal signed/notarized runtime, Skill packaging, package verification,

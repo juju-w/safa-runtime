@@ -27,6 +27,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         transport: SSHTransport = SSHTransport(),
         diagnosticPolicy: DiagnosticCommandPolicy = DiagnosticCommandPolicy(),
         audit: AuditService = AuditService(),
+        trustedSSHVerifier: (any TrustedSSHResourceVerifying)? = nil,
         topologyReachabilityRecorder: (any TopologyReachabilityRecording)? = nil,
         askPassExecutable: URL,
         workingDirectory: URL
@@ -37,7 +38,10 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
             resourceService
             ?? ResourceService(vault: vault, passwordStore: passwordStore)
         self.resourceService = resolvedResourceService
-        trustedResourceSetup = TrustedResourceSetupService(resources: resolvedResourceService)
+        trustedResourceSetup = TrustedResourceSetupService(
+            resources: resolvedResourceService,
+            sshVerifier: trustedSSHVerifier
+        )
         self.bindingStore = bindingStore
         self.transport = transport
         self.diagnosticPolicy = diagnosticPolicy
@@ -117,7 +121,10 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         do {
             switch operation {
             case let .beginPrivateSetup(resourceAlias):
-                let sessionID = await trustedResourceSetup.begin(alias: resourceAlias)
+                let sessionID = await trustedResourceSetup.begin(
+                    alias: resourceAlias,
+                    caller: caller
+                )
                 return BrokerReply(
                     messageID: messageID,
                     status: .completed,
@@ -126,6 +133,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
             case let .commitPrivateSetup(sessionID, protectedPayload):
                 let resource = try await trustedResourceSetup.commit(
                     sessionID: sessionID,
+                    caller: caller,
                     protectedPayload: protectedPayload
                 )
                 return BrokerReply(

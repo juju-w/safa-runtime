@@ -34,6 +34,8 @@ unpublished until conformance and human review finish.
 flowchart LR
     Skill["SAFA Skill + resolver"] --> CLI["safa CLI\nAgent-facing"]
     CLI -->|"authenticated XPC"| Broker["safa-broker\npolicy + vault authority"]
+    CLI -->|"launch only\nno input or output pipe"| Setup["safa-trusted-setup\nhidden local enrollment"]
+    Setup -->|"trusted-local XPC"| Broker
     Broker --> Keychain["Keychain + user authorization"]
     Broker --> AskPass["safa-askpass\none-shot helper"]
     AskPass --> Target["registered target"]
@@ -49,6 +51,7 @@ One macOS installation is packaged as `SAFA.app`, but authority is split between
 | `safa` | Parse Agent commands and encode one stable TOON result | None |
 | `safa-broker` | Resolve protected records, enforce policy, authorize, connect, and sanitize | Keychain/vault owner |
 | `safa-askpass` | Deliver one child-bound, short-lived SSH secret | One-shot only |
+| `safa-trusted-setup` | Collect hidden protected SSH fields after local user authentication and submit one caller-bound setup transaction | No persistent storage; typed setup session only |
 | `SAFA.app` | Signed container and `SMAppService` lifecycle host | No Agent-facing GUI |
 
 An Agent-facing process cannot retrieve a raw secret. Local IPC does not use plaintext credentials;
@@ -58,6 +61,8 @@ the Broker resolves credentials internally after validating peer identity and po
 
 - encrypted resource directory with safe and protected projections;
 - Linux, macOS, and Windows OpenSSH host registration from trusted local SSH configuration;
+- first-use password SSH registration through a separately signed, no-custom-GUI helper whose
+  protected fields never use argv, environment, Agent-controlled stdin, stdout, or stderr;
 - bounded first-connection system and hardware inventory probes;
 - deterministic topology projections for placement, reachability, and dependency impact;
 - strict pinned-host SSH configuration and bounded non-sudo diagnostics;

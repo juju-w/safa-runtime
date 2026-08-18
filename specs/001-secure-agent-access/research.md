@@ -46,19 +46,22 @@ part of the system.
 
 ## 3. Process and trust-boundary architecture
 
-**Decision**: Split the current runtime into three signed components:
+**Decision**: Split the current runtime into four signed components:
 
 1. `safa` CLI, which has no credential entitlements;
 2. a per-user `SAFABroker` launch agent, which owns protected state and execution;
 3. a one-shot signed askpass helper used only as a child of an approved broker execution.
+4. a no-custom-GUI trusted setup helper that collects protected fields with terminal echo disabled
+   after LocalAuthentication and sends one typed, caller-bound XPC transaction to the Broker.
 
-**Delivery update**: The CLI-first parity phase has no custom GUI target. A future trusted local
-interaction process requires its own specification and signing identity; it is not part of the
-current build. System Keychain and LocalAuthentication prompts enforce the native human-presence
-checks that are implementable without product GUI.
+**Delivery update**: The CLI-first parity phase has no custom GUI target. Resource enrollment ships
+as the separately signed `dev.safa.trusted-local` helper; it accepts no protected flags or
+Agent-controlled stdin and emits no protected values. System Keychain and LocalAuthentication
+prompts enforce native human presence. A future arbitrary-command approval presentation remains a
+separate M2 specification.
 
 Use named XPC/Mach services rather than TCP. Require the expected signing identifier, team identity,
-entitlement, effective user, and audit session on every broker connection. Broker activation remains
+effective user, and audit session on every broker connection. Broker activation remains
 an explicit delivery task and must not rely on an undeclared application bundle.
 
 **Rationale**: The Agent-facing CLI must remain incapable of reading Keychain items or approving its
@@ -72,7 +75,7 @@ avoids a privileged system daemon and public listener.
 - **Loopback HTTP service**: rejected because bearer-token authentication and a listening port add a
   new replay and cross-process attack surface.
 - **Unix socket without peer signing**: file permissions identify a user, not an approved binary;
-  same-user malware could impersonate the CLI or a future trusted local peer.
+  same-user malware could impersonate the CLI or trusted local peer.
 - **Root daemon**: unnecessary for remote SSH and increases blast radius.
 
 **Sources**:

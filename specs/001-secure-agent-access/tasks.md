@@ -84,7 +84,7 @@ endpoint or credential appears in Agent input/output, argv, environment, audit, 
 
 - [X] T033 [P] [US1] Implement resource alias validation, safe projections, and registry queries in `Sources/SAFADomain/ResourceRegistry.swift`
 - [X] T034 [US1] Implement private add/edit/disable/enable/remove resource transactions in `Sources/SAFABroker/ResourceService.swift`
-- [ ] T035 [P] [US1] Implement a trusted, system-authenticated no-GUI resource registration and
+- [X] T035 [P] [US1] Implement a trusted, system-authenticated no-GUI resource registration and
   credential-entry flow without adding secret flags or Agent-controlled stdin
 - [X] T036 [P] [US1] Implement device-bound P-256 key creation and public-key enrollment export in `Sources/SAFACrypto/SecureEnclaveSSHKey.swift`
 - [X] T037 [P] [US1] Implement Keychain password credential creation and lookup in `Sources/SAFACrypto/PasswordCredential.swift`
