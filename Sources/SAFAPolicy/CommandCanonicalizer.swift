@@ -72,10 +72,6 @@ public struct CommandCanonicalizer: Sendable {
     }
 
     public static func quotePOSIXArgument(_ value: String) -> String {
-        guard !value.isEmpty else { return "''" }
-        if value.unicodeScalars.allSatisfy(isUnquotedPOSIXScalar) {
-            return value
-        }
         return "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }
 
@@ -110,15 +106,6 @@ public struct CommandCanonicalizer: Sendable {
     private func rejectNUL(_ value: String, field: String) throws {
         guard !value.unicodeScalars.contains(where: { $0.value == 0 }) else {
             throw CommandCanonicalizationError.containsNUL(field: field)
-        }
-    }
-
-    private static func isUnquotedPOSIXScalar(_ scalar: Unicode.Scalar) -> Bool {
-        switch scalar.value {
-        case 45, 46, 47, 48...57, 58, 61, 64, 65...90, 95, 97...122:
-            true
-        default:
-            false
         }
     }
 

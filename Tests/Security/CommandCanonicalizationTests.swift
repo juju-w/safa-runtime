@@ -7,6 +7,13 @@ import Testing
 struct CommandCanonicalizationTests {
     private let canonicalizer = CommandCanonicalizer()
 
+    @Test("every POSIX word is quoted, including assignment words and reserved words")
+    func quotesEveryWord() {
+        #expect(CommandCanonicalizer.quotePOSIXArgument("if") == "'if'")
+        #expect(CommandCanonicalizer.quotePOSIXArgument("NAME=value") == "'NAME=value'")
+        #expect(CommandCanonicalizer.quotePOSIXArgument("plain") == "'plain'")
+    }
+
     @Test("POSIX rendering preserves every argument without shell interpretation")
     func posixRoundTrip() throws {
         let arguments = [
