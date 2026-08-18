@@ -216,6 +216,14 @@ required for the local MVP.
 represents pipelines and scripts. Conservative classification plus scoped approval is more robust
 than an incomplete command allowlist.
 
+**Foundation implemented**: `CommandCanonicalizer` now produces a versioned, length-prefixed
+SHA-256 identity over every execution-affecting command field and independently POSIX-quotes every
+`exec` argument. `PolicyEngine` emits sorted stable findings and enforces the fixed precedence
+`hard deny / deny rule > approval signal / approval rule > automatic diagnostic / automatic rule`.
+Agent review remains bounded advisory text. The existing runtime still executes only the diagnostic
+allowlist until request state, trusted approval, grant binding, and sudo isolation are implemented;
+the classifier alone does not grant new authority.
+
 ## 8. Output, redaction, and audit
 
 **Decision**: Stream output through the broker, cap Agent-visible stdout and stderr independently,

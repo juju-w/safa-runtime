@@ -157,6 +157,7 @@ let package = Package(
                 "SAFABroker",
                 "SAFACrypto",
                 "SAFADomain",
+                "SAFAPolicy",
                 "SAFAProtocol",
                 "SAFASSH",
                 "SAFATestFixtures",
