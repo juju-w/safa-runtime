@@ -6,6 +6,11 @@ installer="${repository_root}/Scripts/install-local-runtime.sh"
 
 help_output=$("$installer" --help)
 printf '%s\n' "$help_output" | grep -F -- '--source-preview --identity-hash SHA1' >/dev/null
+grep -F 'rollback_runtime_activation' "$installer" >/dev/null
+grep -F 'Failed to activate the local Runtime lock' "$installer" >/dev/null
+lock_line=$(grep -n '> "$lock_staging"' "$installer" | cut -d: -f1)
+runtime_line=$(grep -n 'if ! /bin/mv "$staging_directory" "$install_directory"' "$installer" | cut -d: -f1)
+[ "$lock_line" -lt "$runtime_line" ]
 
 assert_fails_with() {
   expected="$1"
