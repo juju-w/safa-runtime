@@ -25,7 +25,7 @@
   },
   "next": [
     {
-      "command": "safa exec worker.batch --full -- <args>",
+      "command": "safa exec worker.batch --intent \"<intent>\" --full -- <args>",
       "reason": "Retrieve a larger bounded preview",
       "safe_for_agent": true
     }

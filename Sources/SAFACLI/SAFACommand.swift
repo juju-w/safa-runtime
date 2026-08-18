@@ -19,7 +19,7 @@ public struct SAFACommand: AsyncParsableCommand, AgentCommand {
     public static func runMain() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if arguments.count == 1, ["-v", "-V", "--version"].contains(arguments[0]) {
-            print("0.1.0")
+            print(RuntimeBuildMetadata.version)
             return
         }
         let parserArguments = arguments.prefix { $0 != "--" }

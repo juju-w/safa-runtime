@@ -180,7 +180,7 @@ if ! /bin/mv "$staging_directory" "$install_directory"; then
   fail "Failed to activate the staged Runtime"
 fi
 
-printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\":\"${runtime_version}\",\"platform\":\"macos\",\"architecture\":\"${architecture}\",\"team_identifier\":\"${team_identifier}\",\"app_cdhash\":\"${app_cdhash}\",\"broker_cdhash\":\"${broker_cdhash}\",\"askpass_cdhash\":\"${askpass_cdhash}\",\"trusted_setup_cdhash\":\"${trusted_setup_cdhash}\"}" \
+printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\":\"${runtime_version}\",\"cli_schema\":\"dev.safa.cli/v2\",\"platform\":\"macos\",\"architecture\":\"${architecture}\",\"team_identifier\":\"${team_identifier}\",\"app_cdhash\":\"${app_cdhash}\",\"broker_cdhash\":\"${broker_cdhash}\",\"askpass_cdhash\":\"${askpass_cdhash}\",\"trusted_setup_cdhash\":\"${trusted_setup_cdhash}\"}" \
   > "$lock_staging"
 /bin/chmod 600 "$lock_staging"
 /bin/mv "$lock_staging" "$lock_path"

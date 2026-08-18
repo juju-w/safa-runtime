@@ -304,7 +304,7 @@ struct AgentCLIV2ContractTests {
             ),
             next: [
                 AgentNextCommandV2(
-                    command: "safa exec worker.batch --full -- <args>",
+                    command: "safa exec worker.batch --intent \"<intent>\" --full -- <args>",
                     reason: "Retrieve a larger bounded preview",
                     safeForAgent: true
                 )
@@ -319,6 +319,54 @@ struct AgentCLIV2ContractTests {
         #expect(output.split(separator: "\n").filter { $0 == "status: completed" }.isEmpty)
         let expected = try canonicalFixture("execution-truncated.failed.toon")
         #expect(output == expected)
+    }
+
+    @Test("execution presentation distinguishes local timeout and carries retry inputs")
+    func executionPresentationOutcome() {
+        let timeout = AgentExecutionResultV2(
+            resource: "worker.batch",
+            intent: "Check worker health",
+            termination: "timeout",
+            remoteExitCode: nil,
+            stdout: AgentTextPreviewV2(
+                text: "",
+                capturedBytes: 0,
+                originalBytes: 0,
+                truncated: false
+            ),
+            stderr: AgentTextPreviewV2(
+                text: "",
+                capturedBytes: 0,
+                originalBytes: 0,
+                truncated: false
+            )
+        )
+        #expect(timeout.agentStatus == .failed)
+        #expect(timeout.agentError?.code == "execution.timeout")
+
+        let truncated = AgentExecutionResultV2(
+            resource: "worker.batch",
+            intent: "Check worker health",
+            termination: "exit",
+            remoteExitCode: 7,
+            stdout: AgentTextPreviewV2(
+                text: "partial",
+                capturedBytes: 7,
+                originalBytes: 8_192,
+                truncated: true
+            ),
+            stderr: AgentTextPreviewV2(
+                text: "",
+                capturedBytes: 0,
+                originalBytes: 0,
+                truncated: false
+            )
+        )
+        #expect(truncated.agentStatus == .remoteExecutionFailed)
+        #expect(
+            truncated.fullOutputNext?.command
+                == "safa exec worker.batch --intent \"<intent>\" --full -- <args>"
+        )
     }
 
     @Test("topology keeps answers first and collection rows bounded")

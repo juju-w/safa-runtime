@@ -132,6 +132,22 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
     var resourceType: String? { importedResourceType }
     var desiredState: String? { nil }
 
+    static func shouldLaunchTrustedSetup(
+        errorCode: String?,
+        usesSSH: Bool,
+        hasExplicitSSHConfigAlias: Bool
+    ) -> Bool {
+        guard usesSSH else { return false }
+        switch errorCode {
+        case "ssh_config_alias_not_found":
+            return !hasExplicitSSHConfigAlias
+        case "ssh_authentication_setup_required":
+            return true
+        default:
+            return false
+        }
+    }
+
     func run() async throws {
         let requestedType = try importedResourceType.map(ResourceTypeIdentifier.init) ?? .hostLinux
         let usesSSH = template == nil || template == ResourceTemplateIdentifier.ssh.rawValue
@@ -139,8 +155,12 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
             action: .add,
             command: "resource.add",
             remediation: { alias, reply in
-                guard fromSSHConfig == nil, usesSSH,
-                    reply.error?.code == "ssh_config_alias_not_found"
+                guard
+                    Self.shouldLaunchTrustedSetup(
+                        errorCode: reply.error?.code,
+                        usesSSH: usesSSH,
+                        hasExplicitSSHConfigAlias: fromSSHConfig != nil
+                    )
                 else {
                     return reply
                 }

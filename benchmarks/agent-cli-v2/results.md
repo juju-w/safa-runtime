@@ -7,7 +7,7 @@ Tokenizer: `o200k_base` from `niieani/gpt-tokenizer` commit
 
 | Fixture | TOON v2 | Same-semantics compact JSON | Legacy compact JSON v1 | v1 → TOON |
 |---|---:|---:|---:|---:|
-| execution-truncated.failed | 179 | 165 | 153 | -17.0% |
+| execution-truncated.failed | 187 | 172 | 153 | -22.2% |
 | home.completed | 110 | 107 | 174 | 36.8% |
 | policy-denied.failed | 68 | 67 | 86 | 20.9% |
 | protected-user-action.required | 86 | 85 | 74 | -16.2% |
@@ -16,16 +16,16 @@ Tokenizer: `o200k_base` from `niieani/gpt-tokenizer` commit
 | topology-path.completed | 156 | 152 | 206 | 24.3% |
 | transport.failed | 66 | 64 | 81 | 18.5% |
 | usage-error.failed | 90 | 87 | 83 | -8.4% |
-| **Total** | **819** | **790** | **972** | **15.7%** |
+| **Total** | **827** | **797** | **972** | **14.9%** |
 
 Across the nine conformance shapes, the complete AXI migration reduces aggregate legacy-v1 tokens
-by 15.7%; the median per-shape change is a 20.9% reduction and six of nine shapes improve. The
+by 14.9%; the median per-shape change is a 20.9% reduction and six of nine shapes improve. The
 richer execution preview, protected local action, and recoverable usage error are larger than their
 legacy responses because v2 adds explicit byte counts, content classification, remediation context,
 valid flags, and concrete next commands.
 
-TOON by itself is not universally smaller: the same v2 data as compact JSON is 790 tokens, 3.5%
-below TOON's 819. The migration's measured reduction comes from content-first roots, fewer calls,
+TOON by itself is not universally smaller: the same v2 data as compact JSON is 797 tokens, 3.6%
+below TOON's 827. The migration's measured reduction comes from content-first roots, fewer calls,
 minimal list fields, and omission of ambient null/empty boilerplate—not from assuming a serialization
 format wins for every nested shape. TOON remains useful here for declared collection widths,
 strict structural validation, and one Agent-facing grammar.

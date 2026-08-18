@@ -20,4 +20,4 @@ execution:
     original_bytes: 11
     truncated: false
 next[1]{command,reason,safe_for_agent}:
-  safa exec worker.batch --full -- <args>,Retrieve a larger bounded preview,true
+  "safa exec worker.batch --intent \"<intent>\" --full -- <args>",Retrieve a larger bounded preview,true

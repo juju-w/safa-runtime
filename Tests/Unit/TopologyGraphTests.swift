@@ -55,6 +55,44 @@ struct TopologyGraphTests {
         #expect(result.edges.first?.verification == .asserted)
     }
 
+    @Test("reachability always returns the edge named by its proof")
+    func reachabilityIncludesFreshParallelProofEdge() throws {
+        let source = try node("host.source", kind: .resource, resourceKind: "host")
+        let target = try node("service.target", kind: .resource, resourceKind: "service")
+        let stale = try TopologyEdge.observed(
+            id: UUID(uuidString: "20000000-0000-4000-8000-000000000001")!,
+            fromNodeID: source.id,
+            relation: .canReach,
+            toNodeID: target.id,
+            verification: .verified,
+            origin: .adapter,
+            observedAt: now.addingTimeInterval(-600),
+            validUntil: now.addingTimeInterval(-300),
+            visibility: .agent,
+            evidenceReference: UUID()
+        )
+        let fresh = try observedEdge(
+            id: UUID(uuidString: "20000000-0000-4000-8000-000000000002")!,
+            from: source,
+            to: target,
+            relation: .canReach
+        )
+        let graph = try TopologyGraph(
+            revision: 4,
+            nodes: [source, target],
+            edges: [stale, fresh]
+        )
+
+        let result = try TopologyQueryEngine.query(
+            graph: graph,
+            query: .reachability(from: source.alias, to: target.alias),
+            now: now
+        )
+
+        #expect(result.answer.proofEdgeIDs == [fresh.id])
+        #expect(result.edges.contains { $0.id == fresh.id })
+    }
+
     @Test("reverse dependency traversal returns a stable affected set")
     func dependencyImpact() throws {
         let fixture = try TopologyFixture(now: now)

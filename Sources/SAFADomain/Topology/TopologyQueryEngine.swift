@@ -277,12 +277,52 @@ public enum TopologyQueryEngine {
             requireFreshProof: false,
             bounds: query.bounds
         )
-        var projectedNodes = neighborhood.nodes
-        if !projectedNodes.contains(where: { $0.id == targetNode.id }),
-            projectedNodes.count < query.bounds.maximumNodes
-        {
-            projectedNodes.append(targetNode)
+        let proofEdges = view.visibleEdges(ids: path.edgeIDs ?? [])
+        var projectedNodeIDs = [sourceNode.id]
+        if path.edgeIDs != nil {
+            for edge in proofEdges {
+                for nodeID in [edge.edge.fromNodeID, edge.edge.toNodeID]
+                where !projectedNodeIDs.contains(nodeID)
+                    && projectedNodeIDs.count < query.bounds.maximumNodes
+                {
+                    projectedNodeIDs.append(nodeID)
+                }
+            }
         }
+        for node in neighborhood.nodes
+        where !projectedNodeIDs.contains(node.id)
+            && projectedNodeIDs.count < query.bounds.maximumNodes
+        {
+            projectedNodeIDs.append(node.id)
+        }
+        if !projectedNodeIDs.contains(targetNode.id),
+            projectedNodeIDs.count < query.bounds.maximumNodes
+        {
+            projectedNodeIDs.append(targetNode.id)
+        }
+        let projectedNodes = view.nodes(ids: projectedNodeIDs)
+        let selectedNodeIDs = Set(projectedNodeIDs)
+        var projectedEdges = proofEdges.filter {
+            selectedNodeIDs.contains($0.edge.fromNodeID)
+                && selectedNodeIDs.contains($0.edge.toNodeID)
+        }
+        var projectedEdgeIDs = Set(projectedEdges.map(\.edge.id))
+        for edge in neighborhood.edges
+        where !projectedEdgeIDs.contains(edge.edge.id)
+            && selectedNodeIDs.contains(edge.edge.fromNodeID)
+            && selectedNodeIDs.contains(edge.edge.toNodeID)
+            && projectedEdges.count < query.bounds.maximumEdges
+        {
+            projectedEdges.append(edge)
+            projectedEdgeIDs.insert(edge.edge.id)
+        }
+        let projectionTruncated =
+            neighborhood.nodes.contains {
+                !selectedNodeIDs.contains($0.id)
+            }
+            || neighborhood.edges.contains {
+                !projectedEdgeIDs.contains($0.edge.id)
+            }
         let outcome: TopologyAnswerOutcome =
             path.edgeIDs != nil
             ? .confirmed
@@ -293,12 +333,12 @@ public enum TopologyQueryEngine {
             ordering: .sourceRootedBreadthFirst,
             roots: [source, target],
             nodes: projectedNodes,
-            edges: neighborhood.edges,
+            edges: projectedEdges,
             outcome: outcome,
             affected: [],
             proof: path.edgeIDs ?? [],
             matrix: nil,
-            truncated: path.truncated || neighborhood.truncated
+            truncated: path.truncated || neighborhood.truncated || projectionTruncated
         )
     }
 
@@ -441,18 +481,20 @@ private struct AgentGraphView {
 
     let nodes: [TopologyNode]
     let edges: [VisibleEdge]
+    private let nodesByID: [UUID: TopologyNode]
     private let nodesByAlias: [ResourceAlias: TopologyNode]
 
     init(graph: TopologyGraph, now: Date) {
         nodes = graph.nodes.filter { $0.visibility == .agent }.sorted { lhs, rhs in
             lhs.alias.rawValue < rhs.alias.rawValue
         }
-        let byID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+        let nodesByID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+        self.nodesByID = nodesByID
         nodesByAlias = Dictionary(uniqueKeysWithValues: nodes.map { ($0.alias, $0) })
         edges = graph.edges.compactMap { edge in
             guard edge.visibility == .agent,
-                let from = byID[edge.fromNodeID],
-                let to = byID[edge.toNodeID]
+                let from = nodesByID[edge.fromNodeID],
+                let to = nodesByID[edge.toNodeID]
             else { return nil }
             return VisibleEdge(edge: edge, from: from, to: to, freshness: edge.freshness(at: now))
         }.sorted(by: Self.edgeLess)
@@ -463,6 +505,15 @@ private struct AgentGraphView {
             throw TopologyQueryError.aliasNotFound(alias.rawValue)
         }
         return node
+    }
+
+    func nodes(ids: [UUID]) -> [TopologyNode] {
+        ids.compactMap { nodesByID[$0] }
+    }
+
+    func visibleEdges(ids: [UUID]) -> [VisibleEdge] {
+        let edgesByID = Dictionary(uniqueKeysWithValues: edges.map { ($0.edge.id, $0) })
+        return ids.compactMap { edgesByID[$0] }
     }
 
     func walk(
@@ -510,9 +561,8 @@ private struct AgentGraphView {
                 queue.append((next, depth + 1))
             }
         }
-        let byID = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
         return Walk(
-            nodes: orderedIDs.compactMap { byID[$0] },
+            nodes: orderedIDs.compactMap { nodesByID[$0] },
             edges: selectedEdges,
             truncated: truncated
         )

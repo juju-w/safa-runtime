@@ -178,6 +178,31 @@ struct ResourceCLIContractTests {
         }
     }
 
+    @Test("add launches trusted setup only for safe remediable SSH failures")
+    func trustedSetupRemediationSelection() {
+        #expect(
+            ResourceAddCommand.shouldLaunchTrustedSetup(
+                errorCode: "ssh_config_alias_not_found",
+                usesSSH: true,
+                hasExplicitSSHConfigAlias: false
+            )
+        )
+        #expect(
+            ResourceAddCommand.shouldLaunchTrustedSetup(
+                errorCode: "ssh_authentication_setup_required",
+                usesSSH: true,
+                hasExplicitSSHConfigAlias: true
+            )
+        )
+        #expect(
+            !ResourceAddCommand.shouldLaunchTrustedSetup(
+                errorCode: "host_identity_setup_required",
+                usesSSH: true,
+                hasExplicitSSHConfigAlias: false
+            )
+        )
+    }
+
     @Test("resource list exposes only logical operational metadata")
     func safeProjection() throws {
         let resource = TestResourceFactory.active(

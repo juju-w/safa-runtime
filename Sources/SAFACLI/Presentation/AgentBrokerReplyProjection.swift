@@ -37,25 +37,14 @@ extension AgentCommand {
         }
 
         let execution = try reply.executionResult()
-        let status: AgentCLIStatusV2 =
-            execution.remoteExitCode == 0 ? .completed : .remoteExecutionFailed
-        let next =
-            execution.hasTruncatedOutput
-            ? [
-                AgentNextCommandV2(
-                    command: "safa exec \(execution.resource) --full -- <args>",
-                    reason: "Retrieve a larger bounded preview",
-                    safeForAgent: true
-                )
-            ]
-            : []
         try finish(
             AgentCLIResponseV2(
                 command: command,
-                status: status,
+                status: execution.agentStatus,
                 requestID: reply.requestID,
                 payload: execution,
-                next: next
+                error: execution.agentError,
+                next: execution.fullOutputNext.map { [$0] } ?? []
             )
         )
     }
@@ -117,8 +106,62 @@ extension BrokerReply {
     }
 }
 
-private extension AgentExecutionResultV2 {
+extension AgentExecutionResultV2 {
     var hasTruncatedOutput: Bool { stdout.truncated || stderr.truncated }
+
+    var agentStatus: AgentCLIStatusV2 {
+        switch termination {
+        case "exit":
+            guard let remoteExitCode else { return .failed }
+            return remoteExitCode == 0 ? .completed : .remoteExecutionFailed
+        case "cancelled":
+            return .cancelled
+        case "timeout", "signal":
+            return .failed
+        default:
+            return .failed
+        }
+    }
+
+    var agentError: AgentCLIErrorV2? {
+        switch termination {
+        case "timeout":
+            return AgentCLIErrorV2(
+                code: "execution.timeout",
+                message: "The local execution deadline expired.",
+                retryable: true
+            )
+        case "signal":
+            return AgentCLIErrorV2(
+                code: "execution.signal",
+                message: "The local execution process ended after receiving a signal.",
+                retryable: true
+            )
+        case "exit" where remoteExitCode == nil:
+            return AgentCLIErrorV2(
+                code: "execution.invalid_result",
+                message: "The local execution result did not include a remote exit code.",
+                retryable: false
+            )
+        case "exit", "cancelled":
+            return nil
+        default:
+            return AgentCLIErrorV2(
+                code: "execution.invalid_result",
+                message: "The local execution result contained an unknown termination reason.",
+                retryable: false
+            )
+        }
+    }
+
+    var fullOutputNext: AgentNextCommandV2? {
+        guard hasTruncatedOutput else { return nil }
+        return AgentNextCommandV2(
+            command: "safa exec \(resource) --intent \"<intent>\" --full -- <args>",
+            reason: "Retrieve a larger bounded preview",
+            safeForAgent: true
+        )
+    }
 }
 
 private extension Dictionary where Key == String, Value == JSONValue {
