@@ -1,0 +1,14 @@
+{
+  "schema": "dev.safa.cli/v1",
+  "command": "setup.status",
+  "status": "user_action_required",
+  "request_id": null,
+  "timestamp": "2026-04-18T09:30:00Z",
+  "data": { "broker_service_status": "requires_approval" },
+  "warnings": [],
+  "next_action": {
+    "kind": "enable_background_item",
+    "command": [],
+    "safe_for_agent": false
+  }
+}
