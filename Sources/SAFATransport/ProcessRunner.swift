@@ -52,6 +52,8 @@ public struct ProcessExecutionResult: Equatable, Sendable {
     public let finishedAt: Date
     public let stdoutTruncated: Bool
     public let stderrTruncated: Bool
+    public let stdoutTotalBytes: Int
+    public let stderrTotalBytes: Int
 
     public init(
         termination: ProcessTermination,
@@ -61,7 +63,9 @@ public struct ProcessExecutionResult: Equatable, Sendable {
         startedAt: Date,
         finishedAt: Date,
         stdoutTruncated: Bool,
-        stderrTruncated: Bool
+        stderrTruncated: Bool,
+        stdoutTotalBytes: Int? = nil,
+        stderrTotalBytes: Int? = nil
     ) {
         self.termination = termination
         self.exitCode = exitCode
@@ -71,6 +75,8 @@ public struct ProcessExecutionResult: Equatable, Sendable {
         self.finishedAt = finishedAt
         self.stdoutTruncated = stdoutTruncated
         self.stderrTruncated = stderrTruncated
+        self.stdoutTotalBytes = stdoutTotalBytes ?? stdout.count
+        self.stderrTotalBytes = stderrTotalBytes ?? stderr.count
     }
 }
 
@@ -94,6 +100,7 @@ private final class BoundedPipeReader: @unchecked Sendable {
     private let limit: Int
     private(set) var data = Data()
     private(set) var truncated = false
+    private(set) var totalBytes = 0
 
     init(handle: FileHandle, limit: UInt) {
         self.handle = handle
@@ -109,6 +116,7 @@ private final class BoundedPipeReader: @unchecked Sendable {
                 return
             }
             guard !chunk.isEmpty else { return }
+            totalBytes += chunk.count
             let remaining = max(0, limit - data.count)
             if remaining > 0 {
                 data.append(chunk.prefix(remaining))
@@ -216,7 +224,9 @@ public struct ProcessRunner: ProcessRunning {
             startedAt: startedAt,
             finishedAt: Date(),
             stdoutTruncated: stdout.truncated,
-            stderrTruncated: stderr.truncated
+            stderrTruncated: stderr.truncated,
+            stdoutTotalBytes: stdout.totalBytes,
+            stderrTotalBytes: stderr.totalBytes
         )
     }
 }

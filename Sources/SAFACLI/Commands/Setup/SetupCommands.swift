@@ -1,171 +1,141 @@
 import ArgumentParser
 import SAFAProtocol
 
-struct SetupCommand: AsyncParsableCommand {
+struct SetupCommand: AsyncParsableCommand, AgentCommand {
     static let configuration = CommandConfiguration(
         commandName: "setup",
         subcommands: [
             SetupStatusCommand.self, SetupActivateCommand.self, SetupDeactivateCommand.self,
         ]
     )
-}
 
-struct SetupStatusCommand: AsyncParsableCommand, JSONCommand {
-    static let configuration = CommandConfiguration(commandName: "status")
-    @Flag var json = false
-
-    func run() async throws {
-        let status = await SystemBrokerServiceLifecycle().status()
-        let response = BrokerLifecyclePresentation.status(status)
-        try emit(response.envelope, humanMessage: response.humanMessage)
-        if let exitCode = response.exitCode {
-            throw ExitCode(exitCode.rawValue)
-        }
+    mutating func run() async throws {
+        let response = BrokerLifecyclePresentation.status(
+            await SystemBrokerServiceLifecycle().status()
+        )
+        try finish(response)
     }
 }
 
-struct SetupActivateCommand: AsyncParsableCommand, JSONCommand {
+struct SetupStatusCommand: AsyncParsableCommand, AgentCommand {
+    static let configuration = CommandConfiguration(commandName: "status")
+
+    func run() async throws {
+        try finish(
+            BrokerLifecyclePresentation.status(
+                await SystemBrokerServiceLifecycle().status()
+            )
+        )
+    }
+}
+
+struct SetupActivateCommand: AsyncParsableCommand, AgentCommand {
     static let configuration = CommandConfiguration(commandName: "activate")
-    @Flag var json = false
 
     func run() async throws {
         let result = await BrokerActivationUseCase(
             service: SystemBrokerServiceLifecycle()
         ).activate()
-        let response = BrokerLifecyclePresentation.activation(result)
-        try emit(response.envelope, humanMessage: response.humanMessage)
-        if let exitCode = response.exitCode {
-            throw ExitCode(exitCode.rawValue)
-        }
+        try finish(BrokerLifecyclePresentation.activation(result))
     }
 }
 
-struct SetupDeactivateCommand: AsyncParsableCommand, JSONCommand {
+struct SetupDeactivateCommand: AsyncParsableCommand, AgentCommand {
     static let configuration = CommandConfiguration(
         commandName: "deactivate",
-        abstract:
-            "Disable the per-user SAFA broker. This command is for the local user, not Agents."
+        abstract: "Disable the per-user SAFA broker after an explicit local request."
     )
-    @Flag var json = false
 
     func run() async throws {
         let result = await BrokerDeactivationUseCase(
             service: SystemBrokerServiceLifecycle()
         ).deactivate()
-        let response = BrokerLifecyclePresentation.deactivation(result)
-        try emit(response.envelope, humanMessage: response.humanMessage)
-        if let exitCode = response.exitCode {
-            throw ExitCode(exitCode.rawValue)
-        }
+        try finish(BrokerLifecyclePresentation.deactivation(result))
     }
-}
-
-private struct BrokerLifecycleResponse {
-    let envelope: CLIEnvelope
-    let humanMessage: String
-    let exitCode: SAFAProcessExit?
 }
 
 private enum BrokerLifecyclePresentation {
-    static func status(_ status: BrokerServiceStatus) -> BrokerLifecycleResponse {
+    static func status(_ status: BrokerServiceStatus) -> AgentCLIResponseV2<AgentBrokerLifecycleV2>
+    {
         switch status {
         case .enabled:
-            response(command: "setup.status", status: status, message: "SAFA broker is enabled.")
-        case .notRegistered:
+            response(command: "setup.status", status: .completed, brokerStatus: status)
+        case .notRegistered, .notFound:
             response(
                 command: "setup.status",
-                status: status,
-                message: "SAFA broker is not activated.",
-                cliStatus: .userActionRequired,
-                nextAction: NextAction(
-                    kind: "activate_runtime",
-                    command: ["safa", "setup", "activate", "--json"],
-                    safeForAgent: true
+                status: .userActionRequired,
+                brokerStatus: status,
+                error: AgentCLIErrorV2(
+                    code: "runtime.activation_required",
+                    message: "The signed SAFA broker is not activated.",
+                    retryable: true
                 ),
-                exitCode: .userActionRequired
+                next: [
+                    AgentNextCommandV2(
+                        command: "safa setup activate",
+                        reason: "Activate the verified per-user broker",
+                        safeForAgent: true
+                    )
+                ]
             )
         case .requiresApproval:
             approvalResponse(command: "setup.status", status: status)
-        case .notFound:
-            response(
-                command: "setup.status",
-                status: status,
-                message: "SAFA broker has not been activated on this Mac.",
-                cliStatus: .userActionRequired,
-                nextAction: NextAction(
-                    kind: "activate_runtime",
-                    command: ["safa", "setup", "activate", "--json"],
-                    safeForAgent: true
-                ),
-                exitCode: .userActionRequired
-            )
         }
     }
 
-    static func activation(_ result: BrokerActivationResult) -> BrokerLifecycleResponse {
+    static func activation(
+        _ result: BrokerActivationResult
+    ) -> AgentCLIResponseV2<AgentBrokerLifecycleV2> {
         switch result {
         case .activated:
-            return response(
-                command: "setup.activate",
-                status: .enabled,
-                message: "SAFA broker was activated."
-            )
+            response(command: "setup.activate", status: .completed, brokerStatus: .enabled)
         case .alreadyEnabled:
-            return response(
-                command: "setup.activate",
-                status: .enabled,
-                message: "SAFA broker is already enabled."
-            )
+            response(command: "setup.activate", status: .noOp, brokerStatus: .enabled)
         case .approvalRequired:
-            return approvalResponse(command: "setup.activate", status: .requiresApproval)
+            approvalResponse(command: "setup.activate", status: .requiresApproval)
         case .runtimeNotBundled:
-            return runtimeNotBundledResponse(command: "setup.activate", status: .notFound)
-        case .registrationFailed:
-            let error = SAFAErrorPayload(
-                code: "broker_activation_failed",
-                message: "The signed local broker could not be activated.",
-                retryable: true
+            response(
+                command: "setup.activate",
+                status: .failed,
+                brokerStatus: .notFound,
+                error: AgentCLIErrorV2(
+                    code: "runtime.not_bundled",
+                    message: "Run safa from its verified macOS runtime bundle.",
+                    retryable: false
+                )
             )
-            return BrokerLifecycleResponse(
-                envelope: CLIEnvelope(
-                    command: "setup.activate",
-                    status: .failed,
-                    data: ["error": .object(error.jsonObject)]
-                ),
-                humanMessage: error.message,
-                exitCode: .runtimeFailure
+        case .registrationFailed:
+            response(
+                command: "setup.activate",
+                status: .failed,
+                brokerStatus: .notRegistered,
+                error: AgentCLIErrorV2(
+                    code: "runtime.activation_failed",
+                    message: "The signed local broker could not be activated.",
+                    retryable: true
+                )
             )
         }
     }
 
-    static func deactivation(_ result: BrokerDeactivationResult) -> BrokerLifecycleResponse {
+    static func deactivation(
+        _ result: BrokerDeactivationResult
+    ) -> AgentCLIResponseV2<AgentBrokerLifecycleV2> {
         switch result {
         case .deactivated:
-            return response(
-                command: "setup.deactivate",
-                status: .notRegistered,
-                message: "SAFA broker was deactivated."
-            )
+            response(command: "setup.deactivate", status: .completed, brokerStatus: .notRegistered)
         case .alreadyInactive:
-            return response(
-                command: "setup.deactivate",
-                status: .notRegistered,
-                message: "SAFA broker is already inactive."
-            )
+            response(command: "setup.deactivate", status: .noOp, brokerStatus: .notRegistered)
         case .unregistrationFailed:
-            let error = SAFAErrorPayload(
-                code: "broker_deactivation_failed",
-                message: "The signed local broker could not be deactivated.",
-                retryable: true
-            )
-            return BrokerLifecycleResponse(
-                envelope: CLIEnvelope(
-                    command: "setup.deactivate",
-                    status: .failed,
-                    data: ["error": .object(error.jsonObject)]
-                ),
-                humanMessage: error.message,
-                exitCode: .runtimeFailure
+            response(
+                command: "setup.deactivate",
+                status: .failed,
+                brokerStatus: .enabled,
+                error: AgentCLIErrorV2(
+                    code: "runtime.deactivation_failed",
+                    message: "The signed local broker could not be deactivated.",
+                    retryable: true
+                )
             )
         }
     }
@@ -173,61 +143,39 @@ private enum BrokerLifecyclePresentation {
     private static func approvalResponse(
         command: String,
         status: BrokerServiceStatus
-    ) -> BrokerLifecycleResponse {
+    ) -> AgentCLIResponseV2<AgentBrokerLifecycleV2> {
         response(
             command: command,
-            status: status,
-            message: "Enable the SAFA background item in System Settings.",
-            cliStatus: .userActionRequired,
-            nextAction: NextAction(
-                kind: "enable_background_item",
-                command: [],
-                safeForAgent: false
+            status: .userActionRequired,
+            brokerStatus: status,
+            error: AgentCLIErrorV2(
+                code: "local_action.background_item_required",
+                message: "Enable the SAFA background item in System Settings.",
+                retryable: false
             ),
-            exitCode: .userActionRequired
-        )
-    }
-
-    private static func runtimeNotBundledResponse(
-        command: String,
-        status: BrokerServiceStatus
-    ) -> BrokerLifecycleResponse {
-        let error = SAFAErrorPayload(
-            code: "runtime_not_bundled",
-            message: "Run safa from its verified macOS runtime bundle.",
-            retryable: false
-        )
-        return BrokerLifecycleResponse(
-            envelope: CLIEnvelope(
-                command: command,
-                status: .failed,
-                data: [
-                    "broker_service_status": .string(status.rawValue),
-                    "error": .object(error.jsonObject),
-                ]
-            ),
-            humanMessage: error.message,
-            exitCode: .runtimeFailure
+            next: [
+                AgentNextCommandV2(
+                    command: "open System Settings > Login Items",
+                    reason: "A local user must enable the signed background item",
+                    safeForAgent: false
+                )
+            ]
         )
     }
 
     private static func response(
         command: String,
-        status: BrokerServiceStatus,
-        message: String,
-        cliStatus: CLIStatus = .completed,
-        nextAction: NextAction? = nil,
-        exitCode: SAFAProcessExit? = nil
-    ) -> BrokerLifecycleResponse {
-        BrokerLifecycleResponse(
-            envelope: CLIEnvelope(
-                command: command,
-                status: cliStatus,
-                data: ["broker_service_status": .string(status.rawValue)],
-                nextAction: nextAction
-            ),
-            humanMessage: message,
-            exitCode: exitCode
+        status: AgentCLIStatusV2,
+        brokerStatus: BrokerServiceStatus,
+        error: AgentCLIErrorV2? = nil,
+        next: [AgentNextCommandV2] = []
+    ) -> AgentCLIResponseV2<AgentBrokerLifecycleV2> {
+        AgentCLIResponseV2(
+            command: command,
+            status: status,
+            payload: AgentBrokerLifecycleV2(brokerServiceStatus: brokerStatus.rawValue),
+            error: error,
+            next: next
         )
     }
 }

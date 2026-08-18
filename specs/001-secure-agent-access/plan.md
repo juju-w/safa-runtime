@@ -12,9 +12,15 @@
 Build SAFA as a macOS-only Agent Skill backed by a signed native CLI and companion runtime. The runtime
 keeps the encrypted resource registry and credentials outside the Agent process, evaluates scoped
 execution policy, obtains trusted local approval for elevated operations, invokes the system SSH
-client, and returns a compact versioned JSON envelope. Arbitrary command and shell execution remain
-a target capability for M2; the current diagnostic MVP exposes only bounded non-sudo argument
-execution.
+client, and returns the canonical TOON v2 Agent envelope. Arbitrary command and shell
+execution remain a target capability for M2; the current diagnostic MVP exposes only bounded
+non-sudo argument execution.
+
+The pre-release JSON/human surface is replaced by the Agent-only `dev.safa.cli/v2` contract. The CLI
+follows AXI, emits canonical TOON v4.1 for every non-version
+result, keeps default schemas minimal, returns explicit counts/truncation/next actions, and has no
+public format switch. Broker IPC, Codable domain models, vault persistence, and native adapters
+remain private implementation choices.
 
 The MVP supports one local macOS user and SSH-accessible servers/NAS devices. The underlying resource
 directory is adapter-independent so later database, object-storage, cache, and service profiles do
@@ -33,14 +39,16 @@ user-presence gate for protected resource details is included.
 **Language/Version**: Swift 6.3 language mode; shell only for deterministic build/package launchers
 
 **Primary Dependencies**: Foundation, Security/SecItem, CryptoKit, LocalAuthentication, XPC,
-ServiceManagement, OSLog, Swift Argument Parser, and `/usr/bin/ssh`
+ServiceManagement, OSLog, Swift Argument Parser, the project-owned narrow TOON v4.1 presentation
+encoder verified against pinned official conformance sources, and `/usr/bin/ssh`
 
 **Storage**: AES-GCM encrypted Codable document for structured inventory/policy/grants; data
 encryption key and credential values in the non-synchronizing macOS data-protection Keychain;
 device-generated P-256 keys in Secure Enclave where supported; hash-chained JSONL audit files
 
-**Testing**: Swift Testing for unit/property tests, XCTest for XPC and signed integration
-tests, shell contract tests for packaged Skill/CLI, and synthetic SSH fixtures only
+**Testing**: Swift Testing for unit/property tests, XCTest for XPC and signed integration tests,
+official TOON conformance fixtures plus strict cross-decoding, shell contract tests for packaged
+Skill/CLI, and synthetic SSH fixtures only
 
 **Target Platform**: macOS 14.4 or newer; universal arm64/x86_64 release; Secure Enclave preferred
 on Apple silicon or supported T2/Touch ID Macs with an explicit Keychain fallback where unavailable
@@ -48,7 +56,7 @@ on Apple silicon or supported T2/Touch ID Macs with an explicit Keychain fallbac
 **Project Type**: Native macOS CLI + per-user broker/launch agent + one-shot AskPass helper + Agent
 Skill package; no custom GUI target in the current product phase
 
-**Performance Goals**: `resource list` and policy decisions under 100 ms p95 after unlock; broker
+**Performance Goals**: bare version response near process-start floor; `resource list` and policy decisions under 100 ms p95 after unlock; broker
 cold activation under 2 s; under 100 MB steady-state broker memory; stream command output without
 holding more than the configured 1 MiB bounded capture in memory
 
@@ -69,7 +77,7 @@ events before rotation, and at most 100 active/pending grants in the MVP
 | Useful command execution with scoped authority | PASS | Both argument-based `exec` and explicit `shell` are defined; approval grants bind caller/resource/scope/privilege/expiry |
 | macOS-native trust boundary | PASS | Signed broker, CLI and AskPass components use peer-validated XPC; Keychain, Secure Enclave and LocalAuthentication are first-class |
 | Open design, encrypted user state | PASS | Per-install AES-GCM vault, non-synchronizing Keychain keys, synthetic fixtures, MIT-compatible dependencies |
-| Deterministic contracts and auditability | PASS | Versioned JSON/IPC contracts, bounded outputs, explicit states, hash-linked sanitized audit events |
+| Deterministic contracts and auditability | PASS | Versioned TOON Agent output, typed private IPC, bounded outputs, explicit states, hash-linked sanitized audit events |
 
 No constitution exception is required. The design intentionally rejects a same-process vault,
 Agent-readable secret command, unsigned bootstrap, shared credential default, and unrestricted
@@ -87,7 +95,7 @@ specs/001-secure-agent-access/
 ├── data-model.md
 ├── quickstart.md
 ├── contracts/
-│   ├── cli-v1.md
+│   ├── agent-cli-v2.md
 │   ├── broker-ipc-v1.md
 │   └── skill-runtime-v1.md
 ├── checklists/
@@ -100,14 +108,14 @@ specs/001-secure-agent-access/
 ```text
 Package.swift
 Sources/
-├── SAFAProtocol/              # Codable CLI/XPC types, schema versions, exit mapping
+├── SAFAProtocol/              # typed Agent/XPC DTOs, schema versions, exit mapping
 ├── SAFADomain/                # resource, request, grant, audit and policy entities
 ├── SAFACrypto/                # encrypted vault envelope and Keychain abstractions
 ├── SAFAPolicy/                # deterministic classifier and scope matcher
 ├── SAFATransport/             # transport protocol, process runner and bounded streams
 ├── SAFASSH/                   # OpenSSH adapter, host verification, askpass and sudo injection
 ├── SAFABroker/                # per-user Mach/XPC service and orchestration
-├── SAFACLI/                   # `safa` Agent-facing executable
+├── SAFACLI/                   # Agent-only `safa` executable and TOON presentation
 └── SAFAAskPass/               # signed one-shot SSH credential helper
 Apps/
 └── SAFA/
@@ -159,8 +167,8 @@ while reserving Keychain, signing, XPC, and user-presence tests for signed integ
 
 ## Delivery Phases
 
-- **M0 foundation**: protocol/domain packages, deterministic mock broker, Skill skeleton, contract
-  fixtures, threat-model tests.
+- **M0 foundation**: protocol/domain packages, deterministic mock broker, Skill skeleton, AXI/TOON
+  v2 contract fixtures, threat-model tests.
 - **M1 diagnostic MVP**: signed per-user broker, encrypted resource registry, trusted no-GUI
   registration, managed Secure Enclave key or password SSH, strict host identity, read-only
   execution and audit, plus bounded safe topology queries and user-authorized desired relationship

@@ -7,12 +7,12 @@ import Testing
 struct TopologyProjectionContractTests {
     @Test("canonical CLI fixtures decode into the typed projection")
     func canonicalFixtures() throws {
-        let path = try loadProjectionFixture("topology.path.completed.json")
+        let path = try loadProjectionFixture("path.completed.json")
         #expect(path.task == .reachability)
         #expect(path.answer.outcome == .confirmed)
         #expect(path.answer.proofEdgeIDs == ["20000000-0000-4000-8000-000000000001"])
 
-        let impact = try loadProjectionFixture("topology.impact.completed.json")
+        let impact = try loadProjectionFixture("impact.completed.json")
         #expect(impact.task == .dependencyImpact)
         #expect(impact.answer.affectedAliases == ["service.data-api"])
     }
@@ -168,20 +168,9 @@ struct TopologyProjectionContractTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let envelope = try CanonicalCodec.decode(
-            CLIEnvelope.self,
-            from: Data(contentsOf: root.appendingPathComponent("conformance/cli-v1/\(name)"))
-        )
-        guard case let .object(value)? = envelope.data["topology"] else {
-            throw TopologyFixtureError.missingProjection
-        }
         return try CanonicalCodec.decode(
             TopologyProjectionV1.self,
-            from: CanonicalCodec.encode(JSONValue.object(value))
+            from: Data(contentsOf: root.appendingPathComponent("conformance/topology-v1/\(name)"))
         )
     }
-}
-
-private enum TopologyFixtureError: Error {
-    case missingProjection
 }

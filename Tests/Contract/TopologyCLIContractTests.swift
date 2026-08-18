@@ -13,17 +13,23 @@ struct TopologyCLIContractTests {
         #expect(names == ["show", "path", "impact", "link", "unlink"])
 
         let show = try #require(
-            try SAFACommand.parseAsRoot(["topology", "show", "service.data-api"])
+            try SAFACommand.parseAsRoot([
+                "topology", "show", "service.data-api", "--limit", "12", "--fields",
+                "alias,kind",
+            ])
                 as? TopologyShowCommand
         )
         #expect(try show.query().source == ResourceAlias("service.data-api"))
+        #expect(try show.query().bounds.maximumNodes == 12)
+        #expect(try show.requestedFields() == [.alias, .kind])
 
         let path = try #require(
             try SAFACommand.parseAsRoot([
-                "topology", "path", "host.compute-a", "service.data-api",
+                "topology", "path", "host.compute-a", "service.data-api", "--limit", "10",
             ]) as? TopologyPathCommand
         )
         #expect(try path.query().task == .reachability)
+        #expect(try path.query().bounds.maximumNodes == 10)
 
         let impact = try #require(
             try SAFACommand.parseAsRoot(["topology", "impact", "storage.reports"])
@@ -54,6 +60,31 @@ struct TopologyCLIContractTests {
             ["topology", "link", "service.a", "depends-on", "service.b", "--verified"],
         ] {
             #expect(topologyCommandParsingFails(arguments))
+        }
+    }
+
+    @Test("topology bounds and fields fail before Broker work")
+    func projectionInputValidation() throws {
+        for limit in ["0", "65"] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot([
+                    "topology", "show", "--limit", limit,
+                ]) as? TopologyShowCommand
+            )
+            #expect(throws: TopologyCLIInputError.invalidLimit) {
+                try command.query()
+            }
+        }
+
+        for fields in ["kind", "alias,endpoint", "alias,alias"] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot([
+                    "topology", "show", "--fields", fields,
+                ]) as? TopologyShowCommand
+            )
+            #expect(throws: TopologyCLIInputError.invalidFields) {
+                try command.requestedFields()
+            }
         }
     }
 }

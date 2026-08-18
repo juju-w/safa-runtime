@@ -11,6 +11,9 @@ concrete platform implementation is approved.
   concurrency, Codable, process-runtime, test, or refactoring change.
 - Also read and follow `.agents/skills/build-macos-cli/SKILL.md` for CLI, broker, AskPass, Keychain,
   LocalAuthentication, XPC, Secure Enclave, SSH, signing, packaging, or macOS lifecycle work.
+- Read and follow the installed `axi` Skill for every Agent-facing CLI command, TOON projection,
+  structured error, help response, truncation rule, or CLI refactor. `juju-w/safa` owns the target
+  `contracts/cli-v2.md`; this Runtime must implement it rather than redefining an output format.
 - The current product phase is CLI-first. Do not add a window, menu-bar feature, dashboard, custom
   approval UI, or new SwiftUI surface unless the repository owner explicitly changes scope.
   System-provided Touch ID, Keychain, LocalAuthentication, and Authorization Services prompts remain
@@ -18,7 +21,7 @@ concrete platform implementation is approved.
 
 ## Cross-platform ownership
 
-- `juju-w/safa` owns the Agent Skill, public CLI/JSON/resource contracts, runtime manifests, and
+- `juju-w/safa` owns the Agent Skill, public Agent-CLI/TOON/resource contracts, runtime manifests, and
   product documentation. Do not independently redefine those external contracts here.
 - The root Swift package and `Apps/SAFA` own the current macOS runtime.
 - Future platform runtimes belong in isolated platform directories only when their implementation

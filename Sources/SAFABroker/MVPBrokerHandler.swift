@@ -322,11 +322,13 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
                     "stdout": .object([
                         "text": .string(String(decoding: stdout, as: UTF8.self)),
                         "captured_bytes": .integer(Int64(stdout.count)),
+                        "original_bytes": .integer(Int64(result.stdoutTotalBytes)),
                         "truncated": .boolean(result.stdoutTruncated),
                     ]),
                     "stderr": .object([
                         "text": .string(String(decoding: stderr, as: UTF8.self)),
                         "captured_bytes": .integer(Int64(stderr.count)),
+                        "original_bytes": .integer(Int64(result.stderrTotalBytes)),
                         "truncated": .boolean(result.stderrTruncated),
                     ]),
                 ]),

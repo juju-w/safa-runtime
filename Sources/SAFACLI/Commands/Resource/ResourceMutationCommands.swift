@@ -53,7 +53,7 @@ extension SSHConfigMutationCommand {
     func runMutation(action: ResourceMutationActionV1, command: String) async throws {
         do {
             let (parsedAlias, mutation) = try mutationInput()
-            try emitMutation(
+            try finishMutation(
                 command: command,
                 reply: try await XPCBrokerAgentClient().mutateResource(
                     action: action,
@@ -120,7 +120,6 @@ struct ResourceAddCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         completion: ResourceCLICompletion.templates
     )
     var template: String?
-    @Flag var json = false
 
     var resourceType: String? { importedResourceType }
     var desiredState: String? { nil }
@@ -161,7 +160,6 @@ struct ResourceEditCommand: AsyncParsableCommand, SSHConfigMutationCommand {
         completion: ResourceCLICompletion.editableResourceStates
     )
     var desiredState: String?
-    @Flag var json = false
 
     func run() async throws {
         try await runMutation(action: .edit, command: "resource.edit")
@@ -175,7 +173,7 @@ protocol AliasMutationCommand: ResourceDirectoryCommand {
 extension AliasMutationCommand {
     func runMutation(action: ResourceMutationActionV1, command: String) async throws {
         do {
-            try emitMutation(
+            try finishMutation(
                 command: command,
                 reply: try await XPCBrokerAgentClient().mutateResource(
                     action: action,
@@ -202,7 +200,6 @@ struct ResourceRemoveCommand: AsyncParsableCommand, AliasMutationCommand {
         help: "Logical resource alias to remove.",
         completion: ResourceCLICompletion.resourceAliases
     ) var alias: String
-    @Flag var json = false
 
     func run() async throws {
         try await runMutation(action: .remove, command: "resource.remove")

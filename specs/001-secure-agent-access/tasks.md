@@ -37,7 +37,8 @@ tests first and confirm they fail before the matching implementation.
 
 **⚠️ CRITICAL**: No user story implementation starts until this phase passes its tests.
 
-- [X] T009 [P] Add failing Codable snapshot tests for CLI envelope and errors in `Tests/Contract/CLIEnvelopeContractTests.swift`
+- [X] T009 [P] Add the historical v1 envelope snapshots (superseded and removed by the coordinated
+  T101/T106 v2 migration)
 - [X] T010 [P] Add failing domain validation and state-transition tests in `Tests/Unit/DomainStateTests.swift`
 - [X] T011 [P] Add failing canonical request fingerprint tests in `Tests/Security/RequestFingerprintTests.swift`
 - [X] T012 Implement versioned CLI/XPC envelope, status, error, and next-action types in `Sources/SAFAProtocol/`
@@ -292,8 +293,30 @@ revocable without exposing secrets.
 - [ ] T095 Harden release entitlements, sandbox/runtime exceptions, logging privacy, and launch environment in `Apps/SAFA/Config/`
 - [ ] T096 Add signed/notarized release workflow with external secret references only in `.github/workflows/release.yml`
 - [ ] T097 Run every scenario in `specs/001-secure-agent-access/quickstart.md` and record pass/fail evidence in `Tests/QuickstartResults.md`
-- [ ] T098 Validate all 26 functional requirements and 10 success criteria against test evidence in `specs/001-secure-agent-access/checklists/release-readiness.md`
+- [ ] T098 Validate every functional requirement and success criterion against test evidence in `specs/001-secure-agent-access/checklists/release-readiness.md`
 - [ ] T099 Perform final MIT/dependency license, source-secret, artifact-secret, signature, architecture, and schema compatibility checks in `Scripts/verify-package.sh`
+
+### Agent CLI v2 migration (release blocking)
+
+- [X] T100 Read and apply the installed `axi` Skill, pin its reviewed upstream commit plus the
+  normative TOON v4.1 specification, and record the encoder ownership/conformance decision in
+  `specs/001-secure-agent-access/research.md`
+- [X] T101 [P] Add failing canonical TOON fixtures for home, resource, topology, execution, empty,
+  no-op, truncation, usage error, protected-action, transport-error, and hostile-output cases in
+  `Tests/Contract/AgentCLIV2ContractTests.swift`
+- [X] T102 [P] Add strict TOON cross-decoding and official v4.1 conformance fixtures to CI without
+  exposing runtime IPC or vault persistence as public formats
+- [X] T103 Implement explicit `dev.safa.cli/v2` public DTOs and the first canonical TOON
+  presentation adapter (`resource.list`) in `Sources/SAFAProtocol/Agent/` and
+  `Sources/SAFACLI/Presentation/`
+- [X] T104 Implement AXI minimal fields, allowlisted `--fields`, bounded preview/`--full`, aggregates,
+  definitive empty states, contextual safe next commands, and content-first roots
+- [X] T105 Replace v1 exit mapping with `0` success/accepted/no-op, `1` incomplete/error, and `2`
+  usage-before-side-effect while preserving stable lifecycle/error codes inside TOON
+- [X] T106 Remove public JSON/human format switches and completion generation, update the Skill and
+  exact Runtime schema range atomically, and keep the launcher TOON failure paths deterministic
+- [X] T107 Benchmark representative synthetic SAFA tasks against compact JSON v1 across the selected
+  Agent models; require no task-completion regression and record token/turn/latency results
 
 ---
 
@@ -376,5 +399,5 @@ US3 vault/recovery hardening || US4 Skill packaging || US5 audit and revocation
 - Development-only peer/signature bypasses must be compile-time excluded from Release builds.
 - An approved root shell is intentionally powerful; scope, expiry, visibility, and audit are the
   mitigation, not misleading command classification.
-- Commit after each task or coherent test-first group and keep contract changes backward compatible
-  within `dev.safa.cli/v1`.
+- Commit after each task or coherent test-first group. Keep the unpublished Skill and Runtime on the
+  reviewed `dev.safa.cli/v2` contract without restoring a second public output mode.

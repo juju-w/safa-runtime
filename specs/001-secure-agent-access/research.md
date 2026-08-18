@@ -216,9 +216,24 @@ than an incomplete command allowlist.
 ## 8. Output, redaction, and audit
 
 **Decision**: Stream output through the broker, cap Agent-visible stdout and stderr independently,
-include truncation metadata, and keep the final remote exit code in the JSON result. Apply exact
-redaction using all credentials involved in the request plus conservative detectors for supported
-secret formats. Never claim that heuristic redaction can identify every transformed secret.
+include truncation metadata, and keep the final remote exit code in the typed result. The migration
+replaces the pre-release JSON envelope with the Agent-only `dev.safa.cli/v2` contract:
+one canonical TOON 4.1 document on stdout for success, empty/no-op, and error outcomes. Keep Swift
+DTOs, XPC payloads, vault persistence, and Broker internals private and typed; TOON belongs only at
+the Agent output boundary.
+
+The v2 boundary follows the [AXI](https://axi.md/) profile and its
+[official Skill](https://github.com/kunchenguid/axi/blob/408a6536625e5b05e5c56e6c4a04fe83e1f510a5/.agents/skills/axi/SKILL.md),
+pinned at commit `408a6536625e5b05e5c56e6c4a04fe83e1f510a5`: bounded
+three-to-four-field default rows, explicit counts and empty states, structured errors with exit
+codes `0/1/2`, opt-in safe ambient context, content-first no-argument behavior, contextual next
+commands, and fast help/version paths. There is no table/human renderer and no `--json`/`--toon`
+format switch. `--full` only raises a soft presentation limit; it cannot bypass Broker redaction,
+binary-output policy, or hard caps.
+
+Apply exact redaction using all credentials involved in the request plus conservative detectors for
+supported secret formats. Never claim that heuristic redaction can identify every transformed
+secret.
 
 Write append-only JSONL audit events with a per-file random genesis value and chained HMAC covering
 the previous event digest, sequence, and canonical event. Rotate by size/count and anchor the latest
@@ -227,9 +242,48 @@ rollback but does not claim remote immutability.
 
 **Alternatives considered**:
 
+- **Expose JSON and TOON as permanent parallel modes**: creates two contracts and lets clients drift.
+- **Serialize XPC and vault data as TOON**: adds migration risk without improving the Agent boundary.
+- **Adopt a Swift TOON package by name alone**: insufficient until it passes the official TOON 4.1
+  conformance fixtures; the currently reviewed `toon-swift` repository documents an older format
+  revision than the current [TOON 4.1 specification](https://toonformat.dev/reference/spec.html).
 - **Store full raw output in audit**: increases leak and retention risk.
 - **Rely only on regex redaction**: misses exact secrets with unusual formats.
 - **Claim tamper-proof local logs**: false under complete local administrator compromise.
+
+### 8.1 TOON encoder ownership and pin
+
+**Decision**: Keep a narrow deterministic TOON encoder inside `SAFACLI/Presentation` for the v2
+migration. It accepts only an ordered, typed presentation value produced from explicit public DTOs,
+supports the JSON data shapes that SAFA can emit, and has no decoder, persistence, IPC, credential,
+or policy role. Do not create a separate general-purpose TOON package or fork at this stage.
+
+Pin conformance evidence to TOON specification 4.1 at commit
+`62f16b369408180f1faf1cba7da1b46d1f336f12`. The specification is still a Working Draft, so this
+pin is an intentional reviewed compatibility boundary rather than an assumption that the format can
+never change. A later specification revision requires an explicit contract review and refreshed
+fixtures; it does not silently change shipped output.
+
+The official ecosystem lists a stable Swift implementation, but the reviewed release `0.4.0` still
+declares TOON specification 3.0. TOON 4.0/4.1 added mandatory keyed tabular objects, nested field
+groups, canonical empty-array output, and changed list-item layout. Depending on that package today
+would therefore make SAFA's 4.1 claim unverifiable. Re-evaluate it when an exact release declares
+4.1 and passes the pinned fixtures; the internal presentation seam keeps that replacement local.
+
+**Maintenance bound**:
+
+- implement encoding only, not a general decoder or validator;
+- expose no public format options beyond the canonical comma delimiter and two-space indentation;
+- preserve field encounter order and reject duplicate ordered keys;
+- fail closed on unsupported/oversized presentation values;
+- verify exact canonical output locally and strict cross-decode it with the pinned official
+  reference implementation in CI;
+- keep the normative fixture source and license provenance beside the tests.
+
+Do not fork or independently extend the AXI guidance itself. SAFA owns only its narrower public CLI
+contract and encoder adapter. The pinned AXI commit is design input; the pinned TOON specification
+and conformance fixtures are the serialization oracle. Upgrading either pin requires a reviewed
+compatibility change rather than an automatic dependency update.
 
 ## 9. Skill-first packaging
 
@@ -252,7 +306,8 @@ while the native runtime provides the actual security boundary.
 
 - pure unit/property tests for canonicalization, fingerprints, scope matching, state machines,
   redaction and encrypted-envelope tamper detection;
-- protocol snapshots and JSON Schema fixtures for CLI/XPC compatibility;
+- TOON 4.1 conformance fixtures and golden snapshots for the Agent CLI boundary, plus independent
+  typed protocol snapshots for XPC compatibility;
 - signed integration tests for Keychain access groups, peer signing requirements,
   LocalAuthentication cancellation, broker activation and askpass binding;
 - synthetic SSH servers for password/key, host mismatch, jump failure, timeout, sudo, output bounds,

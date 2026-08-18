@@ -18,7 +18,8 @@ open or a managed server is compromised."
 **Delivery sequencing update**: The current phase is CLI-first. Match `ssh-hosts` behavior and prove
 the broker/Keychain/XPC/SSH security boundary without a custom product GUI. System Touch ID,
 Keychain, LocalAuthentication, and Authorization Services dialogs remain permitted security
-controls.
+controls. Before publication, replace the temporary JSON/human presentation with the Agent-only
+AXI/TOON `dev.safa.cli/v2` contract; internal IPC and persistence are not part of that public format.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -154,6 +155,23 @@ clearly, and subsequently uses the companion CLI without an external package man
 4. **Given** remote output contains text instructing the Agent to reveal credentials or run another
    command, **When** the Skill processes the output, **Then** it treats the content only as untrusted
    data and does not follow those instructions.
+5. **Given** any supported command succeeds, returns no rows, performs an idempotent no-op, or fails,
+   **When** the Agent reads stdout, **Then** it receives exactly one canonical TOON v4.1 document and
+   never has to select JSON or a human output mode.
+6. **Given** the Agent invokes the root or a command noun without a deeper verb, **When** safe live
+   state is available, **Then** SAFA returns a bounded content-first view with aggregates and relevant
+   command templates instead of a full manual.
+7. **Given** a list has many records, **When** the Agent uses the default view, **Then** each row has
+   no more than four reviewed fields, the output declares total/returned counts and truncation, and
+   additional fields require an allowlisted `--fields` request.
+8. **Given** output contains a large log or remote stream, **When** the soft limit is reached, **Then**
+   SAFA returns a preview, original size, and a parameterized `--full` next command while preserving
+   the Broker's hard limit and redaction.
+9. **Given** the Agent misspells a flag, **When** SAFA validates argv, **Then** it returns a structured
+   TOON usage error with the valid local flags and exit `2` before contacting the Broker or target.
+10. **Given** a user explicitly enables ambient Agent context, **When** a new session starts, **Then**
+    the integration injects only the bounded safe home view and captures no transcript, protected
+    topology, command history, or remote output for reuse.
 
 ---
 
@@ -426,6 +444,45 @@ then confirm that the user can reconstruct the sequence without finding credenti
   policy decisions, approvals, revocations, executions, failures, and security-state changes.
 - **FR-021**: Agent-facing commands MUST provide stable machine-readable output, deterministic exit
   codes, bounded fields, versioned schemas, and actionable next steps.
+- **FR-021a**: Before first publication, every non-version Agent CLI invocation MUST emit exactly one
+  canonical UTF-8 TOON v4.1 document using schema `dev.safa.cli/v2`. Success, explicit zero results,
+  idempotent no-ops, and errors MUST share that encoding. The public CLI MUST NOT expose human,
+  JSON, color, or output-format modes.
+- **FR-021b**: TOON MUST be produced only at the final CLI presentation boundary from explicit
+  versioned public DTOs after Broker policy, authorization, redaction, and output bounding. TOON
+  MUST NOT become the Agent input language, Broker IPC contract, vault representation, or approval
+  channel.
+- **FR-021c**: Default collection rows MUST contain no more than four source-reviewed fields.
+  `--fields` MAY expand a command projection only through a command-specific safe allowlist and MUST
+  reject protected, unknown, or dynamically public metadata before Broker or remote work begins.
+- **FR-021d**: Long content MUST include a bounded preview, original size, and explicit truncation
+  state. A suggested `--full` invocation MAY raise a soft output limit but MUST NOT bypass the
+  Broker hard limit, redaction, binary-output policy, or authorization.
+- **FR-021e**: Collection results MUST provide total, returned, and truncation aggregates where
+  applicable. Successful empty results MUST declare zero explicitly and MUST NOT use empty stdout.
+  Cheap Broker-computed health, topology, remote-exit, and status summaries SHOULD be included when
+  they eliminate a predictable follow-up request.
+- **FR-021f**: Errors MUST be redacted, structured TOON on stdout with a stable code and specific
+  remediation. stderr MUST contain only redacted debug/progress diagnostics. Exit codes MUST be
+  `0` for completed/accepted/unambiguous no-op, `1` when the operation did not complete in the
+  invocation, and `2` for invalid argv detected before Broker or remote work.
+- **FR-021g**: The CLI MUST reject unknown commands, arguments, and flags before side effects and
+  MUST NOT prompt through stdin or a terminal. macOS-owned user-presence UI MAY appear only for an
+  explicitly requested protected operation, and its outcome MUST return through the same TOON
+  contract.
+- **FR-021h**: Root and noun-only invocations MUST return the smallest useful bounded safe live view
+  rather than a usage dump. Every command MUST still provide concise local `--help` containing its
+  arguments, valid flags/defaults, and representative examples.
+- **FR-021i**: Results MAY include a few context-relevant parameterized next commands. Every next
+  action MUST state whether it is safe for Agent invocation; suggestions MUST NOT invent an alias,
+  protected value, approval, or fixed dynamic identifier.
+- **FR-021j**: An Agent session integration MAY be installed only through explicit setup and MUST be
+  idempotent, path-repairing, directory-scoped, and limited to the non-interactive safe home view.
+  It MUST NOT capture or replay transcripts, command history, protected resource/topology data, or
+  remote output.
+- **FR-021k**: Bare `-v`, `-V`, and `--version` MUST return only the Runtime SemVer with exit `0`
+  before Broker activation or construction of the full command graph. This is the only public
+  non-TOON output path.
 - **FR-022**: The system MUST verify the platform, runtime version, package integrity, and publisher
   identity before activating the companion runtime, and MUST fail closed on verification failure.
 - **FR-023**: The system MUST work without a cloud account or public network service after Skill and
@@ -555,6 +612,18 @@ then confirm that the user can reconstruct the sequence without finding credenti
 - **SC-022**: Topology disclosure tests find zero protected endpoint, route coordinate, username,
   host identity, raw evidence, policy, credential reference, or secret in every Agent projection,
   including truncated and failed-query responses.
+- **SC-023**: All canonical v2 fixtures strict-decode under the pinned TOON v4.1 implementation to
+  the expected typed data model, preserve stable field order, and reject malformed array widths,
+  counts, duplicate keys, unsafe control characters, and hostile remote strings.
+- **SC-024**: Across representative home, resource, topology, execution, zero-result, and failure
+  tasks, Agents complete at least as many tasks as with compact JSON v1 while median Agent-visible
+  tokens decrease; results are recorded per tested model rather than inferred from third-party
+  aggregate benchmarks.
+- **SC-025**: Contract tests prove every default list row has at most four fields, every bounded list
+  declares total/returned/truncated state, every truncated text includes size and a safe next step,
+  and every empty success is explicit.
+- **SC-026**: Unknown commands, arguments, and flags produce exit `2`, one TOON usage error, and zero
+  Broker/remote calls; all other non-version paths emit one and only one TOON document on stdout.
 
 ### Post-MVP Sync Outcomes
 

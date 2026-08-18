@@ -23,8 +23,10 @@ This is not the SAFA Skill or the public product specification.
 | [`juju-w/safa`](https://github.com/juju-w/safa) | Agent Skill, public CLI/resource contracts, product documentation, conformance fixtures, Runtime resolver, and exact release manifests |
 | [`juju-w/safa-runtime`](https://github.com/juju-w/safa-runtime) | Native CLI, Broker, credential helper, OS security adapters, transport implementations, tests, signing, and packaging |
 
-Public behavior starts in the product repository. Runtime changes that affect the Agent-facing JSON
-or resource model must first update the canonical contract and compatibility fixtures there.
+Public behavior starts in the product repository. Runtime changes that affect the Agent-facing
+TOON contract or resource model must first update the canonical contract and compatibility fixtures
+there. The coordinated migration branch emits the Agent-only `dev.safa.cli/v2` contract; it remains
+unpublished until conformance and human review finish.
 
 ## Runtime boundary
 
@@ -36,14 +38,15 @@ flowchart LR
     Broker --> AskPass["safa-askpass\none-shot helper"]
     AskPass --> Target["registered target"]
     Target -->|"untrusted output"| Broker
-    Broker -->|"bounded JSON evidence"| CLI
+    Broker -->|"bounded typed evidence"| CLI
+    CLI -->|"canonical TOON"| Skill
 ```
 
 One macOS installation is packaged as `SAFA.app`, but authority is split between processes:
 
 | Component | Purpose | Credential authority |
 |---|---|---|
-| `safa` | Parse commands, negotiate the schema, and present stable JSON | None |
+| `safa` | Parse Agent commands and encode one stable TOON result | None |
 | `safa-broker` | Resolve protected records, enforce policy, authorize, connect, and sanitize | Keychain/vault owner |
 | `safa-askpass` | Deliver one child-bound, short-lived SSH secret | One-shot only |
 | `SAFA.app` | Signed container and `SMAppService` lifecycle host | No Agent-facing GUI |
@@ -64,6 +67,19 @@ the Broker resolves credentials internally after validating peer identity and po
 
 Database, object-storage, cache, messaging, graph, search, and HTTP resources can be registered as
 typed records, but their protocol operations are not implemented Agent capabilities.
+
+## Agent-only CLI
+
+The thin CLI follows the [AXI principles](https://axi.md/) and is not a human terminal product. Its
+public behavior is one canonical TOON document on stdout for success, empty state, no-op, and
+error; stderr is debug-only, and the bare version path is the only non-TOON exception. There is no
+human mode or public format selector. Internal Codable and XPC types remain private.
+
+Default collections contain no more than four reviewed fields, large content is previewed with
+explicit size/truncation metadata, cheap aggregates and Broker-computed answers are returned inline,
+and output includes only relevant parameterized next commands. `--full` never bypasses redaction or
+the Broker hard limit. The normative contract is
+[`contracts/cli-v2.md`](https://github.com/juju-w/safa/blob/main/contracts/cli-v2.md).
 
 ## Build and test
 

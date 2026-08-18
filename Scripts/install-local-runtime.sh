@@ -138,9 +138,7 @@ case " ${binary_architectures} " in
   *) fail "Runtime does not contain the local architecture: $architecture" ;;
 esac
 
-version_output=$("$cli_path" version --json)
-installed_version=$(printf '%s' "$version_output" \
-  | /usr/bin/plutil -extract data.runtime_version raw -o - - 2>/dev/null) \
+installed_version=$("$cli_path" --version) \
   || fail "Runtime returned an invalid version response"
 [ "$installed_version" = "$runtime_version" ] \
   || fail "Runtime version ${installed_version} does not match ${runtime_version}"
@@ -184,6 +182,6 @@ printf '%s\n' "{\"schema\":\"dev.safa.local-runtime-lock/v1\",\"runtime_version\
 /bin/mv "$lock_staging" "$lock_path"
 
 installed_cli="${install_directory}/SAFA.app/Contents/MacOS/safa"
-"$installed_cli" version --json
+"$installed_cli" --version
 printf '%s\n' "Installed SAFA Runtime ${runtime_version} for ${architecture}."
-printf '%s\n' "Run: ${installed_cli} doctor --json"
+printf '%s\n' "Run: ${installed_cli} doctor"

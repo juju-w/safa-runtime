@@ -1,6 +1,6 @@
 ---
 name: build-macos-cli
-description: Design, implement, and review secure native macOS command-line applications in Swift, including ArgumentParser UX, stable JSON contracts, exit codes, Keychain and LocalAuthentication boundaries, signed XPC services, Secure Enclave integration, subprocess safety, and SSH workflows. Use for SAFA CLI, broker, AskPass, credential, approval, packaging, or macOS platform changes. Keep the current delivery CLI-first and do not add custom GUI or SwiftUI work unless the user explicitly changes scope.
+description: Design, implement, and review secure native macOS command-line applications in Swift, including ArgumentParser UX, stable Agent output contracts, exit codes, Keychain and LocalAuthentication boundaries, signed XPC services, Secure Enclave integration, subprocess safety, and SSH workflows. Use for SAFA CLI, broker, AskPass, credential, approval, packaging, or macOS platform changes. Keep the current delivery CLI-first and do not add custom GUI or SwiftUI work unless the user explicitly changes scope.
 ---
 
 # Build macOS CLI
@@ -13,8 +13,8 @@ Use `$develop-swift` alongside this skill for every Swift implementation or revi
 ## Start from the trust model
 
 Read `ARCHITECTURE.md`, especially the product priority, trust boundaries, CLI conventions,
-`ssh-hosts` parity plan, and macOS controls. Read `Skills/safa/references/cli.md` when changing the
-Agent-facing contract.
+`ssh-hosts` parity plan, and macOS controls. Read the product repository's
+`contracts/cli-v2.md` and `skills/safa/references/cli.md` when changing the Agent-facing contract.
 
 Preserve these roles:
 
@@ -40,8 +40,10 @@ secret through argv, environment variables, logs, chat, or Agent-controlled stdi
 - Keep `run()` to parse/validate, create a typed request, call the client, and present the reply.
 - Share common options through `@OptionGroup`; validate scalar arguments with
   `ExpressibleByArgument` and cross-field rules in `validate()`.
-- In JSON mode, write exactly one versioned object to stdout. Keep diagnostics on stderr and never
-  mix banners or progress text into machine output.
+- Do not reintroduce the retired pre-release JSON v1 or a second presentation mode. The first public
+  v2 CLI writes exactly one canonical TOON document to stdout for every non-version result, has no
+  human/JSON format switch, and keeps diagnostics on stderr. Never mix banners or progress text into
+  Agent output.
 - Centralize stable exit-code mapping. Preserve the remote exit code as data instead of overloading
   the local process exit code.
 - Keep `--` as the boundary before the remote argument vector. Never reconstruct a shell command by
@@ -112,7 +114,7 @@ secret handling changes. Verify at minimum:
 - secrets cannot appear in argv, environment, output, or errors;
 - invalid signatures, identities, host keys, routes, grants, and schema versions fail closed;
 - cancellation, timeout, truncation, and remote exit behavior are deterministic;
-- JSON output and exit codes remain backward compatible;
+- TOON v2 output and `0/1/2` exits satisfy the pinned canonical and official conformance fixtures;
 - no test contacts a real host or reads a real credential.
 
 Run the gates from `$develop-swift`, inspect entitlements and signing assumptions, then use a Draft

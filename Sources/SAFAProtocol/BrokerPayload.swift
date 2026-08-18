@@ -1,5 +1,9 @@
 import Foundation
 
+/// Private JSON data model used only by the typed Broker IPC boundary.
+///
+/// This is not an Agent-facing presentation type. The CLI projects Broker replies into explicit
+/// `Agent*V2` DTOs before the final TOON encoding step.
 public enum JSONValue: Codable, Equatable, Sendable {
     case string(String)
     case integer(Int64)
@@ -40,17 +44,6 @@ public enum JSONValue: Codable, Equatable, Sendable {
         case .null: try container.encodeNil()
         }
     }
-}
-
-public enum CLIStatus: String, Codable, Sendable {
-    case completed
-    case accepted
-    case approvalRequired = "approval_required"
-    case userActionRequired = "user_action_required"
-    case denied
-    case cancelled
-    case expired
-    case failed
 }
 
 public struct NextAction: Codable, Equatable, Sendable {
@@ -108,81 +101,5 @@ public struct SAFAErrorPayload: Codable, Equatable, Sendable {
                 ])
             } ?? .null
         return value
-    }
-}
-
-public struct CLIEnvelope: Codable, Equatable, Sendable {
-    public static let currentSchema = "dev.safa.cli/v1"
-
-    public let schema: String
-    public let command: String
-    public let status: CLIStatus
-    public let requestID: UUID?
-    public let timestamp: Date
-    public let data: [String: JSONValue]
-    public let warnings: [String]
-    public let nextAction: NextAction?
-
-    public init(
-        schema: String = Self.currentSchema,
-        command: String,
-        status: CLIStatus,
-        requestID: UUID? = nil,
-        timestamp: Date = Date(),
-        data: [String: JSONValue] = [:],
-        warnings: [String] = [],
-        nextAction: NextAction? = nil
-    ) {
-        self.schema = schema
-        self.command = command
-        self.status = status
-        self.requestID = requestID
-        self.timestamp = Date(timeIntervalSince1970: floor(timestamp.timeIntervalSince1970))
-        self.data = data
-        self.warnings = warnings
-        self.nextAction = nextAction
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case schema
-        case command
-        case status
-        case requestID = "request_id"
-        case timestamp
-        case data
-        case warnings
-        case nextAction = "next_action"
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        schema = try container.decode(String.self, forKey: .schema)
-        command = try container.decode(String.self, forKey: .command)
-        status = try container.decode(CLIStatus.self, forKey: .status)
-        requestID = try container.decodeIfPresent(UUID.self, forKey: .requestID)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        data = try container.decode([String: JSONValue].self, forKey: .data)
-        warnings = try container.decode([String].self, forKey: .warnings)
-        nextAction = try container.decodeIfPresent(NextAction.self, forKey: .nextAction)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(schema, forKey: .schema)
-        try container.encode(command, forKey: .command)
-        try container.encode(status, forKey: .status)
-        if let requestID {
-            try container.encode(requestID, forKey: .requestID)
-        } else {
-            try container.encodeNil(forKey: .requestID)
-        }
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(data, forKey: .data)
-        try container.encode(warnings, forKey: .warnings)
-        if let nextAction {
-            try container.encode(nextAction, forKey: .nextAction)
-        } else {
-            try container.encodeNil(forKey: .nextAction)
-        }
     }
 }

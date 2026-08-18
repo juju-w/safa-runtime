@@ -21,7 +21,7 @@ the broker, CLI, and AskPass assembly without pretending that an unsigned XPC bu
 ## 2. Inspect the stable CLI surface
 
 ```bash
-swift run safa version --json
+swift run safa --version
 swift run safa --help
 swift run safa resource --help
 swift run safa resource ls --help
@@ -51,10 +51,10 @@ Run the CLI from the resulting app container, then activate only its bundled per
 
 ```bash
 SAFA_APP_PATH="build/SAFADev/Build/Products/Debug/SAFA.app"
-"$SAFA_APP_PATH/Contents/MacOS/safa" setup status --json
-"$SAFA_APP_PATH/Contents/MacOS/safa" setup activate --json
-"$SAFA_APP_PATH/Contents/MacOS/safa" doctor --json
-"$SAFA_APP_PATH/Contents/MacOS/safa" resource list --json
+"$SAFA_APP_PATH/Contents/MacOS/safa" setup status
+"$SAFA_APP_PATH/Contents/MacOS/safa" setup activate
+"$SAFA_APP_PATH/Contents/MacOS/safa" doctor
+"$SAFA_APP_PATH/Contents/MacOS/safa" resource list
 ```
 
 `doctor` must report both broker and vault as ready. Registration is per user and idempotent. If
@@ -84,11 +84,11 @@ only logical aliases, safe template/type choices, and an optional active/disable
 
 ```bash
 safa resource add nas.home --from-ssh-config home-nas \
-  --type host.linux --json
-safa resource edit nas.home --from-ssh-config home-nas --json
-safa resource edit nas.home --state disabled --json
-safa resource edit nas.home --state active --json
-safa resource remove nas.home --json
+  --type host.linux
+safa resource edit nas.home --from-ssh-config home-nas
+safa resource edit nas.home --state disabled
+safa resource edit nas.home --state active
+safa resource remove nas.home
 ```
 
 The broker resolves endpoint and username locally through `ssh -G`. Add creates a private draft and
@@ -107,16 +107,16 @@ boundary using synthetic fixtures and contact no real host.
 The safe read surface is:
 
 ```bash
-swift run safa resource list --json
-swift run safa resource ls --json
+swift run safa resource list
+swift run safa resource ls
 ```
 
 The response may contain alias, resource type, state, capabilities, health, and explicitly
 allowlisted summary metadata only. It must not contain host, port, username, host fingerprint,
 credential reference or Keychain locator.
 
-Use `resource show nas.home --json` for the same non-interactive safe projection. Use
-`resource show nas.home --details --json` only when protected endpoint or probed inventory metadata is needed;
+Use `resource show nas.home` for the same non-interactive safe projection. Use
+`resource show nas.home --details` only when protected endpoint or probed inventory metadata is needed;
 macOS asks the local user for Touch ID/login authentication. A denial returns no detail object, and
 an approval still returns no credential, key material, Keychain locator, or host fingerprint.
 

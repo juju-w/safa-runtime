@@ -1,0 +1,10 @@
+{
+  "schema": "dev.safa.cli/v1",
+  "command": "setup.activate",
+  "status": "completed",
+  "request_id": null,
+  "timestamp": "2026-04-18T09:30:00Z",
+  "data": { "broker_service_status": "enabled" },
+  "warnings": [],
+  "next_action": null
+}

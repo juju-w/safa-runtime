@@ -27,10 +27,15 @@ struct ResourceCLIContractTests {
         #expect(try SAFACommand.parseAsRoot(["resource", "list"]) is ResourceListCommand)
         #expect(try SAFACommand.parseAsRoot(["resource", "ls"]) is ResourceListCommand)
         let activeList = try #require(
-            try SAFACommand.parseAsRoot(["resource", "list", "--state", "active"])
+            try SAFACommand.parseAsRoot([
+                "resource", "list", "--state", "active", "--limit", "25", "--fields",
+                "alias,state,resource_type",
+            ])
                 as? ResourceListCommand
         )
         #expect(try activeList.requestedState() == .active)
+        #expect(try activeList.requestedLimit() == 25)
+        #expect(try activeList.requestedFields() == [.alias, .state, .resourceType])
         let detailedShow = try #require(
             try SAFACommand.parseAsRoot(["resource", "show", "nas.home", "--details"])
                 as? ResourceShowCommand
@@ -121,6 +126,32 @@ struct ResourceCLIContractTests {
             )
             #expect(throws: ResourceListInputError.invalidState) {
                 try command.requestedState()
+            }
+        }
+    }
+
+    @Test("resource list bounds rows and rejects unsafe field selections")
+    func listProjectionValidation() throws {
+        for arguments in [
+            ["resource", "list", "--limit", "0"],
+            ["resource", "list", "--limit", "501"],
+        ] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot(arguments) as? ResourceListCommand
+            )
+            #expect(throws: ResourceListInputError.invalidLimit) {
+                try command.requestedLimit()
+            }
+        }
+
+        for fields in ["state,health", "alias,endpoint", "alias,alias"] {
+            let command = try #require(
+                try SAFACommand.parseAsRoot([
+                    "resource", "list", "--fields", fields,
+                ]) as? ResourceListCommand
+            )
+            #expect(throws: ResourceListInputError.invalidFields) {
+                try command.requestedFields()
             }
         }
     }

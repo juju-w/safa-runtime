@@ -1,7 +1,7 @@
 # SAFA Runtime Architecture
 
 Status: **Accepted for pre-release development**  
-Last reviewed: **2026-08-16**
+Last reviewed: **2026-08-18**
 
 This document is the implementation guide for SAFA's native runtimes. It defines the trust
 boundaries, module responsibilities, source organization, CLI conventions, and delivery order.
@@ -10,7 +10,7 @@ which component is trusted to perform it.
 
 ## 0. Product/runtime boundary
 
-The canonical Agent Skill, public CLI/JSON/resource contracts, release manifests, and product-level
+The canonical Agent Skill, public Agent-CLI/TOON/resource contracts, release manifests, and product-level
 architecture live in [`juju-w/safa`](https://github.com/juju-w/safa). This repository owns native
 runtime implementations and their platform-specific security adapters.
 
@@ -87,8 +87,9 @@ them.
 5. **Use a functional core and imperative shell.** Domain validation, canonicalization, scope
    matching, and policy are deterministic. Keychain, XPC, files, clocks, processes, and UI are
    adapters behind narrow protocols.
-6. **Typed boundaries over dictionaries.** Public CLI JSON and XPC payloads use versioned DTOs with
-   explicit coding keys. Domain persistence models are not wire contracts.
+6. **Typed boundaries over dictionaries.** Public TOON is encoded from explicit versioned DTOs at
+   the CLI boundary; XPC payloads use separate typed DTOs with explicit coding keys. Domain
+   persistence models are not wire contracts.
 7. **Fail closed without becoming hostile.** A rejection must contain a stable code and a safe next
    action; it must not silently fall back to raw SSH, password prompts, mutable SSH config, or weaker
    host verification.
@@ -102,7 +103,8 @@ them.
 
 ```mermaid
 flowchart LR
-    Agent["Agent or terminal user"] -->|argv / JSON only| CLI["Signed safa CLI\nno secret entitlement"]
+    Agent["Agent"] -->|validated argv| CLI["Signed safa CLI\nno secret entitlement"]
+    CLI -->|canonical TOON| Agent
     CLI -->|Agent XPC\nsigned peer check| Broker["Per-user SAFA broker\nauthority boundary"]
     Human["Local human"] -->|Touch ID / system prompt| Native["macOS Security UI\nno custom product GUI"]
     Native -->|user presence result| Broker
@@ -150,7 +152,7 @@ vended library product.
 | `SAFATransport` | Bounded subprocess lifecycle and cancellation | SSH policy or credentials |
 | `SAFASSH` | OpenSSH config, host identity, SSH-agent/AskPass and sudo transport adapters | Keychain lookup, approvals, resource persistence |
 | `SAFABroker` | Application use cases, XPC adapters, orchestration/composition root | CLI parsing, product presentation |
-| `SAFACLI` | ArgumentParser commands, typed request mapping, JSON/human presentation | Secrets, policy, direct SSH, approval |
+| `SAFACLI` | ArgumentParser commands, typed request mapping, canonical TOON presentation | Secrets, policy, direct SSH, approval, human rendering |
 | `SAFAAskPass` | One-shot child-bound credential response | Resource lookup or general Keychain queries |
 
 The intended dependency shape is:
@@ -215,40 +217,55 @@ Guidelines:
 - Composition happens only in executable runtime roots. Do not create global service
   locators or singletons for credentials.
 
-## 6. Swift CLI conventions
+## 6. Swift Agent CLI conventions
 
 SAFA uses Apple's `swift-argument-parser` and follows these rules:
 
 - The root and every asynchronous subtree use `AsyncParsableCommand`.
 - Each command family is a separate file/directory with `CommandConfiguration`, `abstract`, argument
   help, and examples where the operation is non-obvious.
-- Shared flags such as `--json`, timeouts, and output limits use `@OptionGroup`.
+- Shared limits and execution options use `@OptionGroup`. There is no public output-format option.
 - Validated scalar arguments such as resource alias and state conform to
   `ExpressibleByArgument`; cross-field constraints use `validate()`.
 - `run()` performs only: parse/validate → create typed request → call client → present response.
-- Machine mode writes exactly one versioned JSON object to stdout. Human diagnostics go to stderr
-  only when they cannot be represented safely in that object.
-- Exit-code mapping is centralized and keyed by a stable error-code enum, not duplicated string
-  switches.
+- Every non-version path writes exactly one canonical TOON v4.1 document to stdout. There is no
+  human/table/color renderer, `--json`, or `--toon` switch. Redacted debug/progress belongs on
+  stderr and is not Agent input.
+- The bare `-v`, `-V`, and `--version` path prints only SemVer and returns before Broker startup or
+  the full command graph is initialized.
+- Exit-code mapping is centralized: `0` for success/accepted/unambiguous no-op, `1` for an operation
+  that did not complete, and `2` for usage failure before Broker work. Stable TOON status/error codes
+  carry lifecycle detail.
+- Root and noun-only invocations return bounded live safe data, not help. Each subtree still owns
+  concise `--help` output and rejects unknown input before side effects.
+- Default list projections expose at most four reviewed fields. `--fields` is command-specific and
+  allowlisted; it cannot request protected or unknown metadata.
+- Long content includes a bounded preview, original size, and truncation state. `--full` raises the
+  soft presentation limit but cannot bypass Broker hard caps, redaction, or binary-output policy.
+- Include cheap aggregates, definitive zero states, Broker-computed answers, and a few parameterized
+  next commands when they eliminate a predictable Agent round trip.
 - Version information comes from generated build metadata, never a literal repeated across CLI and
   Xcode settings.
-- The CLI generates native `zsh`, `bash`, and `fish` completion scripts. Dynamic resource
-  completion reads only the non-interactive safe-summary directory, never requests authorization,
-  and fails closed to no candidates when the Broker is unavailable.
 - `--` remains the boundary before a remote argument vector. Shell programs are explicit and never
   inferred by concatenating arguments.
+- The CLI never reads a secret, approval, or missing option from stdin. macOS-owned authorization UI
+  may appear only for an explicitly requested protected operation.
 
-## 7. Human-friendly CLI-first flows
+An optional Agent session hook may be installed only by an explicit setup operation and may emit
+only the safe no-argument home view. SAFA does not capture transcripts, command history, protected
+topology, or remote output for later ambient context.
+
+## 7. Agent-native CLI flows
 
 ### Discover and inspect a resource
 
-1. `safa resource list --json` and `resource show ALIAS --json` return a safe summary: canonical
+1. `safa resource list` and `resource show ALIAS` return a safe summary: canonical
    alias, resource kind, template/version, host platform when applicable, safe roles, state, health,
    capabilities, and only source-code-allowlisted metadata. `resource_type` remains an additive v1
    compatibility projection, not the internal template key.
 2. Unknown or newly imported metadata keys fail closed as private. A configuration file cannot mark
    its own field public.
-3. `safa resource show ALIAS --details --json` asks macOS to verify the local user with Touch ID or
+3. `safa resource show ALIAS --details` asks macOS to verify the local user with Touch ID or
    login credentials. Denial and prompt-rate-limiting return no detail object.
 4. An approved inspection may return alternate aliases, access methods, endpoint, username,
    security domain, non-secret typed metadata, relationships by alias, and identity status. It never
@@ -400,9 +417,9 @@ snapshotting remain later work.
 ### Agent execution
 
 ```text
-safa host list --json
-safa host check app.prod --json
-safa exec app.prod --json -- systemctl status docker
+safa resource list
+safa resource show app.prod
+safa exec app.prod --intent "Check Docker service state" -- systemctl status docker
 ```
 
 The Agent sees aliases, capabilities, health, stable errors, and bounded output. If Core Tunnel is
@@ -452,7 +469,8 @@ No new authorization or audit feature starts until the architecture remediation 
 3. correct advertised capabilities and README claims;
 4. remove secret-dumping command forms from the automatic diagnostic policy;
 5. add SSH-config import, tunnel preflight, and public-key execution contract tests;
-6. validate the signed broker/CLI/AskPass boundaries without adding GUI work or publishing
+6. keep the canonical TOON v2 fixtures strict-decoding against pinned official TOON sources, then
+   validate the signed broker/CLI/AskPass boundaries without adding GUI work or publishing
    artifacts.
 
 After every slice: format, build, test, unsigned Xcode assembly, Draft PR, CI, squash merge. No tag,

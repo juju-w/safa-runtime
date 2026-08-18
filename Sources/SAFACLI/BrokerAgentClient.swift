@@ -25,7 +25,8 @@ public protocol BrokerAgentClient: Sendable {
         task: TopologyProjectionTask,
         source: ResourceAlias?,
         target: ResourceAlias?,
-        relation: TopologyRelation?
+        relation: TopologyRelation?,
+        bounds: TopologyQueryBoundsV1
     ) async throws -> TopologyQueryReplyV1
     func mutateTopology(
         action: TopologyMutationActionV1,
@@ -310,7 +311,8 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
         task: TopologyProjectionTask,
         source: ResourceAlias? = nil,
         target: ResourceAlias? = nil,
-        relation: TopologyRelation? = nil
+        relation: TopologyRelation? = nil,
+        bounds: TopologyQueryBoundsV1 = TopologyQueryBoundsV1()
     ) async throws -> TopologyQueryReplyV1 {
         let team = try CodeSigningRequirement.currentTeamIdentifier()
         let requirement = try CodeSigningRequirement.requirement(
@@ -323,7 +325,8 @@ public struct XPCBrokerAgentClient: BrokerAgentClient {
             task: task,
             source: source,
             target: target,
-            relation: relation
+            relation: relation,
+            bounds: bounds
         )
         let request = try CanonicalCodec.encode(message)
 

@@ -3,24 +3,24 @@
   "command": "topology.path",
   "status": "completed",
   "request_id": null,
-  "timestamp": "2026-08-17T12:00:00Z",
+  "timestamp": "2026-04-18T09:30:00Z",
   "data": {
     "topology": {
       "schema": "dev.safa.topology/v1",
-      "graph_revision": 7,
+      "graph_revision": 42,
       "task": "reachability",
       "ordering": "source-rooted-breadth-first",
-      "roots": ["host.compute-a", "service.data-api"],
+      "roots": ["runtime.local", "worker.batch"],
       "nodes": [
-        {"alias": "host.compute-a", "kind": "resource", "resource_kind": "host"},
-        {"alias": "service.data-api", "kind": "resource", "resource_kind": "service"}
+        { "alias": "runtime.local", "kind": "runtime", "resource_kind": null },
+        { "alias": "worker.batch", "kind": "resource", "resource_kind": "host" }
       ],
       "edges": [
         {
-          "id": "20000000-0000-4000-8000-000000000001",
-          "from": "host.compute-a",
+          "id": "edge-1",
+          "from": "runtime.local",
           "relation": "can-reach",
-          "to": "service.data-api",
+          "to": "worker.batch",
           "layer": "observed",
           "verification": "verified",
           "freshness": "fresh"
@@ -28,10 +28,10 @@
       ],
       "answer": {
         "outcome": "confirmed",
-        "source": "host.compute-a",
-        "target": "service.data-api",
+        "source": "runtime.local",
+        "target": "worker.batch",
         "affected_aliases": [],
-        "proof_edge_ids": ["20000000-0000-4000-8000-000000000001"]
+        "proof_edge_ids": ["edge-1"]
       },
       "matrix": null,
       "truncated": false
