@@ -234,6 +234,26 @@ struct AgentCLIV2ContractTests {
         #expect(output.hasSuffix("false"))
         #expect(!output.contains("password"))
         #expect(!output.contains("credential"))
+        #expect(output == (try canonicalFixture("protected-user-action.required.toon")))
+    }
+
+    @Test("policy failures use one canonical denied response")
+    func policyFailure() throws {
+        let response = AgentCLIResponseV2(
+            command: "exec",
+            status: .denied,
+            requestID: UUID(uuidString: "018f0000-0000-7000-8000-000000000001"),
+            payload: AgentNoPayloadV2(),
+            error: AgentCLIErrorV2(
+                code: "policy.denied",
+                message: "The command is not allowed by the automatic diagnostic policy.",
+                retryable: false
+            )
+        )
+
+        let output = try AgentCLIToonPresenter().encode(response)
+
+        #expect(output == (try canonicalFixture("policy-denied.failed.toon")))
     }
 
     @Test("transport failures use the same bounded response shape")
@@ -255,17 +275,7 @@ struct AgentCLIV2ContractTests {
         #expect(output.contains("code: transport.unavailable"))
         #expect(output.contains("retryable: true"))
         #expect(output.hasSuffix("retryable: true"))
-        #expect(
-            output
-                == "schema: dev.safa.cli/v2\n"
-                + "command: exec\n"
-                + "status: transport_failed\n"
-                + "request_id: 018f0000-0000-7000-8000-000000000002\n"
-                + "error:\n"
-                + "  code: transport.unavailable\n"
-                + "  message: The resource could not be reached securely.\n"
-                + "  retryable: true"
-        )
+        #expect(output == (try canonicalFixture("transport.failed.toon")))
     }
 
     @Test("hostile truncated execution output cannot create Agent control fields")

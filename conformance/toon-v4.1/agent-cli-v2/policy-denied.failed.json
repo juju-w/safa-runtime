@@ -1,0 +1,11 @@
+{
+  "schema": "dev.safa.cli/v2",
+  "command": "exec",
+  "status": "denied",
+  "request_id": "018f0000-0000-7000-8000-000000000001",
+  "error": {
+    "code": "policy.denied",
+    "message": "The command is not allowed by the automatic diagnostic policy.",
+    "retryable": false
+  }
+}
