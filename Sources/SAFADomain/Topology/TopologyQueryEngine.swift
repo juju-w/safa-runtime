@@ -346,12 +346,11 @@ public enum TopologyQueryEngine {
             repeating: Array(repeating: false, count: aliases.count),
             count: aliases.count
         )
-        let edges = Array(
-            view.edges.filter { item in
-                item.edge.relation == relation && index[item.edge.fromNodeID] != nil
-                    && index[item.edge.toNodeID] != nil
-            }.prefix(query.bounds.maximumEdges)
-        )
+        let relevantEdges = view.edges.filter { item in
+            item.edge.relation == relation && index[item.edge.fromNodeID] != nil
+                && index[item.edge.toNodeID] != nil
+        }
+        let edges = Array(relevantEdges.prefix(query.bounds.maximumEdges))
         for item in edges {
             if let row = index[item.edge.fromNodeID], let column = index[item.edge.toNodeID] {
                 values[row][column] = true
@@ -368,7 +367,7 @@ public enum TopologyQueryEngine {
             affected: [],
             proof: [],
             matrix: TopologyRelationMatrix(aliases: aliases, values: values),
-            truncated: nodes.count < view.nodes.count || edges.count < view.edges.count
+            truncated: nodes.count < view.nodes.count || edges.count < relevantEdges.count
         )
     }
 

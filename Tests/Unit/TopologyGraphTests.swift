@@ -107,6 +107,7 @@ struct TopologyGraphTests {
         #expect(matrix.aliases == matrix.aliases.sorted { $0.rawValue < $1.rawValue })
         #expect(matrix.values.count == matrix.aliases.count)
         #expect(matrix.values.allSatisfy { $0.count == matrix.aliases.count })
+        #expect(!result.truncated)
     }
 
     @Test("dependency cycles are exact and storage-order invariant")
