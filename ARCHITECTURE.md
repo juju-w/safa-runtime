@@ -481,7 +481,9 @@ down, the response directs the user to start it instead of asking for an IP or p
   session. Agent, broker, AskPass, and trusted setup use role-specific signing identifiers. Setup
   sessions additionally bind the begin/commit pair to the same caller and expire within five minutes.
 - **Service lifecycle:** register the per-user broker through `SMAppService`; show registration state
-  and a direct System Settings remediation path.
+  and a direct System Settings remediation path. Before initializing runtime services, the broker
+  replaces its own process image with an explicit minimal environment. Removing variables only after
+  startup does not remove them from the operating system's initial process metadata.
 - **Files:** application-support directories are `0700`; vault/config/known-host files are `0600`;
   temporary request directories are removed after execution.
 
