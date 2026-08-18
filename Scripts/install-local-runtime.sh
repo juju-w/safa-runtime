@@ -6,9 +6,13 @@ export PATH
 usage() {
   cat <<'EOF'
 Usage: Scripts/install-local-runtime.sh --team-id TEAM_ID [--allow-provisioning-updates] [--replace]
+       Scripts/install-local-runtime.sh --source-preview --identity-hash SHA1 [--replace]
 
 Build, verify, and install the signed macOS SAFA Runtime for the current user.
 This development installer does not publish, notarize, tag, or upload an artifact.
+
+--source-preview uses an existing Apple Development identity for manual local signing and does not
+require an Xcode account or provisioning-profile update. It is not Developer ID distribution.
 EOF
 }
 
@@ -18,8 +22,10 @@ fail() {
 }
 
 team_identifier=""
+identity_hash=""
 allow_provisioning_updates=0
 replace_existing=0
+source_preview=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -31,6 +37,15 @@ while [ "$#" -gt 0 ]; do
     --allow-provisioning-updates)
       allow_provisioning_updates=1
       shift
+      ;;
+    --source-preview)
+      source_preview=1
+      shift
+      ;;
+    --identity-hash)
+      [ "$#" -ge 2 ] || fail "--identity-hash requires a value"
+      identity_hash="$2"
+      shift 2
       ;;
     --replace)
       replace_existing=1
@@ -44,9 +59,27 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$team_identifier" ] || fail "--team-id is required"
-if ! printf '%s\n' "$team_identifier" | /usr/bin/grep -Eq '^[A-Z0-9]{10}$'; then
-  fail "TEAM_ID must contain exactly 10 uppercase letters or digits"
+[ "$source_preview" -eq 0 ] || [ "$allow_provisioning_updates" -eq 0 ] \
+  || fail "--source-preview and --allow-provisioning-updates are mutually exclusive"
+if [ "$source_preview" -eq 1 ]; then
+  [ -z "$team_identifier" ] || fail "--team-id is not accepted with --source-preview"
+  /usr/bin/printf '%s\n' "$identity_hash" | /usr/bin/grep -Eq '^[0-9A-Fa-f]{40}$' \
+    || fail "--source-preview requires a 40-character --identity-hash"
+  identity_count=$(/usr/bin/security find-identity -v -p codesigning 2>/dev/null \
+    | /usr/bin/awk -v selected="$identity_hash" '
+        toupper($2) == toupper(selected) && index($0, "Apple Development:") > 0 {
+          count += 1
+        }
+        END { print count + 0 }
+      ')
+  [ "$identity_count" -eq 1 ] \
+    || fail "the selected Apple Development signing identity is not available"
+else
+  [ -z "$identity_hash" ] || fail "--identity-hash requires --source-preview"
+  [ -n "$team_identifier" ] || fail "--team-id is required"
+  if ! /usr/bin/printf '%s\n' "$team_identifier" | /usr/bin/grep -Eq '^[A-Z0-9]{10}$'; then
+    fail "TEAM_ID must contain exactly 10 uppercase letters or digits"
+  fi
 fi
 
 [ "$(uname -s)" = "Darwin" ] || fail "the local Runtime installer requires macOS"
@@ -92,7 +125,14 @@ set -- \
   CODE_SIGNING_ALLOWED=YES \
   build
 
-if [ "$allow_provisioning_updates" -eq 1 ]; then
+if [ "$source_preview" -eq 1 ]; then
+  set -- \
+    CODE_SIGN_STYLE=Manual \
+    CODE_SIGN_IDENTITY="$identity_hash" \
+    PROVISIONING_PROFILE_SPECIFIER= \
+    CODE_SIGN_ENTITLEMENTS= \
+    "$@"
+elif [ "$allow_provisioning_updates" -eq 1 ]; then
   set -- -allowProvisioningUpdates "$@"
 fi
 
@@ -107,6 +147,33 @@ trusted_setup_path="${source_app}/Contents/Library/Helpers/safa-trusted-setup"
 
 for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path" "$trusted_setup_path"; do
   [ -e "$component" ] || fail "Runtime component is missing: $component"
+done
+
+if [ "$source_preview" -eq 1 ]; then
+  # Xcode may leave the outer host ad-hoc when no provisioning profile exists. Re-sign every local
+  # preview component explicitly, inside out, with the already selected Apple Development identity.
+  # No restricted entitlement is carried into this device-local build.
+  /usr/bin/codesign --force --sign "$identity_hash" --identifier dev.safa.broker \
+    --options runtime --timestamp=none "$broker_path" >/dev/null 2>&1 \
+    || fail "failed to sign the Source Preview broker"
+  /usr/bin/codesign --force --sign "$identity_hash" --identifier dev.safa.broker \
+    --options runtime --timestamp=none "$broker_app" >/dev/null 2>&1 \
+    || fail "failed to sign the Source Preview broker app"
+  /usr/bin/codesign --force --sign "$identity_hash" --identifier dev.safa.askpass \
+    --options runtime --timestamp=none "$askpass_path" >/dev/null 2>&1 \
+    || fail "failed to sign the Source Preview AskPass helper"
+  /usr/bin/codesign --force --sign "$identity_hash" --identifier dev.safa.trusted-local \
+    --options runtime --timestamp=none "$trusted_setup_path" >/dev/null 2>&1 \
+    || fail "failed to sign the Source Preview trusted setup helper"
+  /usr/bin/codesign --force --sign "$identity_hash" --identifier dev.safa.cli \
+    --options runtime --timestamp=none "$cli_path" >/dev/null 2>&1 \
+    || fail "failed to sign the Source Preview CLI"
+  /usr/bin/codesign --force --sign "$identity_hash" --identifier dev.safa.cli \
+    --options runtime --timestamp=none "$source_app" >/dev/null 2>&1 \
+    || fail "failed to sign the Source Preview app"
+fi
+
+for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path" "$trusted_setup_path"; do
   /usr/bin/codesign --verify --strict "$component" >/dev/null 2>&1 \
     || fail "Runtime component failed code-signature verification: $component"
 done
@@ -130,9 +197,24 @@ signature_field() {
 [ "$(signature_field "$trusted_setup_path" Identifier)" = "dev.safa.trusted-local" ] \
   || fail "trusted setup signing identifier is invalid"
 
-for component in "$source_app" "$cli_path" "$broker_app" "$broker_path" "$askpass_path" "$trusted_setup_path"; do
+if [ "$source_preview" -eq 1 ]; then
+  team_identifier=$(signature_field "$cli_path" TeamIdentifier)
+  /usr/bin/printf '%s\n' "$team_identifier" | /usr/bin/grep -Eq '^[A-Z0-9]{10}$' \
+    || fail "the Source Preview signing identity has no valid Apple Team identifier"
+fi
+
+for component_role in \
+  "app|${source_app}" \
+  "cli|${cli_path}" \
+  "broker-app|${broker_app}" \
+  "broker|${broker_path}" \
+  "askpass|${askpass_path}" \
+  "trusted-setup|${trusted_setup_path}"
+do
+  role=${component_role%%|*}
+  component=${component_role#*|}
   [ "$(signature_field "$component" TeamIdentifier)" = "$team_identifier" ] \
-    || fail "Runtime component was not signed by Team ${team_identifier}"
+    || fail "Runtime ${role} component has an unexpected Team identity"
 done
 
 binary_architectures=$(/usr/bin/lipo -archs "$cli_path")
