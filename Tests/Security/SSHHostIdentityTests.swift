@@ -114,6 +114,17 @@ struct SSHHostIdentityTests {
         #expect(!remoteCommand.contains("$env:PATH"))
     }
 
+    @Test("single-element Windows commands remain arrays after JSON decoding")
+    func singleWindowsArgumentRemainsAnArray() throws {
+        let remoteCommand = try SSHConfigurationBuilder.windowsPowerShellCommand(["whoami"])
+        let encodedScript = try #require(remoteCommand.split(separator: " ").last)
+        let scriptData = try #require(Data(base64Encoded: String(encodedScript)))
+        let script = try #require(String(data: scriptData, encoding: .utf16LittleEndian))
+
+        #expect(script.contains("$values = @("))
+        #expect(script.contains("ConvertFrom-Json"))
+    }
+
     @Test("trusted Windows probes use one bounded PowerShell encoding layer")
     func trustedWindowsPowerShellProbeIsSingleLayer() throws {
         let resource = SyntheticSSHResource.make(status: .trusted, platform: .windows)

@@ -305,7 +305,7 @@ public actor MVPBrokerHandler: AgentOperationHandling, TrustedLocalOperationHand
         // come from a reached remote command and still prove transport reachability.
         if result.termination == .exit, result.exitCode != 255 {
             try? await topologyReachabilityRecorder?.recordSuccessfulReachability(
-                to: alias,
+                to: resource.alias,
                 observedAt: result.finishedAt
             )
         }

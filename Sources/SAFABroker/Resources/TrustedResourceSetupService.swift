@@ -110,6 +110,7 @@ public actor TrustedResourceSetupService {
                 ?? .primary
         )
 
+        var verifiedReachabilityObservedAt: Date?
         if draft.accessMethods.contains(.ssh) {
             guard let protectedCredential,
                 credentialKind == .sshPassword,
@@ -140,6 +141,7 @@ public actor TrustedResourceSetupService {
                 credentialKind: draft.credentialKind,
                 credentialRole: draft.credentialRole
             )
+            verifiedReachabilityObservedAt = now
         }
 
         do {
@@ -148,12 +150,14 @@ public actor TrustedResourceSetupService {
                 alias: alias,
                 draft: draft,
                 replacementPassword: protectedCredential,
+                verifiedReachabilityObservedAt: verifiedReachabilityObservedAt,
                 now: now
             )
         } catch ResourceServiceError.notFound {
             return try await resources.addProtectedResource(
                 draft,
                 credential: protectedCredential,
+                verifiedReachabilityObservedAt: verifiedReachabilityObservedAt,
                 now: now
             )
         }

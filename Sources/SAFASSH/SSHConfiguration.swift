@@ -237,7 +237,7 @@ public struct SSHConfigurationBuilder: Sendable {
         let encodedArguments = argumentData.base64EncodedString()
         let script = """
             $ErrorActionPreference = 'Stop'
-            $values = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\(encodedArguments)')) | ConvertFrom-Json
+            $values = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('\(encodedArguments)')) | ConvertFrom-Json)
             $program = [string]$values[0]
             $programArguments = @()
             if ($values.Count -gt 1) {

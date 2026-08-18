@@ -17,16 +17,23 @@ extension ResourceService {
     public func addProtectedResource(
         _ draft: PrivateResourceDraft,
         credential: Data?,
+        verifiedReachabilityObservedAt: Date? = nil,
         now: Date = Date()
     ) async throws -> Resource {
         try await mutationGate.withLock { [self] in
-            try await addProtectedResourceUnlocked(draft, credential: credential, now: now)
+            try await addProtectedResourceUnlocked(
+                draft,
+                credential: credential,
+                verifiedReachabilityObservedAt: verifiedReachabilityObservedAt,
+                now: now
+            )
         }
     }
 
     func addProtectedResourceUnlocked(
         _ draft: PrivateResourceDraft,
         credential: Data?,
+        verifiedReachabilityObservedAt: Date?,
         now: Date
     ) async throws -> Resource {
         let template = try Self.ensureTemplateCompatibility(
@@ -106,7 +113,11 @@ extension ResourceService {
         }
         document.resources.append(resource)
         do {
-            try await writeResourceDocument(document)
+            try await writeResourceDocument(
+                document,
+                verifiedReachabilityTo: verifiedReachabilityObservedAt.map { _ in resource.alias },
+                observedAt: verifiedReachabilityObservedAt
+            )
         } catch {
             if let credentialID {
                 try? await passwordStore.deleteSecret(id: credentialID)
@@ -121,6 +132,7 @@ extension ResourceService {
         alias: ResourceAlias,
         draft: PrivateResourceDraft,
         replacementPassword: Data? = nil,
+        verifiedReachabilityObservedAt: Date? = nil,
         now: Date = Date()
     ) async throws -> Resource {
         try await mutationGate.withLock { [self] in
@@ -128,6 +140,7 @@ extension ResourceService {
                 alias: alias,
                 draft: draft,
                 replacementPassword: replacementPassword,
+                verifiedReachabilityObservedAt: verifiedReachabilityObservedAt,
                 now: now
             )
         }
@@ -137,6 +150,7 @@ extension ResourceService {
         alias: ResourceAlias,
         draft: PrivateResourceDraft,
         replacementPassword: Data?,
+        verifiedReachabilityObservedAt: Date?,
         now: Date
     ) async throws -> Resource {
         guard draft.alias == alias else {
@@ -260,7 +274,11 @@ extension ResourceService {
             document.credentialReferences.removeAll { $0.id == previousCredentialID }
         }
         do {
-            try await writeResourceDocument(document)
+            try await writeResourceDocument(
+                document,
+                verifiedReachabilityTo: verifiedReachabilityObservedAt.map { _ in resource.alias },
+                observedAt: verifiedReachabilityObservedAt
+            )
         } catch {
             if let replacementCredentialID {
                 try? await passwordStore.deleteSecret(id: replacementCredentialID)

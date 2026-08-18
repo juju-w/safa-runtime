@@ -179,6 +179,80 @@ struct ReadOnlySSHJourneyTests {
         #expect(await runner.lastInvocation() != nil)
     }
 
+    @Test("alternate aliases record reachability against the canonical resource")
+    func alternateAliasRecordsCanonicalReachability() async throws {
+        let alternate = try ResourceAlias("nas.short")
+        let resource = JourneyResourceFactory.active(
+            alias: "nas.home",
+            alternateAliases: [alternate]
+        )
+        let locator = try OpenSSHCredentialLocatorV1(
+            identityFiles: ["/synthetic/id_ed25519"],
+            identityAgent: nil
+        )
+        let finishedAt = Date(timeIntervalSince1970: 1_700_000_001)
+        let runner = FakeProcessRunner(
+            result: ProcessExecutionResult(
+                termination: .exit,
+                exitCode: 0,
+                stdout: Data("synthetic-host\n".utf8),
+                stderr: Data(),
+                startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                finishedAt: finishedAt,
+                stdoutTruncated: false,
+                stderrTruncated: false
+            )
+        )
+        let vault = InMemoryVaultDocumentStore(
+            document: VaultDocument(
+                schemaVersion: 1,
+                resources: [resource],
+                credentialReferences: [
+                    CredentialReference(
+                        id: resource.authRef!,
+                        kind: .sshOpenSSH,
+                        storageLocator: try CanonicalCodec.encode(locator),
+                        securityDomains: ["synthetic"],
+                        accessClass: .automaticWithinPolicy,
+                        health: .ready,
+                        createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+                    )
+                ]
+            )
+        )
+        let recorder = JourneyReachabilityRecorder()
+        let handler = MVPBrokerHandler(
+            vault: vault,
+            passwordStore: InMemoryPasswordSecretStore(),
+            bindingStore: ChildCredentialBindingStore(),
+            transport: SSHTransport(runner: runner),
+            topologyReachabilityRecorder: recorder,
+            askPassExecutable: URL(fileURLWithPath: "/usr/local/libexec/safa-askpass"),
+            workingDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("safa-alias-journey-\(UUID().uuidString)")
+        )
+
+        _ = await handler.handle(
+            .submitExecution(
+                resourceAlias: alternate,
+                command: try CommandSpec.exec(arguments: ["hostname"]),
+                privilege: .user,
+                intent: "Check the synthetic hostname",
+                expectedEffect: nil,
+                rollback: nil
+            ),
+            caller: CallerIdentity(
+                signingIdentifier: "dev.safa.cli",
+                teamIdentifier: "TESTTEAM1",
+                effectiveUserID: 501,
+                auditSessionID: 77
+            ),
+            messageID: UUID()
+        )
+
+        #expect(await recorder.targets == [resource.alias])
+    }
+
     @Test("OpenSSH transport failure never becomes verified reachability")
     func transportFailureDoesNotRecordReachability() async throws {
         let resource = JourneyResourceFactory.active(alias: "nas.unreachable")
@@ -262,11 +336,15 @@ private actor JourneyReachabilityRecorder: TopologyReachabilityRecording {
 }
 
 enum JourneyResourceFactory {
-    static func active(alias: String) -> Resource {
+    static func active(
+        alias: String,
+        alternateAliases: [ResourceAlias] = []
+    ) -> Resource {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         return Resource(
             id: UUID(),
             alias: try! ResourceAlias(alias),
+            alternateAliases: alternateAliases,
             endpoint: ResourceEndpoint(host: "203.0.113.10", port: 2222),
             username: "diagnostic-user",
             securityDomain: "synthetic",

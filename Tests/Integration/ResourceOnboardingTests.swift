@@ -160,6 +160,19 @@ struct ResourceOnboardingTests {
         #expect(resource.state == .active)
         #expect(resource.resolvedMetadata == inventory.metadata)
         #expect(await credentials.readSecret(id: resource.authRef!) == secret)
+        let graph = try #require(await vault.readDocument().topologyGraph)
+        let runtimeID = try #require(
+            graph.nodes.first(where: { $0.alias.rawValue == "runtime.local" })?.id
+        )
+        let reachability = try #require(
+            graph.edges.first(where: {
+                $0.fromNodeID == runtimeID
+                    && $0.toNodeID == resource.id
+                    && $0.relation == .canReach
+            })
+        )
+        #expect(reachability.verification == .verified)
+        #expect(reachability.observedAt != nil)
     }
 
     @Test("trusted local setup accepts a typed service without exposing its secret")
