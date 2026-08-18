@@ -72,6 +72,21 @@ Scripts/install-local-runtime.sh \
   --allow-provisioning-updates
 ```
 
+For the free Source Preview, an existing Apple Development identity can sign locally without an
+Xcode account or provisioning-profile update:
+
+```bash
+Scripts/install-local-runtime.sh \
+  --source-preview \
+  --identity-hash YOUR_LOCAL_APPLE_DEVELOPMENT_SHA1
+```
+
+This mode uses manual local signing and intentionally omits the explicit provisioning-profile-backed
+Keychain access-group entitlement. The Broker remains the sole Keychain authority and the installer
+derives the effective Team identifier from the signed Mach-O rather than the certificate display
+name. It still verifies every component's Team identity, identifiers, CDHashes, architecture, and
+Runtime version. Source Preview signing is not Developer ID distribution or notarization.
+
 The script builds and verifies all signed components, installs the exact version under the current
 user's Application Support directory, and writes a local lock containing the architecture, Team ID,
 and Code Directory hashes. Pass `--replace` only when intentionally replacing the same development

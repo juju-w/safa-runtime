@@ -47,6 +47,7 @@ jobs:
         run: |
           sh -n Scripts/install-local-runtime.sh Scripts/sync-cli-build-metadata.sh
           Scripts/sync-cli-build-metadata.sh --check
+          Scripts/tests/source-preview-installer-contract.sh
       - name: Build
         run: swift build
       - name: Test

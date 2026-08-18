@@ -247,6 +247,8 @@ request, complete trusted setup, and execute through the pinned signed runtime.
 - [ ] T080 [US4] Implement the macOS-only thin runtime resolver and verifier in `Skills/safa/scripts/safa`
 - [ ] T081 [US4] Implement universal runtime assembly, per-component manifest generation, and pinned
   Skill packaging in `Scripts/build-release.sh` and `Scripts/package-skill.sh`
+- [X] T081a [US4] Add manual Apple Development signing for the exact local Source Preview without
+  requiring an Xcode account/provisioning update in `Scripts/install-local-runtime.sh`
 - [ ] T082 [US4] Implement package, signature, entitlement, architecture, schema, and source-only verification in `Scripts/verify-package.sh`
 - [ ] T083 [US4] Implement repository and artifact secret/infrastructure scanning in `Scripts/scan-secrets.sh`
 - [ ] T084 [US4] Run an independent clean-profile Skill journey and record fixtures in `Tests/Contract/SkillBehaviorTests.md`
